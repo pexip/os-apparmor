@@ -1,0 +1,23 @@
+Author: https://launchpad.net/~teka101
+Description: Add entries for lighttpd to work in a Debian/Ubuntu install
+Forwarded: no (Debian/Ubuntu specific)
+Ubuntu-Bug: https://bugs.launchpad.net/ubuntu/+source/apparmor/+bug/582814
+
+--- a/profiles/apparmor/profiles/extras/usr.sbin.lighttpd
++++ b/profiles/apparmor/profiles/extras/usr.sbin.lighttpd
+@@ -52,5 +52,15 @@
+   /{usr/,}bin/bash mix,
+   /{usr/,}bin/zsh mix,
+   /{usr/,}bin/cat mix,
++
++  # Debian/Ubuntu integration in default installation
++  #include <abstractions/perl>
++  /etc/mime.types r,
++  /usr/share/lighttpd/ r,
++  /usr/share/lighttpd/*.pl rmix,
++  /etc/lighttpd/conf-available/ r,
++  /etc/lighttpd/conf-available/*.conf r,
++  /etc/lighttpd/conf-enabled/ r,
++  /etc/lighttpd/conf-enabled/*.conf r,
+ }
+ 

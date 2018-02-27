@@ -1,0 +1,39 @@
+#
+# Debian-specific patches
+#
+
+pin-feature-set.patch
+notify-group.patch
+
+#
+# Ubuntu-specific patches
+#
+add-debian-integration-to-lighttpd.patch
+ubuntu-manpage-updates.patch
+libapparmor-layout-deb.patch
+etc-writable.patch
+parser-include-usr-share-apparmor.patch
+parser-dont-skip-read-cache-with-optimizations.patch
+allow-access-to-ibus-socket.patch
+# Dangerous without fine-grained AppArmor mediation of D-Bus traffic
+#profiles-grant-access-to-systemd-resolved.patch
+# Not adapted to Debian packaging of Chromium (Debian#742829)
+#add-chromium-browser.patch
+# Adapted to use debian/lib/apparmor/functions instead of
+# parser/rc.apparmor.functions
+utils-add-aa-remove-unknown.patch
+
+#
+# Patches not yet upstream
+#
+pass-compiler-flags.patch
+raise-test-timeout.patch
+non-linux.patch
+
+#
+# Patches backported from upstream commits
+#
+
+#
+# Patches backported from upstream fix submissions
+#
