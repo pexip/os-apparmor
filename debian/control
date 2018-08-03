@@ -1,8 +1,9 @@
 Source: apparmor
 Section: admin
 Priority: extra
-Maintainer: Debian AppArmor Team <pkg-apparmor-team@lists.alioth.debian.org>
-Uploaders:
+Maintainer: Pexip AS <packaging@pexip.com>
+XSBC-Pexip-Original-Maintainer: Debian AppArmor Team <pkg-apparmor-team@lists.alioth.debian.org>
+XSBC-Pexip-Original-Uploaders:
   intrigeri <intrigeri@debian.org>,
   Kees Cook <kees@debian.org>
 Build-Depends: debhelper (>= 9.20120322~), po-debconf, dpkg-dev (>= 1.16.1~),
@@ -20,6 +21,7 @@ Standards-Version: 3.9.8
 Homepage: http://apparmor.net/
 Vcs-Bzr: https://anonscm.debian.org/bzr/collab-maint/apparmor
 Vcs-Browser: https://alioth.debian.org/scm/loggerhead/collab-maint/apparmor/changes
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
 
 Package: apparmor
 Architecture: any
