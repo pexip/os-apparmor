@@ -67,9 +67,9 @@ def add_info(report, ui):
     packages = ['apparmor', 'apparmor-utils', 'libapparmor1',
                 'libapparmor-dev', 'libapparmor-perl', 'apparmor-utils',
                 'apparmor-profiles', 'apparmor-easyprof',
-                'python3-apparmor', 'python-apparmor', 'libpam-apparmor',
+                'python3-apparmor', 'libpam-apparmor',
                 'libapache2-mod-apparmor', 'python3-libapparmor',
-                'python-libapparmor', 'auditd', 'libaudit0']
+                'auditd', 'libaudit0']
 
     versions = ''
     for package in packages:

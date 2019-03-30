@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------
 #    Copyright (C) 2013 Kshitij Gupta <kgupta8592@gmail.com>
-#    Copyright (C) 2015-2016 Christian Boltz <apparmor@cboltz.de>
+#    Copyright (C) 2015-2018 Christian Boltz <apparmor@cboltz.de>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -12,6 +12,7 @@
 #    GNU General Public License for more details.
 #
 # ----------------------------------------------------------------------
+import ctypes
 import os
 import re
 import sys
@@ -43,12 +44,12 @@ class ReadLog:
     # used to pre-filter log lines so that we hand over only relevant lines to LibAppArmor parsing
     RE_LOG_ALL = re.compile('(' + '|'.join(RE_log_parts) + ')')
 
-    def __init__(self, pid, filename, existing_profiles, profile_dir, log):
+    def __init__(self, pid, filename, active_profiles, profile_dir):
         self.filename = filename
         self.profile_dir = profile_dir
         self.pid = pid
-        self.existing_profiles = existing_profiles
-        self.log = log
+        self.active_profiles = active_profiles
+        self.log = []
         self.debug_logger = DebugLogger('ReadLog')
         self.LOG = None
         self.logmark = ''
@@ -117,6 +118,10 @@ class ReadLog:
         ev['family'] = event.net_family
         ev['protocol'] = event.net_protocol
         ev['sock_type'] = event.net_sock_type
+
+        if event.ouid != ctypes.c_ulong(-1).value:  # ULONG_MAX
+            ev['fsuid'] = event.fsuid
+            ev['ouid'] = event.ouid
 
         if ev['operation'] and ev['operation'] == 'signal':
             ev['signal'] = event.signal
@@ -195,31 +200,13 @@ class ReadLog:
             (pid, parent, mode, details) = e
             self.add_to_tree(pid, parent, mode, details)
 
-    def map_log_type(self, log_type):
-            if re.search('(UNKNOWN\[1501\]|APPARMOR_AUDIT|1501)', log_type):
-                aamode = 'AUDIT'
-            elif re.search('(UNKNOWN\[1502\]|APPARMOR_ALLOWED|1502)', log_type):
-                aamode = 'PERMITTING'
-            elif re.search('(UNKNOWN\[1503\]|APPARMOR_DENIED|1503)', log_type):
-                aamode = 'REJECTING'
-            elif re.search('(UNKNOWN\[1504\]|APPARMOR_HINT|1504)', log_type):
-                aamode = 'HINT'
-            elif re.search('(UNKNOWN\[1505\]|APPARMOR_STATUS|1505)', log_type):
-                aamode = 'STATUS'
-            elif re.search('(UNKNOWN\[1506\]|APPARMOR_ERROR|1506)', log_type):
-                aamode = 'ERROR'
-            else:
-                aamode = 'UNKNOWN'
-
-            return aamode
-
     def parse_event_for_tree(self, e):
         aamode = e.get('aamode', 'UNKNOWN')
 
-        if e.get('type', False):
-            aamode = self.map_log_type(e['type'])
+        if aamode == 'UNKNOWN':
+            raise AppArmorBug('aamode is UNKNOWN - %s' % e['type'])  # should never happen
 
-        if aamode in ['UNKNOWN', 'AUDIT', 'STATUS', 'ERROR']:
+        if aamode in ['AUDIT', 'STATUS', 'ERROR']:
             return None
 
         if 'profile_set' in e['operation']:
@@ -242,6 +229,8 @@ class ReadLog:
         # Filter out change_hat events that aren't from learning
         if e['operation'] == 'change_hat':
             if aamode != 'HINT' and aamode != 'PERMITTING':
+                return None
+            if e['error_code'] == 1 and e['info'] == 'unconfined can not change_hat':
                 return None
             profile = e['name2']
             #hat = None
@@ -283,6 +272,13 @@ class ReadLog:
             dmask = dmask.replace('d', 'w')
             if not validate_log_mode(hide_log_mode(dmask)):
                 raise AppArmorException(_('Log contains unknown mode %s') % dmask)
+
+            if e.get('ouid') is not None and e['fsuid'] == e['ouid']:
+                # mark as "owner" event
+                if '::' not in rmask:
+                    rmask = '%s::' % rmask
+                if '::' not in dmask:
+                    dmask = '%s::' % dmask
 
             # convert rmask and dmask to mode arrays
             e['denied_mask'],  e['name2'] = log_str_to_mode(e['profile'], dmask, e['name2'])
@@ -336,6 +332,13 @@ class ReadLog:
             return(e['pid'], e['parent'], 'unknown_hat',
                              [profile, hat, aamode, hat])
         elif e['operation'] == 'ptrace':
+            if not e['peer']:
+                self.debug_logger.debug('ignored garbage ptrace event with empty peer')
+                return None
+            if not e['denied_mask']:
+                self.debug_logger.debug('ignored garbage ptrace event with empty denied_mask')
+                return None
+
             return(e['pid'], e['parent'], 'ptrace',
                              [profile, hat, prog, aamode, e['denied_mask'], e['peer']])
         elif e['operation'] == 'signal':
@@ -444,15 +447,16 @@ class ReadLog:
     def profile_exists(self, program):
         """Returns True if profile exists, False otherwise"""
         # Check cache of profiles
-        if self.existing_profiles.get(program, False):
+        if self.active_profiles.filename_from_profile_name(program):
             return True
         # Check the disk for profile
         prof_path = self.get_profile_filename(program)
         #print(prof_path)
         if os.path.isfile(prof_path):
             # Add to cache of profile
-            self.existing_profiles[program] = prof_path
-            return True
+            raise AppArmorBug('This should never happen, please open a bugreport!')
+            # self.active_profiles[program] = prof_path
+            # return True
         return False
 
     def get_profile_filename(self, profile):

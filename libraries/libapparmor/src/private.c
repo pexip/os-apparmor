@@ -38,9 +38,22 @@
 #ifndef HAVE_SECURE_GETENV
  #ifdef HAVE___SECURE_GETENV
   #define secure_getenv __secure_getenv
+ #elif ENABLE_DEBUG_OUTPUT
+  #error Debug output is not possible without a secure_getenv() implementation.
  #else
-  #error neither secure_getenv nor __secure_getenv is available
+  #define secure_getenv(env) NULL
  #endif
+#endif
+
+/**
+ * Allow libapparmor to build on older glibcs and other libcs that do
+ * not support reallocarray.
+ */
+#ifndef HAVE_REALLOCARRY
+void *reallocarray(void *ptr, size_t nmemb, size_t size)
+{
+	return realloc(ptr, nmemb * size);
+}
 #endif
 
 struct ignored_suffix_t {
@@ -56,6 +69,10 @@ static struct ignored_suffix_t ignored_suffixes[] = {
 	{ ".dpkg-old", 9, 1 },
 	{ ".dpkg-dist", 10, 1 },
 	{ ".dpkg-bak", 9, 1 },
+	{ ".dpkg-remove", 12, 1 },
+	/* Archlinux packaging files */
+	{ ".pacsave", 8, 1 },
+	{ ".pacnew", 7, 1 },
 	/* RPM packaging files have traditionally not been silently
            ignored */
 	{ ".rpmnew", 7, 0 },
@@ -169,13 +186,252 @@ int _aa_asprintf(char **strp, const char *fmt, ...)
 	return rc;
 }
 
-static int dot_or_dot_dot_filter(const struct dirent *ent)
+/* stops on first error, can use errno or return value to communicate
+ * the goal is to use this to replace _aa_dirat_for_each, but that will
+ * be a different patch.
+ */
+int _aa_dirat_for_each2(int dirfd, const char *name, void *data,
+			int (* cb)(int, const struct dirent *, void *))
 {
-	if (strcmp(ent->d_name, ".") == 0 ||
-	    strcmp(ent->d_name, "..") == 0)
-		return 0;
+	autoclose int cb_dirfd = -1;
+	int fd_for_dir = -1;
+	const struct dirent *ent;
+	DIR *dir;
+	int save, rc;
 
-	return 1;
+	if (!cb || !name) {
+		errno = EINVAL;
+		return -1;
+	}
+	save = errno;
+
+	cb_dirfd = openat(dirfd, name, O_RDONLY | O_CLOEXEC | O_DIRECTORY);
+	if (cb_dirfd == -1) {
+		PDEBUG("could not open directory fd '%d' '%s': %m\n", dirfd, name);
+		return -1;
+	}
+	/* dup cd_dirfd because fdopendir has claimed the fd passed to it */
+	fd_for_dir = dup(cb_dirfd);
+	if (fd_for_dir == -1) {
+		PDEBUG("could not dup directory fd '%s': %m\n", name);
+		return -1;
+	}
+	dir = fdopendir(fd_for_dir);
+	if (!dir) {
+		PDEBUG("could not open directory '%s' from fd '%d': %m\n", name, fd_for_dir);
+		close(fd_for_dir);
+		return -1;
+	}
+
+	while ((ent = readdir(dir))) {
+		if (cb) {
+			rc = (*cb)(cb_dirfd, ent, data);
+			if (rc) {
+				PDEBUG("dir_for_each callback failed for '%s'\n",
+				       ent->d_name);
+				goto out;
+			}
+		}
+	}
+	errno = save;
+
+out:
+	closedir(dir);
+	return rc;
+}
+
+
+#define max(a, b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+#define CHUNK 32
+struct overlaydir {
+	int dirfd;
+	struct dirent *dent;
+};
+
+static int insert(struct overlaydir **overlayptr, int *max_size, int *size,
+		  int pos, int remaining, int dirfd, struct dirent *ent)
+{
+	struct overlaydir *overlay = *overlayptr;
+	int i, chunk = max(remaining, CHUNK);
+
+	if (size + 1 >= max_size) {
+		struct overlaydir *tmp = reallocarray(overlay,
+						      *max_size + chunk,
+						      sizeof(*overlay));
+		if (tmp == NULL)
+			return -1;
+		overlay = tmp;
+	}
+	*max_size += chunk;
+	(*size)++;
+	for (i = *size; i > pos; i--)
+		overlay[i] = overlay[i - 1];
+	overlay[pos].dirfd = dirfd;
+	overlay[pos].dent = ent;
+
+	*overlayptr = overlay;
+	return 0;
+}
+
+#define merge(overlay, n_overlay, max_size, list, n_list, dirfd)	\
+({									\
+	int i, j;							\
+	int rc = 0;							\
+									\
+	for (i = 0, j = 0; i < n_overlay && j < n_list; ) {		\
+		int res = strcmp(overlay[i].dent->d_name, list[j]->d_name);\
+		if (res < 0) {						\
+			i++;						\
+			continue;					\
+		} else if (res == 0) {					\
+			free(list[j]);					\
+			list[j] = NULL;					\
+			i++;						\
+			j++;						\
+		} else {						\
+			if ((rc = insert(&overlay, &max_size, &n_overlay, i,\
+					 n_list - j, dirfd, list[j])))	\
+				goto fail;				\
+			i++;						\
+			list[j++] = NULL;				\
+		}							\
+	}								\
+	while (j < n_list) {						\
+		if ((rc = insert(&overlay, &max_size, &n_overlay, i,	\
+				 n_list - j, dirfd,list[j])))		\
+			goto fail;					\
+		i++;							\
+		list[j++] = NULL;					\
+	}								\
+									\
+fail:									\
+	rc;								\
+})
+
+static ssize_t readdirfd(int dirfd, struct dirent ***out,
+			  int (*dircmp)(const struct dirent **, const struct dirent **))
+{
+	struct dirent **dents = NULL, *dent;
+	ssize_t n = 0;
+	size_t i;
+	int save;
+	DIR *dir;
+
+	*out = NULL;
+
+	/*
+	 * closedir(dir) will close the underlying fd, so we need
+	 * to dup first
+	 */
+	if ((dirfd = dup(dirfd)) < 0) {
+		PDEBUG("dup of dirfd failed: %m\n");
+		return -1;
+	}
+
+	if ((dir = fdopendir(dirfd)) == NULL) {
+		PDEBUG("fdopendir of dirfd failed: %m\n");
+		close(dirfd);
+		return -1;
+	}
+
+	/* Get number of directory entries */
+	while ((dent = readdir(dir)) != NULL) {
+		if (!strcmp(dent->d_name, ".") || !strcmp(dent->d_name, ".."))
+			continue;
+		n++;
+	}
+	rewinddir(dir);
+
+	dents = calloc(n, sizeof(struct dirent *));
+	if (!dents)
+		goto fail;
+
+	for (i = 0; i < n; ) {
+		if ((dent = readdir(dir)) == NULL) {
+			PDEBUG("readdir of entry[%d] failed: %m\n", i);
+			goto fail;
+		}
+
+		if (!strcmp(dent->d_name, ".") || !strcmp(dent->d_name, ".."))
+			continue;
+
+		dents[i] = malloc(sizeof(*dents[i]));
+		if (!dents[i])
+			goto fail;
+		memcpy(dents[i], dent, sizeof(*dent));
+		i++;
+	}
+
+	if (dircmp)
+		qsort(dents, n, sizeof(*dent), (int (*)(const void *, const void *))dircmp);
+
+	*out = dents;
+	closedir(dir);
+	return n;
+
+fail:
+	save = errno;
+	if (dents) {
+		for (i = 0; i < n; i++)
+			free(dents[i]);
+	}
+	free(dents);
+	closedir(dir);
+	errno = save;
+	return -1;
+}
+
+int _aa_overlaydirat_for_each(int dirfd[], int n, void *data,
+			int (* cb)(int, const char *, struct stat *, void *))
+{
+	autofree struct dirent **list = NULL;
+	autofree struct overlaydir *overlay = NULL;
+	int i, k;
+	int n_list, size = 0, max_size = 0;
+	int rc = 0;
+
+	for (i = 0; i < n; i++) {
+		n_list = readdirfd(dirfd[i], &list, alphasort);
+		if (n_list == -1) {
+			PDEBUG("scandirat of dirfd[%d] failed: %m\n", i);
+			return -1;
+		}
+		if (merge(overlay, size, max_size, list, n_list, dirfd[i])) {
+			for (k = 0; k < n_list; k++)
+				free(list[i]);
+			for (k = 0; k < size; k++)
+				free(overlay[k].dent);
+			return -1;
+		}
+	}
+
+	for (rc = 0, i = 0; i < size; i++) {
+		/* Must cycle through all dirs so that each one is autofreed */
+		autofree struct dirent *dent = overlay[i].dent;
+		struct stat my_stat;
+
+		if (rc)
+			continue;
+
+		if (fstatat(overlay[i].dirfd, dent->d_name, &my_stat,
+			    AT_SYMLINK_NOFOLLOW)) {
+			PDEBUG("stat failed for '%s': %m\n", dent->d_name);
+			rc = -1;
+			continue;
+		}
+
+		if (cb(overlay[i].dirfd, dent->d_name, &my_stat, data)) {
+			PDEBUG("dir_for_each callback failed for '%s'\n",
+			       dent->d_name);
+			rc = -1;
+			continue;
+		}
+	}
+
+	return rc;
 }
 
 /**
@@ -219,8 +475,7 @@ int _aa_dirat_for_each(int dirfd, const char *name, void *data,
 		return -1;
 	}
 
-	num_dirs = scandirat(cb_dirfd, ".", &namelist,
-			     dot_or_dot_dot_filter, NULL);
+	num_dirs = readdirfd(cb_dirfd, &namelist, NULL);
 	if (num_dirs == -1) {
 		PDEBUG("scandirat of directory '%s' failed: %m\n", name);
 		return -1;

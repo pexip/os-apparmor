@@ -55,7 +55,7 @@ libapparmor by adding USE_SYSTEM=1 to your make command.${nl}\
   AA_LDLIBS = -lapparmor
 endif
 EXTRA_CFLAGS=$(CFLAGS) $(CPPFLAGS) -fPIC -shared -Wall $(LIBAPPARMOR_INCLUDE)
-LINK_FLAGS=-Xlinker -x $(AA_LINK_FLAGS)
+LINK_FLAGS=-Xlinker -x $(AA_LINK_FLAGS) $(LDFLAGS)
 LIBS=-lpam $(AA_LDLIBS)
 OBJECTS=${NAME}.o get_options.o
 
@@ -82,7 +82,7 @@ SECDIR ?= ${DESTDIR}/lib/security
 .PHONY: install
 install: $(NAME).so
 	install -m 755 -d $(SECDIR)
-	install -m 555 $(NAME).so $(SECDIR)/
+	install -m 755 $(NAME).so $(SECDIR)/
 	
 .PHONY: clean
 clean:

@@ -2,6 +2,8 @@
 #    Copyright (c) 1999, 2000, 2001, 2002, 2004, 2005, 2006, 2007
 #    NOVELL (All rights reserved)
 #
+#    Copyright (c) Christian Boltz 2018
+#
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
 #    License published by the Free Software Foundation.
@@ -22,14 +24,15 @@ include $(COMMONDIR)/Make.rules
 
 DESTDIR=/
 APPARMOR_BIN_PREFIX=${DESTDIR}/lib/apparmor
+SYSTEMD_UNIT_DIR=${DESTDIR}/usr/lib/systemd/system
 CONFDIR=/etc/apparmor
 INSTALL_CONFDIR=${DESTDIR}${CONFDIR}
 LOCALEDIR=/usr/share/locale
-MANPAGES=apparmor.d.5 apparmor.7 apparmor_parser.8 subdomain.conf.5
+MANPAGES=apparmor.d.5 apparmor.7 apparmor_parser.8 subdomain.conf.5 aa-teardown.8
 
-YACC	:= /usr/bin/bison
+YACC	:= bison
 YFLAGS	:= -d
-LEX	:= /usr/bin/flex
+LEX	:= flex
 LEXFLAGS = -B -v
 WARNINGS = -Wall
 EXTRA_WARNINGS = -Wsign-compare -Wmissing-field-initializers -Wformat-security -Wunused-parameter
@@ -86,7 +89,7 @@ OBJECTS = $(patsubst %.cc, %.o, $(SRCS:.c=.o))
 AAREDIR= libapparmor_re
 AAREOBJECT = ${AAREDIR}/libapparmor_re.a
 AAREOBJECTS = $(AAREOBJECT)
-AARE_LDFLAGS = -static-libgcc -static-libstdc++ -L.
+AARE_LDFLAGS = -static-libgcc -static-libstdc++ -L. $(LDFLAGS)
 AALIB = -Wl,-Bstatic -lapparmor -Wl,-Bdynamic -lpthread
 
 ifdef USE_SYSTEM
@@ -179,7 +182,7 @@ $(LIBAPPARMOR_A):
 		echo "error: $@ is missing. Pick one of these possible solutions:" 1>&2; \
 		echo "  1) Build against the in-tree libapparmor by building it first and then trying again. See the top-level README for help." 1>&2; \
 		echo "  2) Build against the system libapparmor by adding USE_SYSTEM=1 to your make command." 1>&2;\
-		return 1; \
+		exit 1; \
 	fi
 endif
 
@@ -314,12 +317,9 @@ install-redhat:
 	install -m 755 rc.apparmor.$(subst install-,,$@) $(DESTDIR)/etc/init.d/apparmor
 
 .PHONY: install-suse
-install-suse:
-	install -m 755 -d $(DESTDIR)/etc/init.d
-	install -m 755 rc.apparmor.$(subst install-,,$(@)) $(DESTDIR)/etc/init.d/boot.apparmor
+install-suse: install-systemd
 	install -m 755 -d $(DESTDIR)/sbin
-	ln -sf /etc/init.d/boot.apparmor $(DESTDIR)/sbin/rcapparmor
-	ln -sf rcapparmor $(DESTDIR)/sbin/rcsubdomain
+	ln -sf service $(DESTDIR)/sbin/rcapparmor
 
 .PHONY: install-slackware
 install-slackware:
@@ -378,6 +378,14 @@ install-indep: indep
 	install -m 755 rc.apparmor.functions $(APPARMOR_BIN_PREFIX)
 	$(MAKE) -C po install NAME=${NAME} DESTDIR=${DESTDIR}
 	$(MAKE) install_manpages DESTDIR=${DESTDIR}
+
+.PHONY: install-systemd
+install-systemd:
+	install -m 755 -d $(SYSTEMD_UNIT_DIR)
+	install -m 644 apparmor.service $(SYSTEMD_UNIT_DIR)
+	install -m 755 apparmor.systemd $(APPARMOR_BIN_PREFIX)
+	install -m 755 -d $(DESTDIR)/usr/sbin
+	install -m 755 aa-teardown $(DESTDIR)/usr/sbin
 
 ifndef VERBOSE
 .SILENT: clean

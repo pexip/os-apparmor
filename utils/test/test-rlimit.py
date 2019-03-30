@@ -96,7 +96,7 @@ class RlimitTestParseInvalid(RlimitTest):
 class RlimitTestParseFromLog(RlimitTest):
     pass
     # def test_net_from_log(self):
-    #   parser = ReadLog('', '', '', '', '')
+    #   parser = ReadLog('', '', '', '')
 
     #   event = 'type=AVC ...'
 
@@ -490,4 +490,4 @@ class RlimitTime_to_intTest(AATest):
 
 setup_all_loops(__name__)
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

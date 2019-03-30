@@ -34,7 +34,7 @@ use Getopt::Long;
 
 my %prefs;
 my $conf = "/etc/apparmor/notify.conf";
-my $user_conf = "$ENV{HOME}/.apparmor/notify.conf";
+my $user_conf = "";
 my $notify_exe = "/usr/bin/notify-send";
 my $notify_home = "";
 my $notify_display = "";
@@ -156,8 +156,21 @@ if (-s $conf) {
     }
 }
 
+# find user's notify.conf
+if (-e "$ENV{HOME}/.apparmor/notify.conf" ) {
+    # use legacy path if the conf file is there
+    $user_conf = "$ENV{HOME}/.apparmor/notify.conf";
+} elsif (defined $ENV{XDG_CONFIG_HOME}) {
+    # use XDG_CONFIG_HOME if it is defined
+    $user_conf = "$ENV{XDG_CONFIG_HOME}/apparmor/notify.conf";
+} else {
+    # fallback to the default value of XDG_CONFIG_HOME
+    $user_conf = "$ENV{HOME}/.config/apparmor/notify.conf";
+}
+
 if ($opt_p) {
-    -x "$notify_exe" or _error("Could not find '$notify_exe'. Please install libnotify-bin. Aborting");
+    # notify-send is packaged in libnotify-bin on Debian/Ubuntu, libnotify-tools on openSUSE
+    -x "$notify_exe" or _error("Could not find '$notify_exe'. Please install it (package libnotify-bin or libnotify-tools). Aborting");
 
     # we need correct values for $HOME and $DISPLAY environment variables,
     # otherwise $notify_exe won't be able to connect to DBUS to display the
@@ -234,7 +247,7 @@ sub readconf {
         s/\s+$//;               # no trailing white
         next unless length;     # anything left?
         my ($var, $value) = split(/\s*=\s*/, $_, 2);
-        if ($var eq "show_notifications" or $var eq "use_group") {
+        if ($var eq "show_notifications" or $var eq "use_group" or $var eq "message_body" or $var eq "message_title" or $var eq "message_footer") {
             $value =~ s/^"(.*)"$/$1/g;
             $prefs{$var} = $value;
         }
@@ -285,12 +298,16 @@ sub format_message {
     my ($profile, $operation, $name, $denied, $family, $sock_type, $date) = @_;
 
     my $formatted = "";
-    defined($profile) and $formatted .= "Profile: $profile\n";
-    defined($operation) and $formatted .= "Operation: $operation\n";
-    defined($name) and $formatted .= "Name: $name\n";
-    defined($denied) and $formatted .= "Denied: $denied\n";
-    defined($family) and defined ($sock_type) and $formatted .= "Family: $family\nSocket type: $sock_type\n";
-    $formatted .= "Logfile: $logfile\n";
+    if (defined($prefs{message_body})) {
+        $formatted .= $prefs{message_body};
+    } else {
+        defined($profile) and $formatted .= "Profile: $profile\n";
+        defined($operation) and $formatted .= "Operation: $operation\n";
+        defined($name) and $formatted .= "Name: $name\n";
+        defined($denied) and $formatted .= "Denied: $denied\n";
+        defined($family) and defined ($sock_type) and $formatted .= "Family: $family\nSocket type: $sock_type\n";
+        $formatted .= "Logfile: $logfile\n";
+    }
 
     return $formatted;
 }
@@ -338,10 +355,13 @@ sub send_message {
 
         $notify_home ne "" and $ENV{'HOME'} = $notify_home;
         $notify_display ne "" and $ENV{'DISPLAY'} = $notify_display;
+        if (not defined($ENV{'DBUS_SESSION_BUS_ADDRESS'})) {
+            $ENV{'DBUS_SESSION_BUS_ADDRESS'} = "unix:path=/run/user/$>/bus";
+        }
 
         # 'system' uses execvp() so no shell metacharacters here.
         # $notify_exe is an absolute path so execvp won't search PATH.
-        system "$notify_exe", "-i", "gtk-dialog-warning", "-u", "critical", "--", "AppArmor Message", "$msg";
+        system "$notify_exe", "-i", "gtk-dialog-warning", "-u", "normal", "--", "AppArmor Message", "$msg";
         my $exit_code = $? >> 8;
         exit($exit_code);
     }
@@ -383,7 +403,7 @@ sub do_notify {
     }
 
     my $count = 0;
-    my $footer = "For more information, please see:\n$url";
+    my $footer = exists $prefs{message_footer} ? $prefs{message_footer} : "For more information, please see:\n$url";
     my $first_run = 1;
     my $since = $now;
     if ($opt_s and int($opt_s) > 0) {

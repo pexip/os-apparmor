@@ -1,23 +1,738 @@
-apparmor (2.11.0-3+deb9u2) stretch; urgency=medium
+apparmor (2.13.2-10) unstable; urgency=medium
 
-  * Move the features file to /usr/share/apparmor-features;
-    accordingly remove the old (now obsolete) '/etc/apparmor/features'
-    conffile (Closes: #883682).
-  * Configure gbp for DEP-14 and avoid gbp-pq prefixing patches
-    with numbers.
+  * Don't load AppArmor policy when running in a Debian Live environment
+    that uses overlayfs (Closes: #922378).
+    Rationale: the storage stack set up by live-boot with overlayfs
+    is not supported by our AppArmor policy at the moment, resulting
+    in breakage of confined software such as Evince and LibreOffice.
+  * Ship nvidia_modprobe in enforce mode (Closes: #923273).
+    - Rationale: as explained by Seth Arnold <seth.arnold@canonical.com>
+      on #923273#32, profiles in complain mode can chew up essentially
+      unlimited amounts of non-swappable kernel memory and huge amounts
+      of IO bandwidth logging ALLOWED messages, which can in turn
+      use large amounts of storage. This is why Ubuntu has applied this change
+      already for their upcoming release.
+    - Scope of this change: in Buster, this profile is used in one single place
+      — the usr.lib.libreoffice.program.soffice.bin profile — for which it was
+      developed and tested in the first place. So the risk and potential
+      problematic impact of this change seems pretty low.
+  * Cherry-pick the most important and non-invasive fixes
+    from the upstream apparmor-2.13 maintenance branch:
+    - base abstraction: allow mr on *.so* in common library paths,
+      i.e. don't assume all common libraries' name starts with "lib".
+      At the very least, this fixes Qt5 applications under some
+      VirtualBox graphics configuration, where otherwise they would
+      not start at all (Closes: Tails#16414).
+      Upstream commits: 8dff7dc, 08f9d16
+    - Fix 2 segfaults spotted upstream while writing automated tests
+      for the multicache support (upstream MR!348):
+       · in overlaydirat_for_each, segfault caused by repeatedly freeing
+         the same memory area;
+       · when loading policy cache files, due to incorrect size passed
+         to qsort().
+      Upstream commits: 5704fba, 01aec04
 
- -- intrigeri <intrigeri@debian.org>  Tue, 27 Feb 2018 10:59:06 +0000
+ -- intrigeri <intrigeri@debian.org>  Sat, 30 Mar 2019 13:23:11 +0000
 
-apparmor (2.11.0-3+deb9u1) stretch; urgency=medium
+apparmor (2.13.2-9) unstable; urgency=medium
 
-  * Pin the AppArmor feature set to Stretch's kernel (Closes: #879585).
-    This ensures Stretch systems, even when running a newer kernel (e.g.
-    from backports), have their AppArmor feature set pinned to the one
-    supported by the AppArmor policy shipped in Stretch. Otherwise they
-    would experience breakage due to new AppArmor mediation features
-    introduced in recent kernels.
+  * Revert "Add autopkgtest that checks if apparmor.service starts
+    on package installation". It passes with the schroot and qemu
+    backends locally but fails on ci.debian.net.
 
- -- intrigeri <intrigeri@debian.org>  Sat, 25 Nov 2017 18:04:05 +0000
+ -- intrigeri <intrigeri@debian.org>  Mon, 25 Feb 2019 06:10:18 +0000
+
+apparmor (2.13.2-8) unstable; urgency=medium
+
+  * Cherry-pick 5 more commits from upstream apparmor-2.13 branch
+    (Closes: #921866).
+  * Cherry-pick upstream MR!344 (Closes: #920833, #921888).
+  * Install the nvidia_modprobe named profile (Closes: #921875)
+    and add it to the list of profiles whose syntax is checked
+    via autopkgtests.
+  * Patch usr.sbin.smdb to include snippet generated at runtime
+    (part of the fix for #896080).
+  * New autopkgtest: ensure apparmor.service starts on
+    package installation.
+  * Update salsa CI pipeline.
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 24 Feb 2019 17:00:23 +0000
+
+apparmor (2.13.2-7) unstable; urgency=medium
+
+  * Stop shipping /var/cache/apparmor/CACHEDIR.TAG (Closes: #920682)
+  * New patches, cherry-picked from upstream !320, so the "audio"
+    abstraction grants read access to Alsa and libao config files
+    (Closes: #920669, #920670).
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 31 Jan 2019 09:51:59 +0000
+
+apparmor (2.13.2-6) unstable; urgency=medium
+
+  * initscript: implement missing aa_log_action_begin and
+    aa_log_action_end functions (Closes: #917962).
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 28 Jan 2019 18:11:53 +0000
+
+apparmor (2.13.2-5) unstable; urgency=medium
+
+  * Really move libapparmor.so unversioned symlink to /lib/<triplet>
+    (Closes: #919705).
+  * Add Lintian override for dev-pkg-without-shlib-symlink: arguably
+    a false positive (see #843932).
+  * Add Lintian override for uses-dpkg-database-directly: false positive.
+  * Declare compliance with Standards-Version 4.3.0.
+  * autopkgtests:
+    - Test compiling many more profiles:
+      - all profiles that apparmor-profiles-extra ships in enforce mode
+      - the profiles shipped by bind9, cups-browsed, haveged,
+        libreoffice-common, man-db, ntp, onioncircuits, tcpdump, thunderbird,
+        and tor
+      - another profile shipped by libvirt-daemon-system
+    - Declare that the compile-policy test is not superficial anymore.
+    - Make the parser verbose in the compile-policy test.
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 28 Jan 2019 08:29:19 +0000
+
+apparmor (2.13.2-4) unstable; urgency=medium
+
+  * Move libapparmor.so unversioned symlink to /lib/<triplet> (Closes: #919705).
+  * New patches, cherry-picked from upstream:
+    - Make tunables/share play well with aliases.
+    - Fix access to /usr/share/drirc.d.conf (Closes: #919775).
+    - Fix access to the default paths used by dehydrated in Debian.
+    - Support new font configuration paths.
+    - Support libvirt named profile.
+    - Fix access to /etc/alsa/conf.d/.
+  * autopkgtests: test compiling more profiles shipped by other packages.
+  * Patch the dnsmasq profile to fix ptrace and signal communication
+    with libvirtd.
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 27 Jan 2019 17:07:34 +0000
+
+apparmor (2.13.2-3) unstable; urgency=medium
+
+  * Update upstream MR!252 backport to fix initscript (Closes: #917874)
+
+ -- intrigeri <intrigeri@debian.org>  Tue, 01 Jan 2019 18:03:54 +0000
+
+apparmor (2.13.2-2) unstable; urgency=medium
+
+  * Patch rc.apparmor.functions to suit Debian/Ubuntu's needs.
+  * Port initscript, systemd service, postinst and profile-load
+    to use the upstream rc.apparmor.functions shell library.
+    This way, the systemd service does not require the SysV initscript
+    anymore (Closes: #870697).
+  * Drop obsolete /etc/apparmor/subdomain.conf conffile.
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 29 Dec 2018 17:50:23 +0000
+
+apparmor (2.13.2-1) unstable; urgency=medium
+
+  * Import new upstream release, drop backported patches that are now obsolete,
+    refresh remaining patches.
+  * autopkgtest: add dummy test so that changes to linux-image-amd64
+    trigger our other tests on ci.debian.net
+  * Replace home-made GitLab CI with the standard Salsa pipeline
+    (Closes: #912722).
+  * Drop extra signatures from public upstream signing key.
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 22 Dec 2018 13:26:14 +0000
+
+apparmor (2.13.1-3) unstable; urgency=medium
+
+  * GitLab CI/Lintian: install dpkg-dev, that ships dpkg-architecture,
+    needed to run some Lintian checks.
+  * Re-enable expression tree simplification and cherry-pick upstream patch
+    that improves its performance.
+  * Bump debhelper compatibility level to 11.
+  * Patch apparmor.d(5) to document which features are not supported on Debian
+    (Closes: #807369).
+  * Patch apparmor(7) to document debugging options (Closes: #826218).
+
+ -- intrigeri <intrigeri@debian.org>  Tue, 30 Oct 2018 10:57:44 +0000
+
+apparmor (2.13.1-2) unstable; urgency=medium
+
+  * Deal with obsolete /etc/apparmor.d/abstractions/launchpad-integration
+    conffile (Closes: #911745).
+  * Declare autopkgtests as superficial (Closes: #911827).
+    Adjust GitLab CI configuration to cope with exit code 8 accordingly.
+
+ -- intrigeri <intrigeri@debian.org>  Fri, 26 Oct 2018 12:08:26 +0000
+
+apparmor (2.13.1-1) unstable; urgency=medium
+
+  [ intrigeri ]
+  * New upstream release (Closes: #901470, #871441).
+  * Bump pinned feature set to linux-image-4.18.0-2-amd64, version 4.18.10-2.
+  * Add Breaks: apparmor-profiles-extra (<< 1.21): the Pidgin profile up
+    to 1.20 used the launchpad-integration abstraction, that was removed
+    in AppArmor 2.13.1.
+  * Drop backported patches that are now obsolete.
+  * Refresh patches.
+  * Add debian/.gitlab-ci.yml: build the package then run Lintian
+    and autopkgtests on it.
+  * upstream-commit-3bf11ce-Fix-syntax-error-in-rc.apparmor.functions.patch,
+    upstream-commit-b77116e-Add-profile-names.patch: new patches to fix
+    regressions introduced in 2.13.1.
+  * Drop unused Lintian override.
+  * Declare compliance with policy 4.2.1.
+  * Update symbols list.
+  * Honor nocheck in DEB_BUILD_OPTIONS.
+  * Make /lib/apparmor/apparmor.systemd executable.
+
+  [ Sven Joachim ]
+  * Do not remove /var/cache/apparmor/CACHEDIR.TAG on upgrades
+    (Closes: #910217).
+
+  [ Helmut Grohne ]
+  * Don't hard code the location of netinet/in.h (Closes: #909966).
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 21 Oct 2018 08:32:47 +0000
+
+apparmor (2.13-8) unstable; urgency=medium
+
+  * Only fix permissions on /lib/apparmor/apparmor.systemd when building
+    arch-dependent packages. Fixes FTBFS when building only
+    arch:all packages.
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 02 Aug 2018 06:12:18 +0000
+
+apparmor (2.13-7) unstable; urgency=medium
+
+  * Move the binary cache to /var/cache/apparmor (Closes: #904637).
+    And then:
+    - Delete obsolete cache files in /var/cache/apparmor on upgrade.
+    - initscript: document the potential drawback of loading the policy
+      before remote filesystems are mounted.
+  * Turn off expression tree simplification, that makes performance
+    much worse in some cases, and rarely much better.
+  * Fix aa-teardown by installing /lib/apparmor/apparmor.systemd
+    and making it executable.
+  * Override a few Lintian false positives.
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 02 Aug 2018 01:29:03 +0000
+
+apparmor (2.13-6) unstable; urgency=low
+
+  * Install new tunables/share, needed by tunables/global.
+    Fixes regression introduced in 2.13-5 (Closes: #904970).
+  * New autopkgtest: test that we can compile the Evince profile.
+    Having this in place earlier would have avoided introducing #904970.
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 30 Jul 2018 07:46:00 +0000
+
+apparmor (2.13-5) unstable; urgency=low
+
+  * freedesktop.org abstraction: support directories exported by Flatpak apps,
+    replacing former flatpak-exports.patch with the patchset that was merged
+    upstream (Closes: #865206).
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 30 Jul 2018 00:27:57 +0000
+
+apparmor (2.13-4) unstable; urgency=medium
+
+  * Stop building the Python 2 bindings packages: python-apparmor,
+    python-libapparmor (Closes: #904599).
+  * Mark libapparmor-perl Multi-Arch: same.
+  * dh-apparmor's postinst snippet template: drop now useless backwards
+    compatibility code; simplify.
+
+ -- intrigeri <intrigeri@debian.org>  Fri, 27 Jul 2018 12:00:18 +0000
+
+apparmor (2.13-3) unstable; urgency=medium
+
+  * Upload to unstable.
+  * Set proper SELinux labels on files created during installation or upgrade.
+    Thanks to Laurent Bigonville <bigon@debian.org> for the bug report
+    and the patch! (Closes: #903633)
+  * Fix CACHEDIR.TAG installation path and let dpkg replace the CACHEDIR.TAG
+    directory (erroneously created by 2.13-1 and 2.13-2) with a regular file.
+    (Closes: #883584)
+  * New patch: make aa-notify point to Debian documentation (Closes: #904436).
+    Thanks to Clément Hermann <nodens@nodens.org> for the bug report.
+  * Install Dovecot profiles in /usr/share/apparmor/extra-profiles/
+    instead of /etc/apparmor.d/: the previous setup created lots of noise
+    in the logs and gave no security benefit. Thanks to Jonas Smedegaard
+    <js@debian.org> for raising the issue.
+  * Skip *.dpkg-(new|old|dist|bak|remove) when falling back to calling the
+    parser on individual profiles. Fixes a regression introduced in 2.13-1
+    and adds .dpkg-remove, that was missing in the exclusion list before.
+  * Bump pinned feature set to linux-image-4.17.0-1-amd64, version 4.17.8-1.
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 25 Jul 2018 13:28:53 +0000
+
+apparmor (2.13-2) experimental; urgency=medium
+
+  * Merge from sid:
+    - upstream-commit-d9d3cae-adjust-python-abstraction-for-python-3.patch:
+      new patch, to avoid breaking things with Python 3.7.
+  * Regarding the "Don't invalidate the cache anymore […]" change inrtoduced
+    in 2.13-1: one can manually do that with apparmor_parser --purge.
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 07 Jul 2018 17:15:31 +0000
+
+apparmor (2.13-1) experimental; urgency=medium
+
+  * New upstream release (Closes: #893974).
+  * Drop all patches backported from upstream: applied in 2.13.
+  * Refresh and export patches with gbp.
+  * debian/libapparmor1.symbols: add newly introduced symbols.
+  * upstream-commit-e83fa67-fix-test-failures.patch: new patch,
+    cherry-picked from upstream, that fixes test suite failures.
+  * Declare compatibility with Standards-Version 4.1.4.
+  * debian/rules: drop deprecated get-orig-source target.
+  * Merge 2.12-4ubuntu5 (dropping the Ubuntu delta):
+     - Drop support for snap v1.
+  * Add Lintian overrides for a few non-issues.
+  * debian/apparmor.dirs, debian/lib/apparmor/functions:
+    adjust for new (multi-)cache location.
+  * Install /etc/apparmor.d/cache.d/CACHEDIR.TAG (Closes: #883584).
+  * Install aa-teardown and its manpage.
+  * initscript: drop sysvinit-specific "recache" and "teardown" commands.
+  * Simplify foreach_configured_profile() thanks to recent parser features.
+  * aa-remove-unknown: use upstream functions instead of custom ones,
+    i.e. one step towards deprecating distro-specific /lib/apparmor/functions.
+    To make this work:
+     - install the upstream shell functions library
+     - patch one upstream function to add support for the snap profile directory
+       and to not depend on aa_log_*_msg()
+  * Don't invalidate the cache anymore when stopping, reloading or restarting
+    the service, nor when installing or upgrading the apparmor package:
+    the parser now manages its caches itself.
+  * debian/lib/apparmor/functions: drop a bunch of functions that are not
+    used anymore, thanks to the aforementioned changes.
+  * Make apparmor.service more similar to upstream's:
+     - reorder directives
+     - use the same Description as upstream
+     - start After=systemd-journald-audit.socket
+  * apparmor.service: point to current homepage.
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 13 Jun 2018 09:15:02 +0000
+
+apparmor (2.12-5) unstable; urgency=medium
+
+  * upstream-commit-d9d3cae-adjust-python-abstraction-for-python-3.patch:
+    new patch, to avoid breaking things with Python 3.7.
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 07 Jul 2018 16:50:01 +0000
+
+apparmor (2.12-4ubuntu8) cosmic; urgency=medium
+
+  * lp1788929+1794848.patch:
+    - disallow writes to thumbnailer dir (LP: #1788929)
+    - disallow access to the dirs of private files (LP: #1794848)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Thu, 27 Sep 2018 17:25:04 +0000
+
+apparmor (2.12-4ubuntu7) cosmic; urgency=medium
+
+  * Cherry-pick upstream patch for usr-merge for useradd profile.
+  * Update chromium-browser profile with latest from profiles project.
+  * Fixes LP: #1784023
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Wed, 01 Aug 2018 15:20:51 +0100
+
+apparmor (2.12-4ubuntu6) cosmic; urgency=medium
+
+  * No-change rebuild to build for python3.7.
+
+ -- Matthias Klose <doko@ubuntu.com>  Thu, 28 Jun 2018 06:52:52 +0000
+
+apparmor (2.12-4ubuntu5) bionic; urgency=medium
+
+  [ Didier Roche ]
+  * debian/patches/ubuntu/communitheme-snap-support.patch:
+    - support communitheme snap (LP: #1762983)
+
+  [ Jamie Strandboge ]
+  * debian/patches/ubuntu/add-chromium-browser.patch: adjust for newer
+    chromium (LP: #1101298, LP: #1594589, LP: #1647142)
+    - add attach_disconnected
+    - allow reading /proc/vmstat
+    - don't require owner match for /proc/pid/{stat,status} and task
+      counterparts
+    - adjust pci[0-9] to be pci[0-9a-f]
+    - allow reading all uevents and /sys/devices/virtual/tty/tty0/active
+    - allow ptracing xdgsettings and lsb-release
+    - xdgsettings uses head and tr and looks at /usr/share/ubuntu/applications/
+    - lsb-release uses python 3.6 and looks at apport, apt.conf, dpkg and
+      distro-info
+    - use 'm' on on sandbox
+  * debian/patches/ubuntu/mimeinfo-snap-support.patch: allow reading
+    /var/lib/snapd/desktop/applications *.desktop and mimeinfo.cache
+    (LP: #1712039)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Tue, 17 Apr 2018 20:15:16 +0000
+
+apparmor (2.12-4ubuntu4) bionic; urgency=medium
+
+  * Remove another Ubuntu Touch profile (LP: #1761176)
+    - debian/control: Breaks on messaging-app
+    - debian/postinst: on upgrade, remove profile for usr.bin.messaging-app
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Wed, 04 Apr 2018 13:58:26 +0000
+
+apparmor (2.12-4ubuntu3) bionic; urgency=medium
+
+  * Remove old Ubuntu Touch profiles for packages removed from the archive
+    since they need apparmor-easyprof-ubuntu to compile, and it was also
+    removed from the archive (LP: #1756800)
+    - debian/control: Breaks on media-hub, mediascanner2.0 and webbrowser-app
+    - debian/postinst: on upgrade, remove profiles for usr.bin.webbrowser-app,
+      usr.bin.media-hub-server, usr.lib.mediascanner-2.0.mediascanner-extractor
+      and usr.bin.mediascanner-service-2.0
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Tue, 03 Apr 2018 13:12:46 +0000
+
+apparmor (2.12-4ubuntu2) bionic; urgency=medium
+
+  * Remove old click and snapv1 support since those packages no longer exist
+    in bionic
+    - debian/apparmor.dirs: don't install /var/lib/apparmor/profiles
+    - debian/apparmor.init: remove click and snapv1 additions
+    - debian/apparmor.postinst: don't update the md5sums for click/snapv1
+    - debian/apparmor.postrm: remove code for handling
+      /var/lib/apparmor/profiles
+    - debian/apparmor.preinst: remove md5sums files from
+      /var/lib/apparmor/profiles
+    - debian/lib/apparmor/functions: remove compare_and_save_debsums() and
+      compare_previous_version() since nothing in the archive uses them any
+      more. For now, leave snap v2 support, but eventually we'll want to move
+      to the upstream init recommendations
+  * profiles-grant-access-to-systemd-resolved.patch: fix typo in DEP-3 headers
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Thu, 22 Mar 2018 19:27:44 +0000
+
+apparmor (2.12-4ubuntu1) bionic; urgency=medium
+
+  [ Tyler Hicks ]
+  * Merge from Debian to get gbp-pq related packaging improvements. Thanks to
+    intrigeri for making those improvements! Remaining Ubuntu changes:
+    - debian/gbp.conf: Use ubuntu/master as the debian-branch
+    - Update package maintainer to be Ubuntu Developers in the control file
+    - Call handle_system_policy_package_updates in apparmor.init.
+      This is needed for snappy and system-images. Note that this prevents
+      using a remove /var.
+    - Apply Ubuntu-specific patches
+      + parser-include-usr-share-apparmor.patch
+      + profiles-grant-access-to-systemd-resolved.patch
+      + add-chromium-browser.patch
+    - Install Ubuntu chromium-browser profile and abstraction
+    - Feature pinning is not used in Ubuntu
+
+  [ intrigeri ]
+  * Adjust the Vcs-{Browser,Git} control fields to reflect the branch where
+    the Ubuntu packaging is maintained.
+
+ -- Tyler Hicks <tyhicks@canonical.com>  Mon, 19 Mar 2018 16:24:57 +0000
+
+apparmor (2.12-4) unstable; urgency=medium
+
+  * Migrate patch handling to gbp-pq (Closes: #888244).
+  * Merge 2.12-3ubuntu1 (dropping the Ubuntu delta):
+    - upstream-commit-46f88f5-properly-identify-empty-ouid-fsuid-fields.patch:
+      new patch, properly identify empty ouid/fsuid fields in logs.
+    - upstream-commit-130958a-allow-shell-helper-read-locale.patch:
+      new patch, allow the shell helper regression test program read
+      the locale.
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 18 Mar 2018 13:47:35 +0000
+
+apparmor (2.12-3ubuntu1) bionic; urgency=medium
+
+  * New upstream bug fix release. Bugs fixed:
+    - abstraction/nameservice should include allow access to
+      /var/lib/sss/mc/initgroups (LP: #1751402)
+    - Cannot Add Request Hat or Use Default Hat in aa-logprof and mod_apparmor
+      (LP: #1752365)
+    - python tools do not understand 'non-magic' include rules (LP: #1733700)
+    - "Unable to open external link" in Evince when google-chrome-unstable is
+      the default browser (LP: #1730536)
+    - apparmor_parser is missing fix for rule down grades (LP: #1728120)
+    - base abstraction missing glibc /proc/$pid/ things (LP: #1658239)
+    - logparser.py parse_event_for_tree() doesn't care about owner vs. all in
+      file events(LP: #1538340)
+    - aa-decode can't decode the audit log which contains the proctitle string
+      (LP: #1736841)
+    - aa-logprof asks for "a" rule even if "deny w" is present (LP: #1385474)
+  * Merge from Debian. Remaining Ubuntu changes:
+    - debian/gbp.conf: Use ubuntu/master as the debian-branch
+    - Update package maintainer to be Ubuntu Developers in the control file
+    - Call handle_system_policy_package_updates in apparmor.init.
+      This is needed for snappy and system-images. Note that this prevents
+      using a remove /var.
+    - Apply Ubuntu-specific patches
+      + parser-include-usr-share-apparmor.patch
+      + profiles-grant-access-to-systemd-resolved.patch
+      + add-chromium-browser.patch
+    - Install Ubuntu chromium-browser profile and abstraction
+  * Dropped patches that were not merged upstream:
+    - ubuntu-manpage-updates.patch: The changes were out of date because
+      they only addressed upstart based systems
+    - utils-keep-shebang.patch: A different solution was merged upstream
+      so that the shebang lines aren't rewritten
+  * Feature pinning is not used in Ubuntu
+  * Properly identify empty ouid/fsuid fields in logs
+  * Allow the shell helper regression test program read the locale
+
+ -- Tyler Hicks <tyhicks@canonical.com>  Thu, 15 Mar 2018 15:39:10 +0000
+
+apparmor (2.12-3) unstable; urgency=medium
+
+  * dnsmasq-profile-allow-chown-capability.patch: new patch (Closes: #889806)
+  * Update-base-abstraction-for-ld.so.conf-and-friends.patch: new patch,
+    cherry-picked from upstream (solves a minor part of #887973).
+  * libapparmor-perl: install example program.
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 25 Feb 2018 18:23:21 +0000
+
+apparmor (2.12-2) unstable; urgency=medium
+
+  * This release is dedicated to the memory of Ursula K. Le Guin.
+
+  * Install the "extra" profiles to the default upstream directory
+    (Closes: #832984).
+  * Cherry-pick policy improvements from upstream Git (Closes: #887591).
+  * Stop recommending the apparmor-profile package to the general public:
+    - apparmor: drop "Suggests: apparmor-profile".
+    - apparmor-profile: make it clear in the package description that
+      these profiles cannot be expected to work out-of-the-box.
+  * Bump debhelper compatibility level to 10.
+    - This reintroduces --parallel building, which was fixed upstream
+      since we disabled it.
+    - Don't manually enable the systemd debhelper sequence: now done
+      by default.
+    - Drop now useless build-dependency on autotools-dev.
+  * Declare compliance with Standards-Version 4.1.3 (no change required).
+  * debian/control: add Rules-Requires-Root: no.
+    - Cherry-pick upstream fix to pam_apparmor's Makefile.
+  * Packaging cleanup:
+    - Remove Kees Cook <kees@debian.org> from the Uploaders control field.
+      Thanks a lot for the inspiring work you've done on this package
+      in the past!
+    - Remove obsolete calls to rm_conffile.
+    - debian/copyright: use canonical URL to copyright-format/1.0.
+    - debian/copyright: sort licenses in lexical order.
+    - Use canonical URL to Debian bug in patch header.
+    - debian/*.install: remove duplicates.
+    - Stop versioning dependencies that are satisfied on Debian Wheezy
+      and Ubuntu Trusty.
+    - Reformat debian/* with 'cme fix dpkg' + wrap-and-sort.
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 24 Jan 2018 09:18:26 +0000
+
+apparmor (2.12-1) unstable; urgency=medium
+
+  * New upstream release (Closes: #885522, #882043, #884014, #886732,
+    #875892, #882070, #874665, #884280, #881936, #882135).
+    - Drop obsolete patches.
+  * dh-apparmor postinst snippet: create empty files in
+    /etc/apparmor.d/local/ instead of repeating boilerlate.
+  * dh-apparmor postinst snippet: simplify local overrides directory
+    creation code.
+  * Migrate to Git:
+    - Configure gbp for DEP-14
+    - Configure gbp-pq to avoid prefixing patches with numbers
+    - README.source: adjust to Git
+    - Update Vcs-* control fields: migrate to Git
+  * Move libpam to Section: admin
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 14 Jan 2018 17:01:17 +0000
+
+apparmor (2.11.1-4) unstable; urgency=medium
+
+  * Bump pinned feature set to linux-image-4.14.0-1's, version 4.14.2-1
+    - Pinning a feature set without "mount", as we did before this change,
+      breaks mount operations due to a bug in the kernel (Closes: #883703).
+      Thanks to Fabian Grünbichler and Felix Geyer for reporting this.
+    - AppArmor maintainers in Debian have been testing 4.14 without pinning
+      for a while and all the known issues were fixed; it's time to enable
+      4.14's features so we can learn what parts of our policy still need
+      updates (Closes: #880078, #877581).
+  * Move features file to /usr/share/apparmor-features (Closes: #883682).
+    Thanks to Fabian Grünbichler <f.gruenbichler@proxmox.com> for the patch.
+  * Document in apparmor/README.Debian where online documentation wrt. AppArmor
+    on Debian lives (Closes: #845232). Thanks to Wouter Verhelst and Jean-Michel
+    Vourgère for the suggestion.
+  * Improve usability of apparmor-notify:
+    - notify.conf: unset use_group.
+      aa-notify checks that it can read the selected log file — and aborts
+      if it can't — before it checks group membership vs. use_group, so in
+      practice setting use_group is only useful for users who are allowed
+      to read logs but don't want to see notifications. This seems to be
+      a corner case, easily addressed per-user (~/.apparmor/notify.conf)
+      or system-wide (by deinstalling apparmor-notify).
+      So let's instead optimize for a more common use case, i.e. users who can
+      read logs and want to see the notifications. This change does not
+      impact the most common use case, i.e. desktop users who are not allowed
+      to read logs (Closes:  #880859).
+    - Document in apparmor-notify/README.Debian that one must be in the "adm"
+      group to use aa-notify.
+    Thanks to Lisandro Damián Nicanor Pérez Meyer and Salvatore Bonaccorso
+    whose combined bug reports lead to this solution.
+  * /lib/apparmor/functions: don't delete /etc/apparmor.d/cache/CACHEDIR.TAG
+    ourselves (necessary, but not sufficient, to fix #883584).
+  * Declare compliance with Standards-Version 4.1.2.
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 07 Dec 2017 07:32:02 +0000
+
+apparmor (2.11.1-3) unstable; urgency=medium
+
+  * upstream-commit-92752f5-support-Google-Chrome-beta.patch:
+    new patch, backported from upstream (Closes: #880923).
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 05 Nov 2017 19:26:47 +0000
+
+apparmor (2.11.1-2) unstable; urgency=medium
+
+  * apparmor: drop obsolete dependency on libapparmor-perl.
+    This dependency was added in 2.8.0-0ubuntu15, when aa-exec (that was
+    written in Perl back then) got moved to the apparmor package.
+    Nowadays aa-exec is written in C and AFAICT there's nothing in the
+    apparmor package that uses libapparmor-perl.
+  * apparmor-utils: drop obsolete dependency on libapparmor-perl.
+    All the programs shipped in this package were rewritten in Python.
+  * Drop obsolete dependencies on python{,3}-pkg-resources.
+    They were added to "fix autopkgtests in click-apparmor and
+    apparmor-easyprof-ubuntu". We don't ship these packages in Debian,
+    and I'm told they're going away in Ubuntu anyway.
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 25 Oct 2017 13:58:08 +0000
+
+apparmor (2.11.1-1) unstable; urgency=medium
+
+  * Import upstream 2.11.1 release.
+    Drop obsolete patches and refresh remaining ones as need.
+  * pin-feature-set.patch: new patch, that pins the AppArmor feature set
+    to Linux 4.13.4-2's (Closes: #879584).
+    The AppArmor policy we ship is not fully ready for Linux 4.14 yet.
+    Once our policy has been updated (#877581) we can bump the pinned
+    feature set to Linux 4.14's.
+    Note, however, that this is not fully effective in the specific case
+    of 4.14-rcN up to 4.14-rc6 due to a kernel bug with pinned older
+    feature sets, that will likely be fixed in Linux 4.14-rc7.
+    For example, with Linux 4.14-rc5 some network (e.g. unix, inet, inet6)
+    operations are denied despite the fact this pinned feature does not
+    enable network mediation support. For details, see:
+    https://bugs.launchpad.net/ubuntu/+source/apparmor/+bug/1721278
+  * Disable parser-include-usr-share-apparmor.patch: it's not used on Debian
+    and would be made fuzzy by pin-feature-set.patch, thus causing useless
+    maintenance busywork.
+  * Improve phrasing of long packages description, based on a patch
+    by Vincas Dargis <vindrg@gmail.com> (Closes: #795431).
+  * Replace build-dependency on dh-systemd with a versioned one
+    on debhelper, that now ships dh_systemd_*.
+  * Set priority to "optional": "extra" is deprecated.
+  * Bump Standards-Version to 4.1.1.
+  * Drop "Testsuite: autopkgtest" control field: it is automatically added
+    by dpkg-source(1) since dpkg 1.17.1 when a debian/tests/control file exists,
+    which is the case here.
+  * Move libapache2-mod-apparmor to Section "httpd", as suggested by Lintian.
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 23 Oct 2017 14:19:33 +0000
+
+apparmor (2.11.0-11) unstable; urgency=medium
+
+  * Only use systemd-detect-virt when it's installed (Closes: #871953).
+  * dh_apparmor: include the version of the package, so that one can find
+    packages that were built with a particular version of dh_apparmor.
+    (Closes: #872167).
+  * Import patch submitted upstream to support Flatpak exports
+    (Closes: #865206).
+  * Revert "Build with GCC-6 on mips64el to workaround Debian#871538":
+    that gcc-7 bug was fixed in 7.2.0-3 on 2017-09-02, presumably all buildd's
+    chroot should have it by now.
+  * Merge from Ubuntu citrain up to revision 1627, aka. 2.11.0-2ubuntu17.
+    Applied all changes (filtering from that list what had already been
+    done in Debian):
+     - Remove apparmor system upstart job on upgrades.
+     - r3631-apparmor-utils-python3.6-LOCALE.patch: fix utils to avoid
+       breakage with python 3.6 (LP: #1661766).
+     - nameservice-add-stub-resolv.patch: allow read access to systemd stub
+       resolver configuration
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 03 Sep 2017 09:05:00 +0000
+
+apparmor (2.11.0-10) unstable; urgency=medium
+
+  * Build with GCC-6 on mips64el to workaround #871538.
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 09 Aug 2017 13:37:47 +0000
+
+apparmor (2.11.0-9) unstable; urgency=medium
+
+  * debian-chromium-paths.patch: new patch, fixes e.g. opening links
+    (e.g. from Thunderbird) when Chromium is the default web browser
+    (reported in #858911).
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 07 Aug 2017 22:36:01 +0000
+
+apparmor (2.11.0-8) unstable; urgency=medium
+
+  * firefox-non-esr.patch: new patch, fixes e.g. opening links from
+    Thunderbird when Firefox non-ESR is the default web browser
+    (Closes: #858911).
+  * Adjust metadata for wayland-cursor.patch: applied upstream.
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 07 Aug 2017 20:01:30 +0000
+
+apparmor (2.11.0-7) unstable; urgency=medium
+
+  * compare_and_save_debsums(): fix quieting of diff on initial installation
+    (Closes: #870696).
+  * Don't explicitly pass runlevel nor sequence number to update-rc.d
+    via dh_installinit (Closes: #870695).
+    Thanks to Michael Biebl for the hint!
+  * wayland-cursor.patch: new patch, to allow wayland-cursor-shared-*
+    (Closes: #870807).
+  * Merge from Ubuntu citrain up to revision 1620, i.e. 2.11.0-2ubuntu11.
+    Applied all changes:
+     - fix-aa-status-pod.patch: updates aa-status for newer podchecker
+       (LP: #1707614)
+     - adjust-python-for-3.6.patch: update python abstraction for 3.6
+     - adjust-nameservice-for-systemd-resolved.patch: grant access to
+       systemd-resolved in the nameservice abstraction (LP: #1598759).
+    … and then disabled adjust-nameservice-for-systemd-resolved.patch
+    that's dangerous without fine-grained AppArmor mediation of
+    D-Bus traffic.
+  * Remove upstart configuration: Upstart was removed in Debian Stretch
+    so this file is no longer useful.
+  * Drop ubuntu-manpage-updates.patch, that was only relevant with Upstart.
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 05 Aug 2017 14:21:08 +0000
+
+apparmor (2.11.0-6) unstable; urgency=medium
+
+  * libapparmor-dev: stop installing /lib/*/libapparmor.la (Closes: #866636).
+
+ -- intrigeri <intrigeri@debian.org>  Fri, 30 Jun 2017 17:20:45 +0000
+
+apparmor (2.11.0-5) unstable; urgency=medium
+
+  * pass-compiler-flags-binutils.patch: new patch, fixes missing
+    hardening flags in aa-enabled and aa-exec.
+  * Merge from Ubuntu citrain up to revision 1617, i.e. 2.11.0-2ubuntu8.
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 24 Jun 2017 21:12:47 +0000
+
+apparmor (2.11.0-4) unstable; urgency=medium
+
+  * Run parts of the upstream test suite as autopkgtests.
+  * Declare compliance with Standards-Version 4.0.0 (no change required).
+  * Add mentions-deprecated-usr-lib-perl5-directory to Lintian overrides,
+    since usr-lib-perl5-mentioned has been renamed.
+  * libapparmor1.symbols: require 2.8.94 instead of 2.8.94-0ubuntu1.
+  * debian/rules: use variables provided by dpkg/pkg-info.mk instead
+    of parsing the output of dpkg-parsechangelog.
+  * Override mistaken apache2-module-depends-on-real-apache2-package
+    Lintian check.
+  * Merge from Ubuntu citrain up to revision 1616, i.e. 2.11.0-2ubuntu5
+    (more recent changes, up to 2.11.0-2ubuntu8, have not been pushed
+    to the citrain repo yet; they don't seen critical though).
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 24 Jun 2017 15:15:09 +0000
 
 apparmor (2.11.0-3) unstable; urgency=medium
 
@@ -34,6 +749,171 @@ apparmor (2.11.0-3) unstable; urgency=medium
       shipped in Debian/Ubuntu.
 
  -- intrigeri <intrigeri@debian.org>  Tue, 28 Mar 2017 10:29:15 +0000
+
+apparmor (2.11.0-2ubuntu19) bionic; urgency=medium
+
+  * d/p/0001-Allow-seven-digit-pid.patch:
+    On 64bit systems, /proc/sys/kernel/pid_max can be set to PID_MAX_LIMIT,
+    (2^22), which results in seven digit pids. Adjust the @{PID} variable in
+    tunables/global to accept this. (LP: #1717714)
+
+ -- Seyeong Kim <seyeong.kim@canonical.com>  Mon, 08 Jan 2018 07:52:32 -0800
+
+apparmor (2.11.0-2ubuntu18) bionic; urgency=medium
+
+  * No-change rebuild against perlapi-5.26.1
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 02 Nov 2017 05:31:55 +0000
+
+apparmor (2.11.0-2ubuntu17) artful; urgency=medium
+
+  * nameservice-add-stub-resolv.patch: allow read access to systemd stub
+    resolver configuration
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Fri, 15 Sep 2017 12:52:05 +0000
+
+apparmor (2.11.0-2ubuntu16) artful; urgency=medium
+
+  * add wayland-cursor.patch (LP: #1710487)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Mon, 14 Aug 2017 19:36:26 +0000
+
+apparmor (2.11.0-2ubuntu15) artful; urgency=medium
+
+  * Correctly remove system upstart job.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Mon, 07 Aug 2017 17:03:19 -0400
+
+apparmor (2.11.0-2ubuntu14) artful; urgency=medium
+
+  * drop adjust-nameservice-for-systemd-resolved.patch that was previously
+    applied in profiles-grant-access-to-systemd-resolved.patch
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Mon, 07 Aug 2017 19:21:51 +0000
+
+apparmor (2.11.0-2ubuntu13) artful; urgency=medium
+
+  * Stop installing apparmor system upstart job.
+  * Remove apparmor system upstart job on upgrades.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Mon, 07 Aug 2017 12:15:53 -0400
+
+apparmor (2.11.0-2ubuntu12) artful; urgency=medium
+
+  * r3631-apparmor-utils-python3.6-LOCALE.patch: fix utils to avoid
+    breakage with python 3.6 (LP: #1661766)
+
+ -- Steve Beattie <sbeattie@ubuntu.com>  Wed, 02 Aug 2017 11:47:41 -0700
+
+apparmor (2.11.0-2ubuntu11) artful; urgency=medium
+
+  * fix-aa-status-pod.patch: updates aa-status for newer podchecker
+    (LP: #1707614)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Mon, 31 Jul 2017 13:32:25 +0000
+
+apparmor (2.11.0-2ubuntu10) artful; urgency=medium
+
+  * No-change rebuild for perl 5.26.
+
+ -- Matthias Klose <doko@ubuntu.com>  Thu, 27 Jul 2017 09:29:54 +0200
+
+apparmor (2.11.0-2ubuntu9) artful; urgency=medium
+
+  * adjust-python-for-3.6.patch: update python abstraction for 3.6
+  * adjust-nameservice-for-systemd-resolved.patch: grant access to
+    systemd-resolved in the nameservice abstraction (LP: #1598759). Patch
+    from Tyler Hicks
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Wed, 26 Jul 2017 13:23:26 +0000
+
+apparmor (2.11.0-2ubuntu8) artful; urgency=medium
+
+  * no-change rebuild to unblock build of snapd after armhf/arm64
+    enabling PIE by default.
+
+ -- Michael Vogt <michael.vogt@ubuntu.com>  Tue, 06 Jun 2017 11:37:03 +0200
+
+apparmor (2.11.0-2ubuntu7) artful; urgency=medium
+
+  * utils-keep-shebang.patch: Stop inappropriately mangling script shebangs.
+  * utils-logprof-python3.6.patch: Add python3.6 line to utils/logprof.conf.
+
+ -- Adam Conrad <adconrad@ubuntu.com>  Fri, 12 May 2017 06:26:16 -0600
+
+apparmor (2.11.0-2ubuntu6) artful; urgency=medium
+
+  * No change rebuild to add Python 3.6 support.
+
+ -- Michael Hudson-Doyle <michael.hudson@ubuntu.com>  Fri, 12 May 2017 11:38:00 +1200
+
+apparmor (2.11.0-2ubuntu5) artful; urgency=medium
+
+  * debian/patches/base-journald-updates.patch: update base abstraction for
+    additional journald sockets
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Thu, 27 Apr 2017 16:09:50 +0000
+
+apparmor (2.11.0-2ubuntu4) zesty; urgency=medium
+
+  * debian/patches/aa-notify-urgency-normal.patch: adjust the notify-send
+    urgency to 'normal' to accommodate gnome-shell (LP: #1681908)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Tue, 11 Apr 2017 18:34:18 +0000
+
+apparmor (2.11.0-2ubuntu3) zesty; urgency=medium
+
+  * SECURITY UPDATE: Don't unload unknown profiles during package
+    configuration or when restarting the apparmor init script, upstart job, or
+    systemd unit as this could leave processes unconfined (LP: #1668892)
+    - debian/apparmor.postinst, debian/apparmor.init, debian/apparmor.upstart:
+      Remove calls to unload_obsolete_profiles()
+    - debian/patches/utils-add-aa-remove-unknown.patch,
+      debian/apparmor.install debian/apparmor.manpages: Include a new utility,
+      aa-remove-unknown, which can be used to unload unknown profiles. Based
+      on an upstream patch but adjusted to source the /lib/apparmor/functions
+      shipped in Debian/Ubuntu.
+    - CVE-2017-6507
+  * debian/patches/r3645-profiles-update-nvidia-abstraction.patch: Update
+    nvidia abstraction for newer nvidia drivers (LP: #1590561)
+
+ -- Tyler Hicks <tyhicks@canonical.com>  Fri, 24 Mar 2017 05:26:28 +0000
+
+apparmor (2.11.0-2ubuntu2) zesty; urgency=medium
+
+  * debian/apparmor.postrm: Ensure that a purge of the apparmor package does
+    not fail if the /var/lib/apparmor/profiles or /var/lib/apparmor
+    directories do not exist. This purge operation should be considered
+    successful in that situation. (LP: #1661406)
+
+ -- Tyler Hicks <tyhicks@canonical.com>  Thu, 02 Mar 2017 00:21:14 +0000
+
+apparmor (2.11.0-2ubuntu1) zesty; urgency=medium
+
+  * Merge with Debian unstable. Remaining Ubuntu changes:
+    - debian/apparmor.init: Call handle_system_policy_package_updates as we
+      need it for Click, snappy, and system-images. Note that this prevents
+      using a remote /var.
+    - debian/patches/series: Apply
+      profiles-grant-access-to-systemd-resolved.patch
+    - debian/patches/series: Apply add-chromium-browser.patch
+    - debian/apparmor-profiles.install, debian/apparmor-profiles.postinst:
+      Install chromium-browser profile and abstraction
+  * Drop the following change:
+    - debian/rules: Create a new empty file, needed for the test added by this
+      patch, since quilt is unable to do so.
+      + This is no longer required since the empty file is now distributed as
+        part of the upstream tar.
+  * debian/patches/r3615-profiles-sshd-drop-local-include.patch: Drop the
+    local includes in the sshd profile since it causes a parser error due to
+    the missing includes file
+  * debian/patches/utils-fix-failing-tests-in-aa-py.patch: Adjust expected
+    output to account for the base abstraction changes to accommodate the /usr
+    merge
+  * debian/patches/utils-allow-unordered-dbus-attribs.patch: Don't
+    unnecessarily enforce attribute ordering in D-Bus rules (LP: #1628286)
+
+ -- Tyler Hicks <tyhicks@canonical.com>  Thu, 09 Feb 2017 06:57:45 +0000
 
 apparmor (2.11.0-2) unstable; urgency=medium
 
@@ -1221,7 +2101,7 @@ apparmor (2.8.95~2430-0ubuntu4) trusty; urgency=medium
     + debian/patches/symtab-tests-and-seenlist-bug.patch,
       debian/patches/add-profile-name-variable.patch: Add ${profile_name}
       variable for use in profiles when rules need to specify the current
-      profile's name. This is useful for signal and ptrace rules that specify 
+      profile's name. This is useful for signal and ptrace rules that specify
     + debian/patches/fix-names-treated-as-condlistid.patch: Fix
       apparmor_parser bug that caused mount and dbus rules to fail for sets of
       values
@@ -4054,7 +4934,7 @@ apparmor (2.0.1+510.dfsg-0ubuntu10) gutsy; urgency=low
   * 02-profile-abstractions-ubuntu.dpatch, 06-profile-usr-sbin-named.dpatch:
     move /dev/random into abstractions/base.
   * 06-profile-usr-sbin-named.dpatch: Add sys_chroot capability.
-  * debian/rules: don't package aa-eventd and Reports.pm as they use perl 
+  * debian/rules: don't package aa-eventd and Reports.pm as they use perl
     modules not maintained in main.
     Reports.pm is only used by Yast for now. aa-eventd maintains an
     sqlite database of audit messages which is used by Reports.pm.
@@ -4069,7 +4949,7 @@ apparmor (2.0.1+510.dfsg-0ubuntu9) gutsy; urgency=low
 
   * 06-profile-usr-sbin-named.dpatch : Generate a new profile for
     /usr/sbin/named to make it work with bind9.
-  * debian/apparmor.init, 07-apparmor-init-script.dpatch: merge ubuntu 
+  * debian/apparmor.init, 07-apparmor-init-script.dpatch: merge ubuntu
     changes with the latest version from upstream.
   * 99-complain-all-profiles.dpatch : put all profiles into complain mode by
     default.

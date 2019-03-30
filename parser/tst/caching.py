@@ -60,13 +60,6 @@ class AAParserCachingCommon(testlib.AATestTemplate):
         self.tmp_dir = tempfile.mkdtemp(prefix='aa-caching-')
         os.chmod(self.tmp_dir, 0o755)
 
-        # create directory for cached blobs
-        self.cache_dir = os.path.join(self.tmp_dir, 'cache')
-        os.mkdir(self.cache_dir)
-
-        # default path of the output cache file
-        self.cache_file = os.path.join(self.cache_dir, PROFILE)
-
         # write our sample abstraction and profile out
         self.abstraction = testlib.write_file(self.tmp_dir, ABSTRACTION, ABSTRACTION_CONTENTS)
         self.profile = testlib.write_file(self.tmp_dir, PROFILE, PROFILE_CONTENTS)
@@ -75,10 +68,25 @@ class AAParserCachingCommon(testlib.AATestTemplate):
             self.do_cleanup = False
             self.debug = True
 
-        self.cmd_prefix = [config.parser, '--base', self.tmp_dir, '--skip-kernel-load']
+        # Warnings break the test harness, but chroots may not be setup
+        # to have the config file, etc.
+        self.cmd_prefix = [config.parser, '--config-file=./parser.conf', '--base', self.tmp_dir, '--skip-kernel-load']
 
         if not self.is_apparmorfs_mounted():
             self.cmd_prefix += ['-M', './features_files/features.all']
+
+        # Otherwise get_cache_dir() will try to create /var/cache/apparmor
+        # and will fail when the test suite is run as non-root.
+        self.cmd_prefix += [
+            '--cache-loc', os.path.join(self.tmp_dir, 'cache')
+        ]
+
+        # create directory for cached blobs
+        # NOTE: get_cache_dir() requires cmd_prefix to be fully initialized
+        self.cache_dir = self.get_cache_dir(create=True)
+
+        # default path of the output cache file
+        self.cache_file = os.path.join(self.cache_dir, PROFILE)
 
     def tearDown(self):
         '''teardown for each test'''
@@ -88,6 +96,22 @@ class AAParserCachingCommon(testlib.AATestTemplate):
         else:
             if os.path.exists(self.tmp_dir):
                 shutil.rmtree(self.tmp_dir)
+
+    def get_cache_dir(self, create=False):
+        cmd = [config.parser, '--print-cache-dir'] + self.cmd_prefix
+        rc, report = self.run_cmd(cmd)
+        if rc != 0:
+            if "unrecognized option '--print-cache-dir'" not in report:
+                self.fail('Unknown apparmor_parser error:\n%s' % report)
+
+            cache_dir = os.path.join(self.tmp_dir, 'cache')
+        else:
+            cache_dir = report.strip()
+
+        if create:
+            os.makedirs(cache_dir)
+
+        return cache_dir
 
     def assert_path_exists(self, path, expected=True):
         if expected is True:
@@ -178,16 +202,16 @@ class AAParserAltCacheBasicTests(AAParserBasicCachingTests):
     def setUp(self):
         super(AAParserAltCacheBasicTests, self).setUp()
 
-        alt_cache_dir = tempfile.mkdtemp(prefix='aa-alt-cache', dir=self.tmp_dir)
-        os.chmod(alt_cache_dir, 0o755)
+        alt_cache_loc = tempfile.mkdtemp(prefix='aa-alt-cache', dir=self.tmp_dir)
+        os.chmod(alt_cache_loc, 0o755)
 
-        self.unused_cache_dir = self.cache_dir
-        self.cache_dir = alt_cache_dir
-        self.cmd_prefix.extend(['--cache-loc', alt_cache_dir])
+        self.unused_cache_loc = self.cache_dir
+        self.cmd_prefix.extend(['--cache-loc', alt_cache_loc])
+        self.cache_dir = self.get_cache_dir()
 
     def tearDown(self):
-        if len(os.listdir(self.unused_cache_dir)) > 0:
-            self.fail('original cache dir \'%s\' not empty' % self.unused_cache_dir)
+        if len(os.listdir(self.unused_cache_loc)) > 0:
+            self.fail('original cache dir \'%s\' not empty' % self.unused_cache_loc)
         super(AAParserAltCacheBasicTests, self).tearDown()
 
 
@@ -314,18 +338,22 @@ class AAParserCachingTests(AAParserCachingCommon):
         self.run_cmd_check(cmd, expected_string='Replacement succeeded for')
         self.assert_path_exists(self.cache_file, expected=False)
 
-    def test_cache_writing_updates_features(self):
-        '''test cache writing updates features'''
-
+    def test_cache_writing_collision_of_features(self):
+        '''test cache writing collision of features'''
+        # cache dir with different features causes a collision resulting
+        # in a new cache dir
         self.require_apparmorfs()
 
         features_file = testlib.write_file(self.cache_dir, '.features', 'monkey\n')
+        new_file = self.get_cache_dir()
+        new_features_file = new_file + '/.features';
 
         cmd = list(self.cmd_prefix)
         cmd.extend(['-v', '--write-cache', '-r', self.profile])
         self.run_cmd_check(cmd, expected_string='Replacement succeeded for')
         self.assert_path_exists(features_file)
-        self.compare_features_file(features_file)
+        self.assert_path_exists(new_features_file)
+        self.compare_features_file(new_features_file)
 
     def test_cache_writing_updates_cache_file(self):
         '''test cache writing updates cache file'''
@@ -494,13 +522,13 @@ class AAParserAltCacheTests(AAParserCachingTests):
     def setUp(self):
         super(AAParserAltCacheTests, self).setUp()
 
-        alt_cache_dir = tempfile.mkdtemp(prefix='aa-alt-cache', dir=self.tmp_dir)
-        os.chmod(alt_cache_dir, 0o755)
+        alt_cache_loc = tempfile.mkdtemp(prefix='aa-alt-cache', dir=self.tmp_dir)
+        os.chmod(alt_cache_loc, 0o755)
 
         self.orig_cache_dir = self.cache_dir
-        self.cache_dir = alt_cache_dir
+        self.cmd_prefix.extend(['--cache-loc', alt_cache_loc])
+        self.cache_dir = self.get_cache_dir(create=True)
         self.cache_file = os.path.join(self.cache_dir, PROFILE)
-        self.cmd_prefix.extend(['--cache-loc', alt_cache_dir])
 
     def tearDown(self):
         if self.check_orig_cache and len(os.listdir(self.orig_cache_dir)) > 0:

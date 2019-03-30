@@ -1,6 +1,9 @@
 # A simple test comment which will persist
 #include <tunables/global>
 
+		alias /foo    ->    /bar	,
+  abi  <abi/4.19>    ,
+
 /usr/bin/a/simple/cleanprof/test/profile {
 	# Just for the heck of it, this comment wont see the day of light
 	#include <abstractions/base>
@@ -12,6 +15,7 @@
     change_profile,
 
     network inet stream,
+               abi  "abi/4.20"    ,
     network stream,
 
 	#Below rule comes from abstractions/base
@@ -40,6 +44,8 @@
 
     ^foo, # hat declarations are obsolete and will be removed when aa-cleanprof or aa-logprof writes the profile
 
+
+	link subset /alpha/beta -> /tmp/**,
 
 	allow /home/foo/bar r,
 	allow /home/foo/** w,

@@ -26,9 +26,9 @@ INCLUDES = $(all_includes)
 # For more information, see:
 # http://www.gnu.org/software/libtool/manual/html_node/Libtool-versioning.html
 #
-AA_LIB_CURRENT = 5
+AA_LIB_CURRENT = 7
 AA_LIB_REVISION = 0
-AA_LIB_AGE = 4
+AA_LIB_AGE = 6
 
 SUFFIXES = .pc.in .pc
 
@@ -42,13 +42,13 @@ scanner.h: scanner.l
 
 scanner.c: scanner.l
 
-af_protos.h: /usr/include/netinet/in.h
-	 LC_ALL=C  sed  -n -e "/IPPROTO_MAX/d"  -e "s/^\#define[ \\t]\\+IPPROTO_\\([A-Z0-9_]\\+\\)\\(.*\\)$$/AA_GEN_PROTO_ENT(\\UIPPROTO_\\1, \"\\L\\1\")/p" $< > $@
+af_protos.h:
+	 echo '#include <netinet/in.h>' | $(CC) -E -dM - | LC_ALL=C  sed  -n -e "/IPPROTO_MAX/d"  -e "s/^\#define[ \\t]\\+IPPROTO_\\([A-Z0-9_]\\+\\)\\(.*\\)$$/AA_GEN_PROTO_ENT(\\UIPPROTO_\\1, \"\\L\\1\")/p" > $@
 
 lib_LTLIBRARIES = libapparmor.la
-noinst_HEADERS = grammar.h parser.h scanner.h af_protos.h private.h
+noinst_HEADERS = grammar.h parser.h scanner.h af_protos.h private.h PMurHash.h
 
-libapparmor_la_SOURCES = grammar.y libaalogparse.c kernel.c scanner.c private.c features.c kernel_interface.c policy_cache.c
+libapparmor_la_SOURCES = grammar.y libaalogparse.c kernel.c scanner.c private.c features.c kernel_interface.c policy_cache.c PMurHash.c
 libapparmor_la_LDFLAGS = -version-info $(AA_LIB_CURRENT):$(AA_LIB_REVISION):$(AA_LIB_AGE) -XCClinker -dynamic -pthread \
 	-Wl,--version-script=$(top_srcdir)/src/libapparmor.map
 

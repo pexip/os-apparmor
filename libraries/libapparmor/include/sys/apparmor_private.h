@@ -20,7 +20,9 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int _aa_is_blacklisted(const char *name);
 
@@ -32,7 +34,11 @@ int _aa_asprintf(char **strp, const char *fmt, ...);
 
 int _aa_dirat_for_each(int dirfd, const char *name, void *data,
 		       int (* cb)(int, const char *, struct stat *, void *));
+int _aa_overlaydirat_for_each(int dirfd[], int n, void *data,
+			int (* cb)(int, const char *, struct stat *, void *));
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 
 #endif	/* sys/apparmor_private.h */

@@ -22,7 +22,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Class of public mediation types in the AppArmor policy db
@@ -66,7 +68,7 @@ extern int aa_is_enabled(void);
 extern int aa_find_mountpoint(char **mnt);
 
 /* Prototypes for self directed domain transitions
- * see <http://apparmor.net>
+ * see <https://apparmor.net>
  * Please see the change_hat(2) manpage for information.
  */
 
@@ -152,6 +154,7 @@ extern int aa_features_write_to_file(aa_features *features,
 extern bool aa_features_is_equal(aa_features *features1,
 				 aa_features *features2);
 extern bool aa_features_supports(aa_features *features, const char *str);
+extern char *aa_features_id(aa_features *features);
 
 typedef struct aa_kernel_interface aa_kernel_interface;
 extern int aa_kernel_interface_new(aa_kernel_interface **kernel_interface,
@@ -184,13 +187,25 @@ extern int aa_policy_cache_new(aa_policy_cache **policy_cache,
 			       aa_features *kernel_features,
 			       int dirfd, const char *path,
 			       uint16_t max_caches);
+extern int aa_policy_cache_add_ro_dir(aa_policy_cache *policy_cache, int dirfd,
+				      const char *path);
 extern aa_policy_cache *aa_policy_cache_ref(aa_policy_cache *policy_cache);
 extern void aa_policy_cache_unref(aa_policy_cache *policy_cache);
 
 extern int aa_policy_cache_remove(int dirfd, const char *path);
 extern int aa_policy_cache_replace_all(aa_policy_cache *policy_cache,
 				       aa_kernel_interface *kernel_interface);
+extern int aa_policy_cache_no_dirs(aa_policy_cache *policy_cache);
+extern char *aa_policy_cache_dir_path(aa_policy_cache *policy_cache, int n);
+extern int aa_policy_cache_dirfd(aa_policy_cache *policy_cache, int dir);
+extern int aa_policy_cache_open(aa_policy_cache *policy_cache, const char *name,
+				int flags);
+extern char *aa_policy_cache_filename(aa_policy_cache *policy_cache, const char *name);
+extern char *aa_policy_cache_dir_path_preview(aa_features *kernel_features,
+					      int dirfd, const char *path);
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 
 #endif	/* sys/apparmor.h */
