@@ -21,7 +21,7 @@ Standards-Version: 3.9.8
 Homepage: http://apparmor.net/
 Vcs-Bzr: https://anonscm.debian.org/bzr/collab-maint/apparmor
 Vcs-Browser: https://alioth.debian.org/scm/loggerhead/collab-maint/apparmor/changes
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
 
 Package: apparmor
 Architecture: any
