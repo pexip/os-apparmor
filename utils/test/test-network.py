@@ -72,7 +72,7 @@ class NetworkTestParseInvalid(NetworkTest):
 
 class NetworkTestParseFromLog(NetworkTest):
     def test_net_from_log(self):
-        parser = ReadLog('', '', '', '', '')
+        parser = ReadLog('', '', '', '')
         event = 'type=AVC msg=audit(1428699242.551:386): apparmor="DENIED" operation="create" profile="/bin/ping" pid=10589 comm="ping" family="inet" sock_type="raw" protocol=1'
 
         parsed_event = parser.parse_event(event)
@@ -461,4 +461,4 @@ class NetworkRulesetReprTest(AATest):
 
 setup_all_loops(__name__)
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

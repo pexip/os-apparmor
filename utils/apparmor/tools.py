@@ -1,5 +1,6 @@
 # ----------------------------------------------------------------------
 #    Copyright (C) 2013 Kshitij Gupta <kgupta8592@gmail.com>
+#    Copyright (C) 2015-2018 Christian Boltz <apparmor@cboltz.de>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -24,6 +25,8 @@ _ = init_translation()
 
 class aa_tools:
     def __init__(self, tool_name, args):
+        apparmor.init_aa()
+
         self.name = tool_name
         self.profiledir = args.dir
         self.profiling = args.program
@@ -64,12 +67,12 @@ class aa_tools:
                     profile = fq_path
                 else:
                     program = fq_path
-                    profile = apparmor.get_profile_filename(fq_path)
+                    profile = apparmor.get_profile_filename_from_attachment(fq_path, True)
             else:
                 which = apparmor.which(p)
                 if which is not None:
                     program = apparmor.get_full_path(which)
-                    profile = apparmor.get_profile_filename(program)
+                    profile = apparmor.get_profile_filename_from_attachment(program, True)
                 elif os.path.exists(os.path.join(apparmor.profile_dir, p)):
                     program = None
                     profile = apparmor.get_full_path(os.path.join(apparmor.profile_dir, p)).strip()
@@ -82,7 +85,7 @@ class aa_tools:
 
             yield (program, profile)
 
-    def act(self):
+    def cleanprof_act(self):
         # used by aa-cleanprof
         apparmor.read_profiles()
 
@@ -98,20 +101,7 @@ class aa_tools:
                     sys.exit(1)
 
             if program and apparmor.profile_exists(program):
-                if self.name == 'cleanprof':
-                    self.clean_profile(program)
-
-                else:
-                    filename = apparmor.get_profile_filename(program)
-
-                    if not os.path.isfile(filename) or apparmor.is_skippable_file(filename):
-                        aaui.UI_Info(_('Profile for %s not found, skipping') % program)
-
-                    else:
-                        # One simply does not walk in here!
-                        raise apparmor.AppArmorException('Unknown tool: %s' % self.name)
-
-                    self.reload_profile(profile)
+                self.clean_profile(program)
 
             else:
                 if '/' not in program:
@@ -201,7 +191,7 @@ class aa_tools:
 
             apparmor.check_qualifiers(program)
 
-            if os.path.exists(apparmor.get_profile_filename(program)) and not self.force:
+            if os.path.exists(apparmor.get_profile_filename_from_attachment(program, True)) and not self.force:
                 aaui.UI_Info(_('Profile for %s already exists - skipping.') % program)
             else:
                 apparmor.autodep(program)
@@ -209,7 +199,7 @@ class aa_tools:
                     apparmor.reload(program)
 
     def clean_profile(self, program):
-        filename = apparmor.get_profile_filename(program)
+        filename = apparmor.get_profile_filename_from_attachment(program, True)
         import apparmor.cleanprofile as cleanprofile
         prof = cleanprofile.Prof(filename)
         cleanprof = cleanprofile.CleanProf(True, prof, prof)
@@ -231,14 +221,14 @@ class aa_tools:
                 while ans != 'CMD_SAVE_CHANGES':
                     ans, arg = q.promptUser()
                     if ans == 'CMD_SAVE_CHANGES':
-                        apparmor.write_profile_ui_feedback(program)
+                        apparmor.write_profile_ui_feedback(program, True)
                         self.reload_profile(filename)
                     elif ans == 'CMD_VIEW_CHANGES':
                         #oldprofile = apparmor.serialize_profile(apparmor.original_aa[program], program, '')
-                        newprofile = apparmor.serialize_profile(apparmor.aa[program], program, '')
-                        apparmor.display_changes_with_comments(filename, newprofile)
+                        newprofile = apparmor.serialize_profile(apparmor.aa[program], program, {'is_attachment': True})
+                        aaui.UI_Changes(filename, newprofile, comments=True)
             else:
-                apparmor.write_profile_ui_feedback(program)
+                apparmor.write_profile_ui_feedback(program, True)
                 self.reload_profile(filename)
         else:
             raise apparmor.AppArmorException(_('The profile for %s does not exists. Nothing to clean.') % program)

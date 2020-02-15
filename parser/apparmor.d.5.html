@@ -85,7 +85,7 @@
 
 <p><b>ALIAS RULE</b> = &#39;alias&#39; <i>ABS PATH</i> &#39;-&gt;&#39; <i>REWRITTEN ABS PATH</i> &#39;,&#39;</p>
 
-<p><b>INCLUDE</b> = &#39;#include&#39; ( <i>ABS PATH</i> | <i>MAGIC PATH</i> )</p>
+<p><b>INCLUDE</b> = ( &#39;#include&#39; | &#39;include&#39; ) [ &#39;if exists&#39; ] ( <i>ABS PATH</i> | <i>MAGIC PATH</i> )</p>
 
 <p><b>ABS PATH</b> = &#39;&quot;&#39; path &#39;&quot;&#39; (the path is passed to open(2))</p>
 
@@ -139,7 +139,7 @@
 
 <p><b>NETWORK RULE</b> = [ <i>QUALIFIERS</i> ] &#39;network&#39; [ <i>DOMAIN</i> ] [ <i>TYPE</i> | <i>PROTOCOL</i> ]</p>
 
-<p><b>DOMAIN</b> = ( &#39;inet&#39; | &#39;ax25&#39; | &#39;ipx&#39; | &#39;appletalk&#39; | &#39;netrom&#39; | &#39;bridge&#39; | &#39;atmpvc&#39; | &#39;x25&#39; | &#39;inet6&#39; | &#39;rose&#39; | &#39;netbeui&#39; | &#39;security&#39; | &#39;key&#39; | &#39;packet&#39; | &#39;ash&#39; | &#39;econet&#39; | &#39;atmsvc&#39; | &#39;sna&#39; | &#39;irda&#39; | &#39;pppox&#39; | &#39;wanpipe&#39; | &#39;bluetooth&#39; | &#39;netlink&#39; | &#39;unix&#39; | &#39;rds&#39; | &#39;llc&#39; | &#39;can&#39; | &#39;tipc&#39; | &#39;iucv&#39; | &#39;rxrpc&#39; | &#39;isdn&#39; | &#39;phonet&#39; | &#39;ieee802154&#39; | &#39;caif&#39; | &#39;alg&#39; | &#39;nfc&#39; | &#39;vsock&#39; | &#39;mpls&#39; | &#39;ib&#39; | &#39;kcm&#39; ) &#39;,&#39;</p>
+<p><b>DOMAIN</b> = ( &#39;inet&#39; | &#39;ax25&#39; | &#39;ipx&#39; | &#39;appletalk&#39; | &#39;netrom&#39; | &#39;bridge&#39; | &#39;atmpvc&#39; | &#39;x25&#39; | &#39;inet6&#39; | &#39;rose&#39; | &#39;netbeui&#39; | &#39;security&#39; | &#39;key&#39; | &#39;packet&#39; | &#39;ash&#39; | &#39;econet&#39; | &#39;atmsvc&#39; | &#39;sna&#39; | &#39;irda&#39; | &#39;pppox&#39; | &#39;wanpipe&#39; | &#39;bluetooth&#39; | &#39;netlink&#39; | &#39;unix&#39; | &#39;rds&#39; | &#39;llc&#39; | &#39;can&#39; | &#39;tipc&#39; | &#39;iucv&#39; | &#39;rxrpc&#39; | &#39;isdn&#39; | &#39;phonet&#39; | &#39;ieee802154&#39; | &#39;caif&#39; | &#39;alg&#39; | &#39;nfc&#39; | &#39;vsock&#39; | &#39;mpls&#39; | &#39;ib&#39; | &#39;kcm&#39; | &#39;smc&#39; ) &#39;,&#39;</p>
 
 <p><b>TYPE</b> = ( &#39;stream&#39; | &#39;dgram&#39; | &#39;seqpacket&#39; | &#39;rdm&#39; | &#39;raw&#39; | &#39;packet&#39; )</p>
 
@@ -1282,9 +1282,11 @@
 
 <h2 id="include-mechanism">#include mechanism</h2>
 
-<p>AppArmor provides an easy abstraction mechanism to group common file access requirements; this abstraction is an extremely flexible way to grant site-specific rights and makes writing new AppArmor profiles very simple by assembling the needed building blocks for any given program.</p>
+<p>AppArmor provides an easy abstraction mechanism to group common access requirements; this abstraction is an extremely flexible way to grant site-specific rights and makes writing new AppArmor profiles very simple by assembling the needed building blocks for any given program.</p>
 
-<p>The use of &#39;#include&#39; is modelled directly after cpp(1); its use will replace the &#39;#include&#39; statement with the specified file&#39;s contents. <b>#include &quot;/absolute/path&quot;</b> specifies that <i>/absolute/path</i> should be used. <b>#include &quot;relative/path&quot;</b> specifies that <i>relative/path</i> should be used, where the path is relative to the current working directory. <b>#include &lt;magic/path&gt;</b> is the most common usage; it will load <i>magic/path</i> relative to a directory specified to apparmor_parser(8). <i>/etc/apparmor.d/</i> is the AppArmor default.</p>
+<p>The use of &#39;#include&#39; is modelled directly after cpp(1); its use will replace the &#39;#include&#39; statement with the specified file&#39;s contents. The leading &#39;#&#39; is optional, and the &#39;#include&#39; keyword can be followed by an option conditional &#39;if exists&#39; that specifies profile compilation should continue if the specified file or directory is not found.</p>
+
+<p><b>#include &quot;/absolute/path&quot;</b> specifies that <i>/absolute/path</i> should be used. <b>#include &quot;relative/path&quot;</b> specifies that <i>relative/path</i> should be used, where the path is relative to the current working directory. <b>#include &lt;magic/path&gt;</b> is the most common usage; it will load <i>magic/path</i> relative to a directory specified to apparmor_parser(8). <i>/etc/apparmor.d/</i> is the AppArmor default.</p>
 
 <p>The supplied AppArmor profiles follow several conventions; the abstractions stored in <i>/etc/apparmor.d/abstractions/</i> are some large clusters that are used in most profiles. What follows are short descriptions of how some of the abstractions are used.</p>
 
@@ -1468,7 +1470,7 @@
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
-<p>apparmor(7), apparmor_parser(8), aa-complain(1), aa-enforce(1), aa_change_hat(2), mod_apparmor(5), and <a href="http://wiki.apparmor.net">http://wiki.apparmor.net</a>.</p>
+<p>apparmor(7), apparmor_parser(8), aa-complain(1), aa-enforce(1), aa_change_hat(2), mod_apparmor(5), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">

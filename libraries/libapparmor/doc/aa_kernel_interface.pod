@@ -133,7 +133,7 @@ I<*kernel_interface> will point to an I<aa_kernel_interface> object that must
 be freed by aa_kernel_interface_unref(). -1 is returned on error, with errno
 set appropriately, and I<*kernel_interface> will be set to NULL.
 
-aa_kernel_features_ref() returns the value of I<kernel_features>.
+aa_kernel_interface_ref() returns the value of I<kernel_interface>.
 
 The aa_kernel_interface_load() family of functions, the
 aa_kernel_interface_replace() family of functions,
@@ -150,6 +150,9 @@ I<aa_kernel_interface> family of functions that return -1 on error.
 All aa_kernel_interface functions described above are present in libapparmor
 version 2.10 and newer.
 
+aa_kernel_interface_unref() saves the value of errno when called and restores
+errno before exiting in libapparmor version 2.12 and newer.
+
 =head1 BUGS
 
 None known. If you find any, please report them at
@@ -157,6 +160,6 @@ L<https://bugs.launchpad.net/apparmor/+filebug>.
 
 =head1 SEE ALSO
 
-aa_features(3), openat(2) and L<http://wiki.apparmor.net>.
+aa_features(3), openat(2) and L<https://wiki.apparmor.net>.
 
 =cut

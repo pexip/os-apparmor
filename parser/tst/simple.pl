@@ -10,7 +10,7 @@ use Test::More;
 my %config;
 $config{'parser'} = "/sbin/apparmor_parser";
 $config{'profiledir'} = "./simple_tests/";
-$config{'timeout'} = 120; # in seconds
+$config{'timeout'} = 480; # in seconds
 
 my $help;
 my $pwd = `pwd`;
@@ -81,7 +81,7 @@ sub test_profile {
     # child
     open(STDOUT, ">/dev/null") or die "Failed to redirect STDOUT";
     open(STDERR, ">/dev/null") or die "Failed to redirect STDERR";
-    exec("$config{'parser'}", "-M", "features_files/features.all", "-S", "-I", "$config{'includedir'}") or die "Bail out! couldn't open parser";
+    exec("$config{'parser'}", "--config-file=./parser.conf", "-M", "features_files/features.all", "-S", "-I", "$config{'includedir'}") or die "Bail out! couldn't open parser";
     # noreturn
   }
 
@@ -131,9 +131,13 @@ sub test_profile {
   } elsif ($coredump) {
     ok(0, "$profile: Produced core dump (signal $signal): $description");
   } elsif ($istodo) {
-    TODO: {
-      local $TODO = "Unfixed testcase.";
-      ok($expass ? !$result : $result, "TODO: $profile: $description");
+    if ($expass != $result) {
+        fail("TODO passed unexpectedly: $profile: $description");
+    } else {
+      TODO: {
+        local $TODO = "Unfixed testcase.";
+        ok($expass ? !$result : $result, "TODO: $profile: $description");
+      }
     }
   } else {
     ok($expass ? !$result : $result, "$profile: $description");

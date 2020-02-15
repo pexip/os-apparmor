@@ -135,7 +135,7 @@ class FileTestNonMatch(AATest):
 
 class FileTestParseFromLog(FileTest):
     def test_file_from_log(self):
-        parser = ReadLog('', '', '', '', '')
+        parser = ReadLog('', '', '', '')
         event = 'Nov 11 07:33:07 myhost kernel: [50812.879558] type=1502 audit(1236774787.169:369): operation="inode_permission" requested_mask="::r" denied_mask="::r" fsuid=1000 name="/bin/dash" pid=13726 profile="/bin/foobar"'
 
         parsed_event = parser.parse_event(event)
@@ -583,6 +583,28 @@ class FileCoveredTest_05(FileCoveredTest):
         ('/foo ix,'                                     , [ False   , False         , False     , False     ]),
         ('/foo ix -> bar,'                              , [ False   , False         , False     , False     ]),
         ('/foo mrwPx -> bar,'                           , [ False   , False         , False     , False     ]),
+    ]
+
+class FileCoveredTest_06(FileCoveredTest):
+    rule = 'deny /foo w,'
+
+    tests = [
+        #   rule                                            equal     strict equal    covered     covered exact
+        ('/foo w,'                                      , [ False   , False         , False     , False     ]),
+        ('/foo a,'                                      , [ False   , False         , False     , False     ]),
+        ('deny /foo w,'                                 , [ True    , True          , True      , True      ]),
+        ('deny /foo a,'                                 , [ False   , False         , True      , True      ]),
+    ]
+
+class FileCoveredTest_07(FileCoveredTest):
+    rule = '/foo w,'
+
+    tests = [
+        #   rule                                            equal     strict equal    covered     covered exact
+        ('/foo w,'                                      , [ True    , True          , True      , True      ]),
+        ('/foo a,'                                      , [ False   , False         , True      , True      ]),
+        ('deny /foo w,'                                 , [ False   , False         , False     , False     ]),
+        ('deny /foo a,'                                 , [ False   , False         , False     , False     ]),
     ]
 
 class FileCoveredTest_ManualOrInvalid(AATest):
@@ -1101,4 +1123,4 @@ class FileGetExecConflictRules_1(AATest):
 
 setup_all_loops(__name__)
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

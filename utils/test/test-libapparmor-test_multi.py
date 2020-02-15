@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 # ------------------------------------------------------------------
 #
-#    Copyright (C) 2015 Christian Boltz <apparmor@cboltz.de>
+#    Copyright (C) 2015-2018 Christian Boltz <apparmor@cboltz.de>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -10,13 +10,14 @@
 # ------------------------------------------------------------------
 
 import unittest
-from common_test import AATest, setup_all_loops, read_file
+from common_test import AATest, setup_all_loops, setup_aa, read_file
 
 import os
 from apparmor.common import open_file_read
 
 import apparmor.aa
 from apparmor.logparser import ReadLog
+from apparmor.profile_list import ProfileList
 
 class TestLibapparmorTestMulti(AATest):
     '''Parse all libraries/libapparmor/testsuite/test_multi tests and compare the result with the *.out files'''
@@ -37,7 +38,7 @@ class TestLibapparmorTestMulti(AATest):
 
         self.assertEqual(len(loglines2), 1, '%s.in should only contain one line!' % params)
 
-        parser = ReadLog('', '', '', '', '')
+        parser = ReadLog('', '', '', '')
         parsed_event = parser.parse_event(loglines2[0])
 
         if parsed_event and expected:
@@ -66,6 +67,8 @@ class TestLibapparmorTestMulti(AATest):
                     pass
                 elif parsed_items['operation'] == 'exec' and label in ['sock_type', 'family', 'protocol']:
                     pass  # XXX 'exec' + network? really?
+                elif parsed_items['operation'] == 'ptrace' and label == 'name2' and params.endswith('/ptrace_garbage_lp1689667_1'):
+                    pass  # libapparmor would better qualify this case as invalid event
                 elif not parsed_items.get(label, None):
                     raise Exception('parsed_items[%s] not set' % label)
                 elif not expected.get(label, None):
@@ -193,7 +196,7 @@ class TestLogToProfile(AATest):
         profile_dummy_file = 'AATest_does_exist'
 
         # we need to find out the profile name and aamode (complain vs. enforce mode) so that the test can access the correct place in storage
-        parser = ReadLog('', '', '', '', '')
+        parser = ReadLog('', '', '', '')
         parsed_event = parser.parse_event(read_file(logfile))
 
         if not parsed_event:  # AA_RECORD_INVALID
@@ -214,27 +217,32 @@ class TestLogToProfile(AATest):
         apparmor.aa.log = dict()
         apparmor.aa.aa = apparmor.aa.hasher()
         apparmor.aa.prelog = apparmor.aa.hasher()
-        apparmor.aa.log_dict = apparmor.aa.hasher()
 
         profile = parsed_event['profile']
         hat = profile
         if '//' in profile:
             profile, hat = profile.split('//')
 
-        apparmor.aa.existing_profiles = {profile: profile_dummy_file}
+        apparmor.aa.active_profiles = ProfileList()
 
-        log_reader = ReadLog(dict(), logfile, apparmor.aa.existing_profiles, '', [])
+        # optional for now, might be needed one day
+        # if profile.startswith('/'):
+        #     apparmor.aa.active_profiles.add(profile_dummy_file, profile, profile)
+        # else:
+        apparmor.aa.active_profiles.add(profile_dummy_file, profile, '')
+
+        log_reader = ReadLog(dict(), logfile, apparmor.aa.active_profiles, '')
         log = log_reader.read_log('')
 
         for root in log:
             apparmor.aa.handle_children('', '', root)  # interactive for exec events!
 
-        apparmor.aa.collapse_log()
+        log_dict = apparmor.aa.collapse_log()
 
         apparmor.aa.filelist = apparmor.aa.hasher()
         apparmor.aa.filelist[profile_dummy_file]['profiles'][profile] = True
 
-        new_profile = apparmor.aa.serialize_profile(apparmor.aa.log_dict[aamode][profile], profile, None)
+        new_profile = apparmor.aa.serialize_profile(log_dict[aamode][profile], profile, None)
 
         expected_profile = read_file('%s.profile' % params)
 
@@ -268,6 +276,7 @@ print('Testing libapparmor test_multi tests...')
 TestLibapparmorTestMulti.tests = find_test_multi('../../libraries/libapparmor/testsuite/test_multi/')
 TestLogToProfile.tests = find_test_multi('../../libraries/libapparmor/testsuite/test_multi/')
 
+setup_aa(apparmor.aa)
 setup_all_loops(__name__)
 if __name__ == '__main__':
-    unittest.main(verbosity=1)  # reduced verbosity due to the big number of tests
+    unittest.main(verbosity=1)

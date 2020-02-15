@@ -22,9 +22,9 @@
   <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
   <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
   <li><a href="#OPTIONS">OPTIONS</a></li>
+  <li><a href="#EXIT-STATUS">EXIT STATUS</a></li>
   <li><a href="#BUGS">BUGS</a></li>
   <li><a href="#SEE-ALSO">SEE ALSO</a></li>
-  <li><a href="#POD-ERRORS">POD ERRORS</a></li>
 </ul>
 
 <h1 id="NAME">NAME</h1>
@@ -106,39 +106,37 @@
 </dd>
 </dl>
 
-<h1 id="BUGS">BUGS</h1>
+<h1 id="EXIT-STATUS">EXIT STATUS</h1>
 
-<p><b>aa-status</b> must be run as root to read the state of the loaded policy from the apparmor module. It uses the /proc filesystem to determine which processes are confined and so is susceptible to race conditions.</p>
-
-<p>Upon exiting, <b>aa-status</b> will set its return value to the following values:</p>
+<p>Upon exiting, <b>aa-status</b> will set its exit status to the following values:</p>
 
 <dl>
 
-<dt id="pod0">0</dt>
+<dt id="pod0"><b>0</b></dt>
 <dd>
 
 <p>if apparmor is enabled and policy is loaded.</p>
 
 </dd>
-<dt id="pod1">1</dt>
+<dt id="pod1"><b>1</b></dt>
 <dd>
 
 <p>if apparmor is not enabled/loaded.</p>
 
 </dd>
-<dt id="pod2">2</dt>
+<dt id="pod2"><b>2</b></dt>
 <dd>
 
 <p>if apparmor is enabled but no policy is loaded.</p>
 
 </dd>
-<dt id="pod3">3</dt>
+<dt id="pod3"><b>3</b></dt>
 <dd>
 
 <p>if the apparmor control files aren&#39;t available under /sys/kernel/security/.</p>
 
 </dd>
-<dt id="pod4">4</dt>
+<dt id="pod4"><b>4</b></dt>
 <dd>
 
 <p>if the user running the script doesn&#39;t have enough privileges to read the apparmor control files.</p>
@@ -146,43 +144,15 @@
 </dd>
 </dl>
 
+<h1 id="BUGS">BUGS</h1>
+
+<p><b>aa-status</b> must be run as root to read the state of the loaded policy from the apparmor module. It uses the /proc filesystem to determine which processes are confined and so is susceptible to race conditions.</p>
+
 <p>If you find any additional bugs, please report them at <a href="https://bugs.launchpad.net/apparmor/+filebug">https://bugs.launchpad.net/apparmor/+filebug</a>.</p>
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
-<p>apparmor(7), apparmor.d(5), and <a href="http://wiki.apparmor.net">http://wiki.apparmor.net</a>.</p>
-
-<h1 id="POD-ERRORS">POD ERRORS</h1>
-
-<p>Hey! <b>The above document had some coding errors, which are explained below:</b></p>
-
-<dl>
-
-<dt id="Around-line-109">Around line 109:</dt>
-<dd>
-
-<p>Expected text after =item, not a number</p>
-
-</dd>
-<dt id="Around-line-113">Around line 113:</dt>
-<dd>
-
-<p>Expected text after =item, not a number</p>
-
-</dd>
-<dt id="Around-line-117">Around line 117:</dt>
-<dd>
-
-<p>Expected text after =item, not a number</p>
-
-</dd>
-<dt id="Around-line-121">Around line 121:</dt>
-<dd>
-
-<p>Expected text after =item, not a number</p>
-
-</dd>
-</dl>
+<p>apparmor(7), apparmor.d(5), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">

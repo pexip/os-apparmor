@@ -23,21 +23,37 @@ include $(COMMONDIR)/Make.rules
 ifdef USE_SYSTEM
     LD_LIBRARY_PATH=
     PYTHONPATH=
+    CONFDIR=
+    BASEDIR=
+    PARSER=
 else
     # PYTHON_DIST_BUILD_PATH based on libapparmor/swig/python/test/Makefile.am
     PYTHON_DIST_BUILD_PATH = ../../libraries/libapparmor/swig/python/build/$$($(PYTHON) -c "import distutils.util; import platform; print(\"lib.%s-%s\" %(distutils.util.get_platform(), platform.python_version()[:3]))")
     LD_LIBRARY_PATH=../../libraries/libapparmor/src/.libs/
     PYTHONPATH=..:$(PYTHON_DIST_BUILD_PATH)
+    CONFDIR=$(CURDIR)
+    BASEDIR=../../profiles/apparmor.d
+    PARSER=../../parser/apparmor_parser
 endif
 
-.PHONY: __libapparmor
+.PHONY: __libapparmor __parser
 __libapparmor:
 ifndef USE_SYSTEM
 	@if [ ! -f $(LD_LIBRARY_PATH)libapparmor.so ]; then \
 		echo "error: $(LD_LIBRARY_PATH)libapparmor.so is missing. Pick one of these possible solutions:" 1>&2; \
 		echo "  1) Build against the in-tree libapparmor by building it first and then trying again. See the top-level README for help." 1>&2; \
 		echo "  2) Build against the system libapparmor by adding USE_SYSTEM=1 to your make command." 1>&2; \
-		return 1; \
+		exit 1; \
+	fi
+endif
+
+__parser:
+ifndef USE_SYSTEM
+	@if [ ! -f $(PARSER) ]; then \
+		echo "error: $(PARSER) is missing. Pick one of these possible solutions:" 1>&2; \
+		echo "  1) Test using the in-tree parser by building it first and then trying again. See the top-level README for help." 1>&2; \
+		echo "  2) Test using the system parser by adding USE_SYSTEM=1 to your make command." 1>&2; \
+		exit 1; \
 	fi
 endif
 
@@ -61,11 +77,11 @@ endif
 clean:
 	rm -rf __pycache__/ .coverage htmlcov
 
-check: __libapparmor
-	export PYTHONPATH=$(PYTHONPATH) ; export LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) ; export LC_ALL=C; $(foreach test, $(wildcard test-*.py), echo ; echo === $(test) === ; $(call pyalldo, $(test)))
+check: __libapparmor __parser
+	export PYTHONPATH=$(PYTHONPATH) LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) LC_ALL=C __AA_CONFDIR=$(CONFDIR) __AA_BASEDIR=$(BASEDIR) __AA_PARSER=$(PARSER) ; $(foreach test, $(wildcard test-*.py), echo ; echo === $(test) === ; $(call pyalldo, $(test)))
 
-.coverage: $(wildcard ../aa-* ../apparmor/*.py test-*.py) __libapparmor
-	export PYTHONPATH=$(PYTHONPATH) ; export LD_LIBRARY_PATH=$(LD_LIBRARY_PATH); export LC_ALL=C; $(COVERAGE_IGNORE_FAILURES_CMD) ; $(foreach test, $(wildcard test-*.py), echo ; echo === $(test) === ; $(PYTHON) -m coverage run --branch -p $(test); )
+.coverage: $(wildcard ../aa-* ../apparmor/*.py test-*.py) __libapparmor __parser
+	export PYTHONPATH=$(PYTHONPATH) LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) LC_ALL=C __AA_CONFDIR=$(CONFDIR) __AA_BASEDIR=$(BASEDIR) __AA_PARSER=$(PARSER) ; $(COVERAGE_IGNORE_FAILURES_CMD) ; $(foreach test, $(wildcard test-*.py), echo ; echo === $(test) === ; $(PYTHON) -m coverage run --branch -p $(test); )
 	$(PYTHON) -m coverage combine
 
 coverage: .coverage

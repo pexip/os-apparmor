@@ -1,6 +1,6 @@
 #include <tunables/global>
 
-/usr/sbin/winbindd {
+profile winbindd /usr/{bin,sbin}/winbindd {
   #include <abstractions/base>
   #include <abstractions/nameservice>
   #include <abstractions/samba>
@@ -20,16 +20,18 @@
   @{PROC}/sys/kernel/core_pattern r,
   /tmp/.winbindd/ w,
   /tmp/krb5cc_* rwk,
+  /usr/lib*/samba/gensec/krb*.so mr,
   /usr/lib*/samba/idmap/*.so mr,
   /usr/lib*/samba/nss_info/*.so mr,
   /usr/lib*/samba/pdb/*.so mr,
-  /usr/sbin/winbindd mr,
+  /usr/{bin,sbin}/winbindd mr,
   /var/cache/krb5rcache/* rw,
   /var/cache/samba/*.tdb rwk,
   /var/log/samba/log.winbindd rw,
   /{var/,}run/samba/winbindd.pid rwk,
   /{var/,}run/samba/winbindd/ rw,
   /{var/,}run/samba/winbindd/pipe w,
+  /{var/,}run/user/*/krb5cc/* rwk,
 
   # Site-specific additions and overrides. See local/README for details.
   #include <local/usr.sbin.winbindd>

@@ -109,9 +109,15 @@
   show_notifications=&quot;yes&quot;
 
   # only people in use_group can use aa-notify
-  use_group=&quot;admin&quot;</code></pre>
+  use_group=&quot;admin&quot;
 
-<p>Per-user configuration is done via ~/.apparmor/notify.conf:</p>
+  # OPTIONAL - custom notification message body
+  message_body=&quot;This is a custom notification message.&quot;
+
+  # OPTIONAL - custom notification message footer
+  message_footer=&quot;For more information visit https://foo.com&quot;</code></pre>
+
+<p>Per-user configuration is done via $XDG_CONFIG_HOME/apparmor/notify.conf (or the deprecated ~/.apparmor/notify.conf if it exists):</p>
 
 <pre><code>  # set to &#39;yes&#39; to enable AppArmor DENIED notifications
   show_notifications=&quot;yes&quot;</code></pre>

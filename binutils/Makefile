@@ -36,7 +36,7 @@ CFLAGS = -g -pg -fprofile-arcs -ftest-coverage
 endif
 endif #CFLAGS
 
-EXTRA_CFLAGS = ${EXTRA_CXXFLAGS} ${CPP_WARNINGS}
+EXTRA_CFLAGS = ${CFLAGS} ${CPPFLAGS} ${EXTRA_CXXFLAGS} ${CPP_WARNINGS}
 
 #INCLUDEDIR = /usr/src/linux/include
 INCLUDEDIR =
@@ -114,7 +114,7 @@ $(LIBAPPARMOR_A):
 		echo "error: $@ is missing. Pick one of these possible solutions:" 1>&2; \
 		echo "  1) Build against the in-tree libapparmor by building it first and then trying again. See the top-level README for help." 1>&2; \
 		echo "  2) Build against the system libapparmor by adding USE_SYSTEM=1 to your make command." 1>&2;\
-		return 1; \
+		exit 1; \
 	fi
 endif
 

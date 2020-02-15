@@ -50,7 +50,7 @@
 
 <p>AppArmor profiles restrict the operations available to processes.</p>
 
-<p>The <b>profiles</b> are loaded into the Linux kernel by the <b>apparmor_parser</b> program. The <b>profiles</b> may be specified by file name or a directory name containing a set of profiles. If a directory is specified then the <b>apparmor_parser</b> will try to do a profile load for each file in the directory that is not a dot file, or explicitly black listed (*.dpkg-new, *.dpkg-old, *.dpkg-dist, *-dpkg-bak, *.repnew, *.rpmsave, *orig, *.rej, *~). The <b>apparmor_parser</b> will fall back to taking input from standard input if a profile or directory is not supplied.</p>
+<p>The <b>profiles</b> are loaded into the Linux kernel by the <b>apparmor_parser</b> program. The <b>profiles</b> may be specified by file name or a directory name containing a set of profiles. If a directory is specified then the <b>apparmor_parser</b> will try to do a profile load for each file in the directory that is not a dot file, or explicitly black listed (*.dpkg-new, *.dpkg-old, *.dpkg-dist, *.dpkg-bak, *.dpkg-remove, *.pacsave, *.pacnew, *.rpmnew, *.rpmsave, *.orig, *.rej, *~). The <b>apparmor_parser</b> will fall back to taking input from standard input if a profile or directory is not supplied.</p>
 
 <p>The input supplied to <b>apparmor_parser</b> should be in the format described in apparmor.d(5).</p>
 
@@ -261,7 +261,19 @@
 <dt id="L---cache-loc">-L, --cache-loc</dt>
 <dd>
 
-<p>Set the location of the cache directory. If not specified the cache location defaults to /etc/apparmor.d/cache</p>
+<p>Set the location(s) of the cache directory. This option can accept a comma separated list of directories, which will be searched in order to find a matching cache. The first matching cache file found is used even if a directory later in the search order may contain a newer cache file.</p>
+
+<p>If multiple directories are specified and --write-cache has been specified then cache writes will be made to the first directory in the list, all other directories will be treated as read only.</p>
+
+<p>If a cache directory name needs to have a comma as part of the name, it can be specified by using a backslash to escape the comma character in the directory name.</p>
+
+<p>If not specified the cache location defaults to /var/cache/apparmor</p>
+
+</dd>
+<dt id="print-cache-dir">--print-cache-dir</dt>
+<dd>
+
+<p>Print the cache directory location. This path will be a subdirectory of the directory specified by --cache-loc. The subdirectory used will be influenced by the features available in the currently running kernel or by the features specified with the --match-string or --features-file options.</p>
 
 </dd>
 <dt id="Q---skip-kernel-load">-Q, --skip-kernel-load</dt>
@@ -352,6 +364,18 @@
 <p>This option tells the parser to not attempt to rebuild the cache on failure, instead the parser continues on with processing the remaining profiles.</p>
 
 </dd>
+<dt id="config-file">--config-file</dt>
+<dd>
+
+<p>Specify the config file to use instead of /etc/apparmor/parser.conf. This option will be processed early before regular options regardless of the order it is specified in.</p>
+
+</dd>
+<dt id="print-config-file">--print-config-file</dt>
+<dd>
+
+<p>Print the config file location that will be used.</p>
+
+</dd>
 </dl>
 
 <h1 id="CONFIG-FILE">CONFIG FILE</h1>
@@ -381,7 +405,7 @@
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
-<p>apparmor(7), apparmor.d(5), subdomain.conf(5), aa_change_hat(2), and <a href="http://wiki.apparmor.net">http://wiki.apparmor.net</a>.</p>
+<p>apparmor(7), apparmor.d(5), subdomain.conf(5), aa_change_hat(2), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">

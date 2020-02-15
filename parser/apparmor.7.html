@@ -21,6 +21,13 @@
   <li><a href="#NAME">NAME</a></li>
   <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
   <li><a href="#ERRORS">ERRORS</a></li>
+  <li><a href="#DEBUGGING">DEBUGGING</a>
+    <ul>
+      <li><a href="#Enable-debug-mode">Enable debug mode</a></li>
+      <li><a href="#Turn-off-deny-audit-quieting">Turn off deny audit quieting</a></li>
+      <li><a href="#Force-audit-mode">Force audit mode</a></li>
+    </ul>
+  </li>
   <li><a href="#FILES">FILES</a></li>
   <li><a href="#SEE-ALSO">SEE ALSO</a></li>
 </ul>
@@ -53,7 +60,7 @@
 
 <p>Profiles are traditionally stored in files in <i>/etc/apparmor.d/</i> under filenames with the convention of replacing the <b>/</b> in pathnames with <b>.</b> (except for the root <b>/</b>) so profiles are easier to manage (e.g. the <i>/usr/sbin/nscd</i> profile would be named <i>usr.sbin.nscd</i>).</p>
 
-<p>Profiles are applied to a process at exec(3) time (as seen through the execve(2) system call); an already running process cannot be confined. However, once a profile is loaded for a program, that program will be confined on the next exec(3).</p>
+<p>Profiles are applied to a process at exec(3) time (as seen through the execve(2) system call): once a profile is loaded for a program, that program will be confined on the next exec(3). If a process is already running under a profile, when one replaces that profile in the kernel, the updated profile is applied immediately to that process. On the other hand, a process that is already running unconfined cannot be confined.</p>
 
 <p>AppArmor supports the Linux kernel&#39;s securityfs filesystem, and makes available the list of the profiles currently loaded; to mount the filesystem:</p>
 
@@ -101,6 +108,48 @@
 
 <p>If the userland auditd is not running, the kernel will send audit events to klogd; klogd will send the messages to syslog, which will log the messages with the KERN facility. Thus, REJECTING and PERMITTING messages may go to either <i>/var/log/audit/audit.log</i> or <i>/var/log/messages</i>, depending upon local configuration.</p>
 
+<h1 id="DEBUGGING">DEBUGGING</h1>
+
+<p>AppArmor provides a few facilities to log more information, which can help debugging profiles.</p>
+
+<h2 id="Enable-debug-mode">Enable debug mode</h2>
+
+<p>When debug mode is enabled, AppArmor will log a few extra messages to dmesg (not via the audit subsystem). For example, the logs will tell whether environment scrubbing has been applied.</p>
+
+<p>To enable debug mode, run:</p>
+
+<pre><code>        echo 1 &gt; /sys/module/apparmor/parameters/debug</code></pre>
+
+<h2 id="Turn-off-deny-audit-quieting">Turn off deny audit quieting</h2>
+
+<p>By default, operations that trigger <code>deny</code> rules are not logged. This is called <i>deny audit quieting</i>.</p>
+
+<p>To turn off deny audit quieting, run:</p>
+
+<pre><code>        echo -n noquiet &gt;/sys/module/apparmor/parameters/audit</code></pre>
+
+<h2 id="Force-audit-mode">Force audit mode</h2>
+
+<p>AppArmor can log a message for every operation that triggers a rule configured in the policy. This is called <i>force audit mode</i>.</p>
+
+<p><b>Warning!</b> Force audit mode can be extremely noisy even for a single profile, let alone when enabled globally.</p>
+
+<p>To set a specific profile in force audit mode, add the <code>audit</code> flag:</p>
+
+<pre><code>        profile foo flags=(audit) { ... }</code></pre>
+
+<p>To enable force audit mode globally, run:</p>
+
+<pre><code>        echo -n all &gt; /sys/module/apparmor/parameters/audit</code></pre>
+
+<p>If auditd is not running, to avoid losing too many of the extra log messages, you will likely have to turn off rate limiting by doing:</p>
+
+<pre><code>        echo 0 &gt; /proc/sys/kernel/printk_ratelimit</code></pre>
+
+<p>But even then the kernel ring buffer may overflow and you might lose messages.</p>
+
+<p>Else, if auditd is running, see auditd(8) and auditd.conf(5).</p>
+
 <h1 id="FILES">FILES</h1>
 
 <dl>
@@ -129,7 +178,7 @@
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
-<p>apparmor_parser(8), aa_change_hat(2), apparmor.d(5), subdomain.conf(5), aa-autodep(1), clean(1), auditd(8), aa-unconfined(8), aa-enforce(1), aa-complain(1), and <a href="http://wiki.apparmor.net">http://wiki.apparmor.net</a>.</p>
+<p>apparmor_parser(8), aa_change_hat(2), apparmor.d(5), subdomain.conf(5), aa-autodep(1), clean(1), auditd(8), aa-unconfined(8), aa-enforce(1), aa-complain(1), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">

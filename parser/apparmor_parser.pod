@@ -46,9 +46,10 @@ program. The B<profiles> may be specified by file name or a directory
 name containing a set of profiles. If a directory is specified then the
 B<apparmor_parser> will try to do a profile load for each file in the
 directory that is not a dot file, or explicitly black listed (*.dpkg-new,
-*.dpkg-old, *.dpkg-dist, *-dpkg-bak, *.repnew, *.rpmsave, *orig, *.rej,
-*~). The B<apparmor_parser> will fall back to taking input from standard
-input if a profile or directory is not supplied.
+*.dpkg-old, *.dpkg-dist, *.dpkg-bak, *.dpkg-remove, *.pacsave, *.pacnew,
+*.rpmnew, *.rpmsave, *.orig, *.rej, *~).
+The B<apparmor_parser> will fall back to taking input from standard input if
+a profile or directory is not supplied.
 
 The input supplied to B<apparmor_parser> should be in the format described in
 apparmor.d(5).
@@ -232,8 +233,28 @@ inconsistent state
 
 =item -L, --cache-loc
 
-Set the location of the cache directory.  If not specified the cache location
-defaults to /etc/apparmor.d/cache
+Set the location(s) of the cache directory. This option can accept a
+comma separated list of directories, which will be searched in order
+to find a matching cache. The first matching cache file found is used
+even if a directory later in the search order may contain a newer cache
+file.
+
+If multiple directories are specified and --write-cache has been specified
+then cache writes will be made to the first directory in the list, all
+other directories will be treated as read only.
+
+If a cache directory name needs to have a comma as part of the name, it
+can be specified by using a backslash to escape the comma character in
+the directory name.
+
+If not specified the cache location defaults to /var/cache/apparmor
+
+=item --print-cache-dir
+
+Print the cache directory location. This path will be a subdirectory of the
+directory specified by --cache-loc. The subdirectory used will be influenced by
+the features available in the currently running kernel or by the features
+specified with the --match-string or --features-file options.
 
 =item -Q, --skip-kernel-load
 
@@ -334,6 +355,17 @@ This option tells the parser to not attempt to rebuild the cache on
 failure, instead the parser continues on with processing the remaining
 profiles.
 
+=item --config-file
+
+Specify the config file to use instead of
+/etc/apparmor/parser.conf. This option will be processed early before
+regular options regardless of the order it is specified in.
+
+=item --print-config-file
+
+Print the config file location that will be used.
+
+
 =back
 
 =head1 CONFIG FILE
@@ -376,6 +408,6 @@ L<https://bugs.launchpad.net/apparmor/+filebug>.
 =head1 SEE ALSO
 
 apparmor(7), apparmor.d(5), subdomain.conf(5), aa_change_hat(2), and
-L<http://wiki.apparmor.net>.
+L<https://wiki.apparmor.net>.
 
 =cut

@@ -21,6 +21,9 @@
   /etc/passwd             r,
   /etc/protocols          r,
 
+  # libtirpc (used for NIS/YP login) needs this
+  /etc/netconfig r,
+
   # When using libnss-extrausers, the passwd and group files are merged from
   # an alternate path
   /var/lib/extrausers/group  r,
@@ -29,6 +32,7 @@
   # When using sssd, the passwd and group files are stored in an alternate path
   # and the nss plugin also needs to talk to a pipe
   /var/lib/sss/mc/group   r,
+  /var/lib/sss/mc/initgroups r,
   /var/lib/sss/mc/passwd  r,
   /var/lib/sss/pipes/nss  rw,
 
@@ -37,6 +41,7 @@
   # a symlink to /{,var/}run/(whatever program is managing it)/resolv.conf.
   /{,var/}run/{resolvconf,NetworkManager,systemd/resolve,connman}/resolv.conf r,
   /etc/resolvconf/run/resolv.conf r,
+  /{,var/}run/systemd/resolve/stub-resolv.conf r,
 
   /etc/samba/lmhosts      r,
   /etc/services           r,
