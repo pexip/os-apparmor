@@ -1,3 +1,9 @@
+apparmor (2.13.2-10pexip1) pexip; urgency=medium
+
+  * Migrate to Buster
+
+ -- Vincent Sanders <vince@pexip.com>  Mon, 17 Feb 2020 12:40:58 +0000
+
 apparmor (2.13.2-10) unstable; urgency=medium
 
   * Don't load AppArmor policy when running in a Debian Live environment
