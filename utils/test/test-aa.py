@@ -10,7 +10,7 @@
 # ------------------------------------------------------------------
 
 import unittest
-from common_test import AATest, setup_all_loops
+from common_test import AATest, setup_all_loops, setup_aa
 from common_test import read_file, write_file
 
 import os
@@ -19,7 +19,7 @@ import sys
 
 import apparmor.aa  # needed to set global vars in some tests
 from apparmor.aa import (check_for_apparmor, get_output, get_reqs, get_interpreter_and_abstraction, create_new_profile,
-     get_profile_flags, set_profile_flags, set_options_audit_mode, is_skippable_file, is_skippable_dir,
+     get_profile_flags, change_profile_flags, set_options_audit_mode, set_options_owner_mode, is_skippable_file, is_skippable_dir,
      parse_profile_start, parse_profile_data, separate_vars, store_list_var, write_header,
      var_transform, serialize_parse_profile_start, get_file_perms, propose_file_rules)
 from apparmor.aare import AARE
@@ -226,15 +226,12 @@ class AaTest_get_profile_flags(AaTestWithTempdir):
         with self.assertRaises(AppArmorException):
             self._test_get_flags('/no-such-profile flags=(complain)', 'complain')
 
-class AaTest_set_profile_flags(AaTestWithTempdir):
-    def _test_set_flags(self, profile, old_flags, new_flags, whitespace='', comment='',
+class AaTest_change_profile_flags(AaTestWithTempdir):
+    def _test_change_profile_flags(self, profile, old_flags, flags_to_change, set_flag, expected_flags, whitespace='', comment='',
                         more_rules='', expected_more_rules='@-@-@',
-                        expected_flags='@-@-@', check_new_flags=True, profile_name='/foo'):
+                        check_new_flags=True, profile_name='/foo'):
         if old_flags:
             old_flags = ' %s' % old_flags
-
-        if expected_flags == '@-@-@':
-            expected_flags = new_flags
 
         if expected_flags:
             expected_flags = ' flags=(%s)' % (expected_flags)
@@ -253,152 +250,150 @@ class AaTest_set_profile_flags(AaTestWithTempdir):
         new_prof = prof_template % (whitespace, profile, expected_flags, comment, expected_more_rules, dummy_profile_content)
 
         self.file = write_file(self.tmpdir, 'profile', old_prof)
-        set_profile_flags(self.file, profile_name, new_flags)
+        change_profile_flags(self.file, profile_name, flags_to_change, set_flag)
         if check_new_flags:
             real_new_prof = read_file(self.file)
             self.assertEqual(new_prof, real_new_prof)
 
     # tests that actually don't change the flags
-    def test_set_flags_nochange_01(self):
-        self._test_set_flags('/foo', '', '')
-    def test_set_flags_nochange_02(self):
-        self._test_set_flags('/foo', '(  complain  )', '  complain  ', whitespace='   ')
-    def test_set_flags_nochange_03(self):
-        self._test_set_flags('/foo', '(complain)', 'complain')
-    def test_set_flags_nochange_04(self):
-        self._test_set_flags('/foo', 'flags=(complain)', 'complain')
-    def test_set_flags_nochange_05(self):
-        self._test_set_flags('/foo', 'flags=(complain,  audit)', 'complain,  audit', whitespace='     ')
-    def test_set_flags_nochange_06(self):
-        self._test_set_flags('/foo', 'flags=(complain,  audit)', 'complain,  audit', whitespace='     ', comment='# a comment')
-    def test_set_flags_nochange_07(self):
-        self._test_set_flags('/foo', 'flags=(complain,  audit)', 'complain,  audit', whitespace='     ', more_rules='  # a comment\n#another  comment')
-    def test_set_flags_nochange_08(self):
-        self._test_set_flags('profile /foo', 'flags=(complain)', 'complain')
-    def test_set_flags_nochange_09(self):
-        self._test_set_flags('profile xy /foo', 'flags=(complain)', 'complain', profile_name='xy')
-    def test_set_flags_nochange_10(self):
-        self._test_set_flags('profile "/foo bar"', 'flags=(complain)', 'complain', profile_name='/foo bar')
-    def test_set_flags_nochange_11(self):
-        self._test_set_flags('/foo', '(complain)', 'complain', profile_name=None)
-    #def test_set_flags_nochange_12(self):
-    # XXX changes the flags for the child profile (which happens to have the same profile name) to 'complain'
-    #    self._test_set_flags('/foo', 'flags=(complain)', 'complain', more_rules='  profile /foo {\n}')
+    def test_change_profile_flags_nochange_02(self):
+        self._test_change_profile_flags('/foo', '(  complain  )', 'complain', True, 'complain', whitespace='   ')
+    def test_change_profile_flags_nochange_03(self):
+        self._test_change_profile_flags('/foo', '(complain)', 'complain', True, 'complain')
+    def test_change_profile_flags_nochange_04(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'complain', True, 'complain')
+    def test_change_profile_flags_nochange_05(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain,  audit)', 'complain', True, 'audit, complain', whitespace='     ')
+    def test_change_profile_flags_nochange_06(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain,  audit)', 'complain', True, 'audit, complain', whitespace='     ', comment='# a comment')
+    def test_change_profile_flags_nochange_07(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain,  audit)', 'audit', True, 'audit, complain', whitespace='     ', more_rules='  # a comment\n#another  comment')
+    def test_change_profile_flags_nochange_08(self):
+        self._test_change_profile_flags('profile /foo', 'flags=(complain)', 'complain', True, 'complain')
+    def test_change_profile_flags_nochange_09(self):
+        self._test_change_profile_flags('profile xy /foo', 'flags=(complain)', 'complain', True, 'complain', profile_name='xy')
+    def test_change_profile_flags_nochange_10(self):
+        self._test_change_profile_flags('profile "/foo bar"', 'flags=(complain)', 'complain', True, 'complain', profile_name='/foo bar')
+    def test_change_profile_flags_nochange_11(self):
+        self._test_change_profile_flags('/foo', '(complain)', 'complain', True, 'complain', profile_name=None)
+    def test_change_profile_flags_nochange_12(self):
+        # XXX changes the flags for the child profile (which happens to have the same profile name) to 'complain'
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'complain', True, 'complain', more_rules='  profile /foo {\n}', expected_more_rules='  profile /foo flags=(complain) {\n}')
 
     # tests that change the flags
-    def test_set_flags_01(self):
-        self._test_set_flags('/foo', '', 'audit')
-    def test_set_flags_02(self):
-        self._test_set_flags('/foo', '(  complain  )', 'audit ', whitespace='  ')
-    def test_set_flags_04(self):
-        self._test_set_flags('/foo', '(complain)', 'audit')
-    def test_set_flags_05(self):
-        self._test_set_flags('/foo', 'flags=(complain)', 'audit')
-    def test_set_flags_06(self):
-        self._test_set_flags('/foo', 'flags=(complain,  audit)', None, whitespace='    ')
-    def test_set_flags_07(self):
-        self._test_set_flags('/foo', 'flags=(complain,  audit)', '', expected_flags=None)
-    def test_set_flags_08(self):
-        self._test_set_flags('/foo', '(  complain  )', 'audit ', whitespace='  ', profile_name=None)
-    def test_set_flags_09(self):
-        self._test_set_flags('profile /foo', 'flags=(complain)', 'audit')
-    def test_set_flags_10(self):
-        self._test_set_flags('profile xy /foo', 'flags=(complain)', 'audit', profile_name='xy')
-    def test_set_flags_11(self):
-        self._test_set_flags('profile "/foo bar"', 'flags=(complain)', 'audit', profile_name='/foo bar')
-    def test_set_flags_12(self):
-        self._test_set_flags('profile xy "/foo bar"', 'flags=(complain)', 'audit', profile_name='xy')
-    def test_set_flags_13(self):
-        self._test_set_flags('/foo', '(audit)', '')
+    def test_change_profile_flags_01(self):
+        self._test_change_profile_flags('/foo', '', 'audit', True, 'audit')
+    def test_change_profile_flags_02(self):
+        self._test_change_profile_flags('/foo', '(  complain  )', 'audit', True, 'audit, complain', whitespace='  ')
+    def test_change_profile_flags_04(self):
+        self._test_change_profile_flags('/foo', '(complain)', 'audit', True, 'audit, complain')
+    def test_change_profile_flags_05(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'audit', True, 'audit, complain')
+    def test_change_profile_flags_06(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain,  audit)', 'complain', False, 'audit', whitespace='    ')
+    def test_change_profile_flags_07(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain,  audit)', 'audit', False, 'complain')
+    def test_change_profile_flags_08(self):
+        self._test_change_profile_flags('/foo', '(  complain  )', 'audit', True, 'audit, complain', whitespace='  ', profile_name=None)
+    def test_change_profile_flags_09(self):
+        self._test_change_profile_flags('profile /foo', 'flags=(complain)', 'audit', True, 'audit, complain')
+    def test_change_profile_flags_10(self):
+        self._test_change_profile_flags('profile xy /foo', 'flags=(complain)', 'audit', True, 'audit, complain', profile_name='xy')
+    def test_change_profile_flags_11(self):
+        self._test_change_profile_flags('profile "/foo bar"', 'flags=(complain)', 'audit', True, 'audit, complain', profile_name='/foo bar')
+    def test_change_profile_flags_12(self):
+        self._test_change_profile_flags('profile xy "/foo bar"', 'flags=(complain)', 'audit', True, 'audit, complain', profile_name='xy')
+    def test_change_profile_flags_13(self):
+        self._test_change_profile_flags('/foo', '(audit)', 'audit', False, '')
 
     # test handling of hat flags
     def test_set_flags_with_hat_01(self):
-        self._test_set_flags('/foo', 'flags=(complain)', 'audit',
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'audit', True, 'audit, complain',
             more_rules='\n  ^foobar {\n}\n',
             expected_more_rules='\n  ^foobar flags=(audit) {\n}\n'
         )
 
-    def test_set_flags_with_hat_02(self):
-        self._test_set_flags('/foo', 'flags=(complain)', 'audit',
+    def test_change_profile_flags_with_hat_02(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'audit', False, 'complain',
             profile_name=None,
-            more_rules='\n  ^foobar {\n}\n',
-            expected_more_rules='\n  ^foobar flags=(audit) {\n}\n'
+            more_rules='\n  ^foobar flags=(audit) {\n}\n',
+            expected_more_rules='\n  ^foobar {\n}\n'
         )
 
-    def test_set_flags_with_hat_03(self):
-        self._test_set_flags('/foo', 'flags=(complain)', 'audit',
-            more_rules='\n^foobar (attach_disconnected) { # comment\n}\n', # XXX attach_disconnected will be lost!
-            expected_more_rules='\n^foobar flags=(audit) { # comment\n}\n'
+    def test_change_profile_flags_with_hat_03(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'audit', True, 'audit, complain',
+            more_rules='\n^foobar (attach_disconnected) { # comment\n}\n',
+            expected_more_rules='\n^foobar flags=(attach_disconnected, audit) { # comment\n}\n'
         )
 
-    def test_set_flags_with_hat_04(self):
-        self._test_set_flags('/foo', '', 'audit',
-            more_rules='\n  hat foobar (attach_disconnected) { # comment\n}\n', # XXX attach_disconnected will be lost!
-            expected_more_rules='\n  hat foobar flags=(audit) { # comment\n}\n'
+    def test_change_profile_flags_with_hat_04(self):
+        self._test_change_profile_flags('/foo', '', 'audit', True, 'audit',
+            more_rules='\n  hat foobar (attach_disconnected) { # comment\n}\n',
+            expected_more_rules='\n  hat foobar flags=(attach_disconnected, audit) { # comment\n}\n'
         )
 
-    def test_set_flags_with_hat_05(self):
-        self._test_set_flags('/foo', '(audit)', '',
-            more_rules='\n  hat foobar (attach_disconnected) { # comment\n}\n', # XXX attach_disconnected will be lost!
-            expected_more_rules='\n  hat foobar { # comment\n}\n'
+    def test_change_profile_flags_with_hat_05(self):
+        self._test_change_profile_flags('/foo', '(audit)', 'audit', False, '',
+            more_rules='\n  hat foobar (attach_disconnected) { # comment\n}\n',
+            expected_more_rules='\n  hat foobar flags=(attach_disconnected) { # comment\n}\n'
         )
 
     # test handling of child profiles
-    def test_set_flags_with_child_01(self):
-        self._test_set_flags('/foo', 'flags=(complain)', 'audit',
+    def test_change_profile_flags_with_child_01(self):
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'audit', True, 'audit, complain',
             profile_name=None,
             more_rules='\n  profile /bin/bar {\n}\n',
             expected_more_rules='\n  profile /bin/bar flags=(audit) {\n}\n'
         )
 
-    #def test_set_flags_with_child_02(self):
+    def test_change_profile_flags_with_child_02(self):
         # XXX child profile flags aren't changed if profile parameter is not None
-        #self._test_set_flags('/foo', 'flags=(complain)', 'audit',
-        #    more_rules='\n  profile /bin/bar {\n}\n',
-        #    expected_more_rules='\n  profile /bin/bar flags=(audit) {\n}\n'
-        #)
+        self._test_change_profile_flags('/foo', 'flags=(complain)', 'audit', True, 'audit, complain',
+            more_rules='\n  profile /bin/bar {\n}\n',
+            expected_more_rules='\n  profile /bin/bar {\n}\n'  # flags(audit) should be added
+        )
 
 
-    def test_set_flags_invalid_01(self):
+    def test_change_profile_flags_invalid_01(self):
         with self.assertRaises(AppArmorBug):
-            self._test_set_flags('/foo', '()', None, check_new_flags=False)
-    def test_set_flags_invalid_02(self):
+            self._test_change_profile_flags('/foo', '()', None, False, '', check_new_flags=False)
+    def test_change_profile_flags_invalid_02(self):
         with self.assertRaises(AppArmorBug):
-            self._test_set_flags('/foo', 'flags=()', None, check_new_flags=False)
-    def test_set_flags_invalid_03(self):
-        with self.assertRaises(AppArmorException):
-            self._test_set_flags('/foo', '(  )', '', check_new_flags=False)
-    def test_set_flags_invalid_04(self):
+            self._test_change_profile_flags('/foo', 'flags=()', None, True, '', check_new_flags=False)
+    def test_change_profile_flags_invalid_03(self):
         with self.assertRaises(AppArmorBug):
-            self._test_set_flags('/foo', 'flags=(complain,  audit)', '  ', check_new_flags=False) # whitespace-only newflags
+            self._test_change_profile_flags('/foo', '(  )', '', True, '', check_new_flags=False)
+    def test_change_profile_flags_invalid_04(self):
+        with self.assertRaises(AppArmorBug):
+            self._test_change_profile_flags('/foo', 'flags=(complain,  audit)', '  ', True, 'audit, complain', check_new_flags=False) # whitespace-only newflags
 
-    def test_set_flags_other_profile(self):
+    def test_change_profile_flags_other_profile(self):
         # test behaviour if the file doesn't contain the specified /foo profile
         orig_prof = '/no-such-profile flags=(complain) {\n}'
         self.file = write_file(self.tmpdir, 'profile', orig_prof)
 
-        with self.assertRaises(AppArmorBug):
-            set_profile_flags(self.file, '/foo', 'audit')
+        with self.assertRaises(AppArmorException):
+            change_profile_flags(self.file, '/foo', 'audit', True)
 
         # the file should not be changed
         real_new_prof = read_file(self.file)
         self.assertEqual(orig_prof, real_new_prof)
 
-    def test_set_flags_no_profile_found(self):
+    def test_change_profile_flags_no_profile_found(self):
         # test behaviour if the file doesn't contain any profile
         orig_prof = '# /comment flags=(complain) {\n# }'
         self.file = write_file(self.tmpdir, 'profile', orig_prof)
 
-        with self.assertRaises(AppArmorBug):
-            set_profile_flags(self.file, None, 'audit')
+        with self.assertRaises(AppArmorException):
+            change_profile_flags(self.file, None, 'audit', True)
 
         # the file should not be changed
         real_new_prof = read_file(self.file)
         self.assertEqual(orig_prof, real_new_prof)
 
-    def test_set_flags_file_not_found(self):
+    def test_change_profile_flags_file_not_found(self):
         with self.assertRaises(IOError):
-            set_profile_flags('%s/file-not-found' % self.tmpdir, '/foo', 'audit')
+            change_profile_flags('%s/file-not-found' % self.tmpdir, '/foo', 'audit', True)
 
 class AaTest_set_options_audit_mode(AATest):
     tests = [
@@ -412,6 +407,20 @@ class AaTest_set_options_audit_mode(AATest):
     def _run_test(self, params, expected):
         rule_obj, options = params
         new_options = set_options_audit_mode(rule_obj, options)
+        self.assertEqual(new_options, expected)
+
+class AaTest_set_options_owner_mode(AATest):
+    tests = [
+        ((FileRule.parse('owner /foo/bar r,'),      ['/foo/bar r,', '/foo/* r,', '/** r,']                                  ), ['owner /foo/bar r,', 'owner /foo/* r,', 'owner /** r,']),
+        ((FileRule.parse('owner /foo/bar r,'),      ['/foo/bar r,', 'owner /foo/* r,', 'owner /** r,']                      ), ['owner /foo/bar r,', 'owner /foo/* r,', 'owner /** r,']),
+        ((FileRule.parse('/foo/bar r,'),            ['/foo/bar r,', '/foo/* r,', '/** r,']                                  ), ['/foo/bar r,', '/foo/* r,', '/** r,']),
+        ((FileRule.parse('/foo/bar r,'),            ['owner /foo/bar r,', 'owner /foo/* r,', 'owner /** r,']                ), ['/foo/bar r,', '/foo/* r,', '/** r,']),
+        ((FileRule.parse('audit owner /foo/bar r,'),['audit /foo/bar r,', 'audit /foo/* r,', '#include <abstractions/base>']), ['audit owner /foo/bar r,', 'audit owner /foo/* r,', '#include <abstractions/base>']),
+    ]
+
+    def _run_test(self, params, expected):
+        rule_obj, options = params
+        new_options = set_options_owner_mode(rule_obj, options)
         self.assertEqual(new_options, expected)
 
 class AaTest_is_skippable_file(AATest):
@@ -438,22 +447,28 @@ class AaTest_is_skippable_file(AATest):
     def test_skippable_04(self):
         self.assertTrue(is_skippable_file('bin.ping..dpkg-bak'))
     def test_skippable_05(self):
-        self.assertTrue(is_skippable_file('bin.ping.rpmnew'))
+        self.assertTrue(is_skippable_file('bin.ping.dpkg-remove'))
     def test_skippable_06(self):
-        self.assertTrue(is_skippable_file('bin.ping.rpmsave'))
+        self.assertTrue(is_skippable_file('bin.ping.pacsave'))
     def test_skippable_07(self):
-        self.assertTrue(is_skippable_file('bin.ping.orig'))
+        self.assertTrue(is_skippable_file('bin.ping.pacnew'))
     def test_skippable_08(self):
-        self.assertTrue(is_skippable_file('bin.ping.rej'))
+        self.assertTrue(is_skippable_file('bin.ping.rpmnew'))
     def test_skippable_09(self):
-        self.assertTrue(is_skippable_file('bin.ping~'))
+        self.assertTrue(is_skippable_file('bin.ping.rpmsave'))
     def test_skippable_10(self):
-        self.assertTrue(is_skippable_file('.bin.ping'))
+        self.assertTrue(is_skippable_file('bin.ping.orig'))
     def test_skippable_11(self):
-        self.assertTrue(is_skippable_file(''))  # empty filename
+        self.assertTrue(is_skippable_file('bin.ping.rej'))
     def test_skippable_12(self):
-        self.assertTrue(is_skippable_file('/etc/apparmor.d/'))  # directory without filename
+        self.assertTrue(is_skippable_file('bin.ping~'))
     def test_skippable_13(self):
+        self.assertTrue(is_skippable_file('.bin.ping'))
+    def test_skippable_14(self):
+        self.assertTrue(is_skippable_file(''))  # empty filename
+    def test_skippable_15(self):
+        self.assertTrue(is_skippable_file('/etc/apparmor.d/'))  # directory without filename
+    def test_skippable_16(self):
         self.assertTrue(is_skippable_file('README'))
 
 
@@ -464,7 +479,10 @@ class AaTest_is_skippable_dir(AATest):
         ('lxc',                         True),
         ('force-complain',              True),
         ('/etc/apparmor.d/cache',       True),
+        ('/etc/apparmor.d/cache.d',     True),
+        ('/etc/apparmor.d/cache.d/',    True),
         ('/etc/apparmor.d/lxc/',        True),
+        ('/etc/apparmor.d/.git/',       True),
 
         ('dont_disable',                False),
         ('/etc/apparmor.d/cache_foo',   False),
@@ -521,6 +539,9 @@ class AaTest_parse_profile_start(AATest):
         expected = ('/foo', '/foo', None, 'complain', False, False, False)
         self.assertEqual(result, expected)
 
+    def test_parse_profile_start_unsupported_01(self):
+        with self.assertRaises(AppArmorException):
+            self._parse('/foo///bar///baz {', None, None)  # XXX deeply nested external hat
 
     def test_parse_profile_start_invalid_01(self):
         with self.assertRaises(AppArmorException):
@@ -768,7 +789,7 @@ class AaTest_get_file_perms_1(AATest):
         self.profile_dir = '%s/profiles' % self.tmpdir
         shutil.copytree('../../profiles/apparmor.d/', self.profile_dir, symlinks=True)
 
-        profile = apparmor.aa.profile_storage('/test', '/test', 'test-aa.py')
+        profile = apparmor.aa.ProfileStorage('/test', '/test', 'test-aa.py')
 
         # simple profile without any includes
         profile['file'].add(FileRule.parse('owner /usr/share/common-licenses/**  w,'))
@@ -781,11 +802,12 @@ class AaTest_get_file_perms_1(AATest):
 class AaTest_get_file_perms_2(AATest):
     tests = [
         ('/usr/share/common-licenses/foo/bar',      {'allow': {'all': {'r'},            'owner': {'w'}  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/share/common-licenses/**'}              }),
+        ('/usr/share/common-licenses/what/ever',    {'allow': {'all': {'r'},            'owner': {'w'}  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/share/common-licenses/**', '/usr/share/common-licenses/what/ever'}      }),
         ('/dev/null',                               {'allow': {'all': {'r', 'w', 'k'},  'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/dev/null'}                                  }),
         ('/foo/bar',                                {'allow': {'all': {'r', 'w'},       'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/foo/bar'}                                   }),  # exec perms not included
         ('/no/thing',                               {'allow': {'all': set(),            'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': set()                                          }),
-        ('/usr/lib/ispell/',                        {'allow': {'all': {'r'},            'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/lib/ispell/', '/usr/lib{,32,64}/**'}    }),  # from abstractions/enchant
-        ('/usr/lib/aspell/*.so',                    {'allow': {'all': {'m', 'r'},       'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/lib/aspell/*', '/usr/lib/aspell/*.so', '/usr/lib{,32,64}/**'} }),  # from abstractions/aspell via abstractions/enchant
+        ('/usr/lib/ispell/',                        {'allow': {'all': {'r'},            'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/lib/ispell/', '/{usr/,}lib{,32,64}/**'}    }),  # from abstractions/enchant
+        ('/usr/lib/aspell/*.so',                    {'allow': {'all': {'m', 'r'},       'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/lib/aspell/*', '/usr/lib/aspell/*.so', '/{usr/,}lib{,32,64}/**'} }),  # from abstractions/aspell via abstractions/enchant
     ]
 
     def _run_test(self, params, expected):
@@ -802,12 +824,13 @@ class AaTest_get_file_perms_2(AATest):
         apparmor.aa.load_include('abstractions/enchant')
         apparmor.aa.load_include('abstractions/aspell')
 
-        profile = apparmor.aa.profile_storage('/test', '/test', 'test-aa.py')
+        profile = apparmor.aa.ProfileStorage('/test', '/test', 'test-aa.py')
         profile['include']['abstractions/base'] = True
         profile['include']['abstractions/bash'] = True
         profile['include']['abstractions/enchant'] = True  # includes abstractions/aspell
 
         profile['file'].add(FileRule.parse('owner /usr/share/common-licenses/**  w,'))
+        profile['file'].add(FileRule.parse('owner /usr/share/common-licenses/what/ever a,'))  # covered by the above 'w' rule, so 'a' should be ignored
         profile['file'].add(FileRule.parse('/dev/null rwk,'))
         profile['file'].add(FileRule.parse('/foo/bar rwix,'))
 
@@ -820,8 +843,9 @@ class AaTest_propose_file_rules(AATest):
         (['/usr/share/common-licenses/foo/bar', 'w'],   ['/usr/share/common*/foo/* rw,', '/usr/share/common-licenses/** rw,', '/usr/share/common-licenses/foo/bar rw,']         ),
         (['/dev/null',                          'wk'],  ['/dev/null rwk,']                                                                                                      ),
         (['/foo/bar',                           'rw'],  ['/foo/bar rw,']                                                                                                        ),
-        (['/usr/lib/ispell/',                   'w'],   ['/usr/lib{,32,64}/** rw,', '/usr/lib/ispell/ rw,']                                                                     ),
-        (['/usr/lib/aspell/some.so',            'k'],   ['/usr/lib/aspell/* mrk,', '/usr/lib/aspell/*.so mrk,', '/usr/lib{,32,64}/** mrk,', '/usr/lib/aspell/some.so mrk,']     ),
+        (['/usr/lib/ispell/',                   'w'],   ['/{usr/,}lib{,32,64}/** rw,', '/usr/lib/ispell/ rw,']                                                                     ),
+        (['/usr/lib/aspell/some.so',            'k'],   ['/usr/lib/aspell/* mrk,', '/usr/lib/aspell/*.so mrk,', '/{usr/,}lib{,32,64}/** mrk,', '/usr/lib/aspell/some.so mrk,']     ),
+        (['/foo/log',                           'w'],   ['/foo/log w,']                                                                                                            ),
     ]
 
     def _run_test(self, params, expected):
@@ -842,7 +866,7 @@ class AaTest_propose_file_rules(AATest):
         apparmor.aa.user_globs['/usr/share/common*/foo/*'] = AARE('/usr/share/common*/foo/*', True)
         apparmor.aa.user_globs['/no/thi*ng'] = AARE('/no/thi*ng', True)
 
-        profile = apparmor.aa.profile_storage('/test', '/test', 'test-aa.py')
+        profile = apparmor.aa.ProfileStorage('/test', '/test', 'test-aa.py')
         profile['include']['abstractions/base'] = True
         profile['include']['abstractions/bash'] = True
         profile['include']['abstractions/enchant'] = True  # includes abstractions/aspell
@@ -850,11 +874,66 @@ class AaTest_propose_file_rules(AATest):
         profile['file'].add(FileRule.parse('owner /usr/share/common-licenses/**  w,'))
         profile['file'].add(FileRule.parse('/dev/null rwk,'))
         profile['file'].add(FileRule.parse('/foo/bar rwix,'))
+        profile['file'].add(FileRule.parse('/foo/log a,'))  # will be replaced with '/foo/log w,' (not 'wa')
 
         rule_obj = FileRule(params[0], params[1], None, FileRule.ALL, owner=False, log_event=True)
         proposals = propose_file_rules(profile, rule_obj)
         self.assertEqual(proposals, expected)
 
+
+class AaTest_propose_file_rules_with_absolute_includes(AATest):
+    tests = [
+        # log event path       and perms    expected proposals
+        (['/not/found/anywhere',    'r'],   ['/not/found/anywhere r,']),
+        (['/dev/null',              'w'],   ['/dev/null rw,']),
+        (['/some/random/include',   'r'],   ['/some/random/include rw,']),
+        (['/some/other/include',    'w'],   ['/some/other/* rw,', '/some/other/inc* rw,', '/some/other/include rw,']),
+    ]
+
+    def _run_test(self, params, expected):
+        self.createTmpdir()
+
+        #copy the local profiles to the test directory
+        self.profile_dir = '%s/profiles' % self.tmpdir
+        shutil.copytree('../../profiles/apparmor.d/', self.profile_dir, symlinks=True)
+
+        # load the abstractions we need in the test
+        apparmor.aa.profiledir = self.profile_dir
+        apparmor.aa.load_include('abstractions/base')
+
+        abs_include1 = write_file(self.tmpdir, 'test-abs1', "/some/random/include rw,")
+        apparmor.aa.load_include(abs_include1)
+
+        abs_include2 = write_file(self.tmpdir, 'test-abs2', "/some/other/* rw,")
+        apparmor.aa.load_include(abs_include2)
+
+        abs_include3 = write_file(self.tmpdir, 'test-abs3', "/some/other/inc* rw,")
+        apparmor.aa.load_include(abs_include3)
+
+        profile = apparmor.aa.ProfileStorage('/test', '/test', 'test-aa.py')
+        profile['include']['abstractions/base'] = False
+        profile['include'][abs_include1] = False
+        profile['include'][abs_include2] = False
+        profile['include'][abs_include3] = False
+
+        rule_obj = FileRule(params[0], params[1], None, FileRule.ALL, owner=False, log_event=True)
+        proposals = propose_file_rules(profile, rule_obj)
+        self.assertEqual(proposals, expected)
+
+
+class AaTest_nonexistent_includes(AATest):
+    def test_bad_includes(self):
+        tests = [
+            "/nonexistent/absolute/path",
+            "nonexistent/relative/path",
+        ]
+
+        for i in tests:
+            with self.assertRaises(AppArmorException):
+                apparmor.aa.load_include(i)
+
+
+setup_aa(apparmor.aa)
 setup_all_loops(__name__)
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

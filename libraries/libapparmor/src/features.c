@@ -1,5 +1,5 @@
 /*
- *   Copyright (c) 2014
+ *   Copyright (c) 2014-2017
  *   Canonical, Ltd. (All rights reserved)
  *
  *   This program is free software; you can redistribute it and/or
@@ -20,6 +20,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -31,13 +32,16 @@
 #include <sys/apparmor.h>
 
 #include "private.h"
+#include "PMurHash.h"
 
 #define FEATURES_FILE "/sys/kernel/security/apparmor/features"
 
+#define HASH_SIZE (8 + 1) /* 32 bits binary to hex + NUL terminator */
 #define STRING_SIZE 8192
 
 struct aa_features {
 	unsigned int ref_count;
+	char hash[HASH_SIZE];
 	char string[STRING_SIZE];
 };
 
@@ -199,6 +203,29 @@ static ssize_t load_features_dir(int dirfd, const char *path,
 
 	if (_aa_dirat_for_each(dirfd, path, &fst, features_dir_cb)) {
 		PDEBUG("Failed evaluating %s\n", path);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int init_features_hash(aa_features *features)
+{
+	const char *string = features->string;
+	uint32_t seed = 5381;
+	uint32_t hash = seed, carry = 0;
+	size_t len = strlen(string);
+
+	/* portable murmur3 hash
+	 * https://github.com/aappleby/smhasher/wiki/MurmurHash3
+	 */
+	PMurHash32_Process(&hash, &carry, features, len);
+	hash = PMurHash32_Result(hash, carry, len);
+
+	if (snprintf(features->hash, HASH_SIZE,
+		     "%08" PRIx32, hash) >= HASH_SIZE) {
+		errno = ENOBUFS;
+		PERROR("Hash buffer full.");
 		return -1;
 	}
 
@@ -404,6 +431,11 @@ int aa_features_new(aa_features **features, int dirfd, const char *path)
 		 load_features_dir(dirfd, path, f->string, STRING_SIZE) :
 		 load_features_file(dirfd, path, f->string, STRING_SIZE);
 	if (retval == -1) {
+		aa_features_unref(f);
+		return -1;
+	}
+
+	if (init_features_hash(f) == -1) {
 		int save = errno;
 
 		aa_features_unref(f);
@@ -446,6 +478,15 @@ int aa_features_new_from_string(aa_features **features,
 
 	memcpy(f->string, string, size);
 	f->string[size] = '\0';
+
+	if (init_features_hash(f) == -1) {
+		int save = errno;
+
+		aa_features_unref(f);
+		errno = save;
+		return -1;
+	}
+
 	*features = f;
 
 	return 0;
@@ -482,8 +523,12 @@ aa_features *aa_features_ref(aa_features *features)
  */
 void aa_features_unref(aa_features *features)
 {
+	int save = errno;
+
 	if (features && atomic_dec_and_test(&features->ref_count))
 		free(features);
+
+	errno = save;
 }
 
 /**
@@ -575,4 +620,22 @@ bool aa_features_supports(aa_features *features, const char *str)
 	}
 
 	return true;
+}
+
+/**
+ * aa_features_id - provides unique identifier for an aa_features object
+ * @features: the features
+ *
+ * Allocates and returns a string representation of an identifier that can
+ * be used to uniquely identify an aa_features object. The mechanism for
+ * generating the string representation is internal to libapparmor and
+ * subject to change but an example implementation is applying a hash
+ * function to the features string.
+ *
+ * Returns: a string identifying @features which must be freed by the
+ * caller or NULL, with errno set, upon error
+ */
+char *aa_features_id(aa_features *features)
+{
+	return strdup(features->hash);
 }

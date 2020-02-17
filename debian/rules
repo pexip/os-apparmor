@@ -1,5 +1,7 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/pkg-info.mk
+
 export DEB_BUILD_MAINT_OPTIONS = hardening=+bindnow
 
 export DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
@@ -11,7 +13,7 @@ export PYTHON_VERSION=3
 export PYTHON_VERSIONS=python3
 
 %:
-	dh $@ --with=python2,python3,apache2,systemd
+	dh $@ --with=python3,apache2
 
 
 override_dh_auto_configure:
@@ -20,14 +22,14 @@ override_dh_auto_configure:
 
 
 override_dh_auto_build:
-	# Create the empty file that was meant to be created by
-	# r3498-r3499-ignore-net-events-that-look-like-file-events.patch.
-	# Quilt does not support creating new empty files.
-	touch libraries/libapparmor/testsuite/test_multi/testcase_network_send_receive.err
+	# Replace #VERSION# placeholder in dh_apparmor
+	sed -i --regexp-extended \
+	    -e "s,^#VERSION#,our \$$VERSION = \"$(DEB_VERSION)\";," \
+	    debian/debhelper/dh_apparmor
 	# Build perl
 	dh_auto_build -D libraries/libapparmor
 	# Build pythons
-	set -e && for py in $(shell pyversions -s) $(shell py3versions -s) ; do \
+	set -e && for py in $(shell py3versions -s) ; do \
 		cp -a $(CURDIR)/libraries/libapparmor $(CURDIR)/libraries/libapparmor.$$py && \
 		PYTHON=/usr/bin/$$py dh_auto_configure \
 			-D libraries/libapparmor.$$py -- --with-python && \
@@ -39,7 +41,7 @@ override_dh_auto_build:
 	# and various apparmor files installed on the system
 	# Build pythons
 	cd utils && $(MAKE)
-	for py in $(shell pyversions -s) $(shell py3versions -s) ; do \
+	for py in $(shell py3versions -s) ; do \
 		cp -a $(CURDIR)/utils $(CURDIR)/utils.$$py && \
 		(cd utils.$$py && PYTHON=/usr/bin/$$py $(MAKE)) ; \
 	done
@@ -54,15 +56,17 @@ endif
 
 
 override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 ifeq (,$(filter $(DEB_HOST_ARCH_OS), kfreebsd knetbsd hurd ))
 	dh_auto_test -Dbinutils -- V=1
 	dh_auto_test -Dparser -- V=1
 endif
 	dh_auto_test -Dlibraries/libapparmor -- V=1
-	set -e && for py in $(shell pyversions -s) $(shell py3versions -s) ; do \
+	set -e && for py in $(shell py3versions -s) ; do \
 		PYTHON=/usr/bin/$$py dh_auto_test \
 			-D libraries/libapparmor.$$py -- PYTHON=/usr/bin/$$py; \
 	done
+endif
 
 
 override_dh_auto_clean:
@@ -95,7 +99,7 @@ override_dh_auto_install:
 	    DESTDIR=$(CURDIR)/debian/tmp \
 	    install
 
-	set -e && for py in $(shell pyversions -s) $(shell py3versions -s) ; do \
+	set -e && for py in $(shell py3versions -s) ; do \
 		(cd utils.$$py && PYTHON=/usr/bin/$$py $(MAKE) \
 	    	DESTDIR=$(CURDIR)/debian/tmp \
 	    	install) ; \
@@ -130,11 +134,14 @@ endif
 	cd libraries/libapparmor && $(MAKE) \
 	    DESTDIR=$(CURDIR)/debian/tmp \
 	    install
-	# fixup rpath for libapparmor-perl
-	find $(CURDIR)/debian/tmp/$(PERL_VENDORARCH) -name '*.so' | xargs chrpath --delete
+	# fixup rpath for libapparmor-perl, working around restrictive
+	# permissions set by ExtUtils::Install (that dh_fixperms will fix later)
+	find $(CURDIR)/debian/tmp/$(PERL_VENDORARCH) -name '*.so' -print0 | \
+		xargs -0 -I SO /bin/sh \
+			-c "chmod +w SO && chrpath --delete SO && chmod -w SO"
 
 	# Install python swig modules
-	set -e && for py in $(shell pyversions -s) $(shell py3versions -s); do \
+	set -e && for py in $(shell py3versions -s); do \
 		PYTHON=/usr/bin/$$py \
 		$(MAKE) -C libraries/libapparmor.$$py \
 		DESTDIR=$(CURDIR)/debian/tmp install; \
@@ -159,7 +166,6 @@ endif
 	rm ./profiles/apparmor.d/tunables/xdg-user-dirs.d/site.local
 	cd profiles && $(MAKE) \
 	    DESTDIR=$(CURDIR)/debian/tmp \
-	    EXTRAS_DEST=$(CURDIR)/debian/tmp/usr/share/doc/apparmor-profiles/extras \
 	    install
 	# set all profiles in apparmor-profiles to complain mode
 	cd $(CURDIR)/debian/tmp && sh $(CURDIR)/debian/put-all-profiles-in-complain-mode.sh
@@ -170,10 +176,10 @@ endif
 	# Create unversioned link in /usr to the shared library
 	MY_DSO=$$(basename $$(readlink $(CURDIR)/debian/tmp/lib/$(DEB_HOST_MULTIARCH)/libapparmor.so)); \
 	ln -sf /lib/$(DEB_HOST_MULTIARCH)/$${MY_DSO} \
-	    $(CURDIR)/debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libapparmor.so
+	    $(CURDIR)/debian/tmp/lib/$(DEB_HOST_MULTIARCH)/libapparmor.so
 
 override_dh_installinit:
-	dh_installinit --update-rcd-params='start 37 S .' --no-start --no-restart-on-upgrade --error-handler=true
+	dh_installinit --no-start --no-restart-on-upgrade --error-handler=true
 
 override_dh_compress:
 	dh_compress -Xextras
@@ -185,7 +191,7 @@ override_dh_perl:
 override_dh_apache2:
 	dh_apache2 --noenable
 
-override_dh_install:
+override_dh_install-indep:
 	set -e && for profile in $(shell grep ^etc/apparmor.d/ $(CURDIR)/debian/apparmor-profiles.install | \
 			 cut -d/ -f3- | grep -v /); do \
 	    DH_AUTOSCRIPTDIR=debian/debhelper/ perl debian/debhelper/dh_apparmor --profile-name=$$profile -papparmor-profiles; \
@@ -195,15 +201,10 @@ override_dh_install:
 	    $(CURDIR)/debian/tmp/etc/apparmor/severity.db
 	dh_install
 
-
-VERSION_SEP=+
-VERSION=$(shell  dpkg-parsechangelog | grep ^Version | cut -d$(VERSION_SEP) -f1 | cut -d\  -f2)
-BZR_RELEASE=$(shell dpkg-parsechangelog | grep ^Version | cut -d$(VERSION_SEP) -f2 | cut -d. -f1 | cut -d- -f1 | sed -e 's/bzr//')
-ORIG_FILE=$(CURDIR)/../apparmor_$(VERSION)$(VERSION_SEP)bzr$(BZR_RELEASE).orig.tar.gz
-BZR_CO_DIR=$(CURDIR)/apparmor-$(VERSION)$(VERSION_SEP)bzr$(BZR_RELEASE)
-get-orig-source:
-	test ! -e $(ORIG_FILE)
-	test ! -e $(BZR_CO_DIR)
-	bzr checkout --lightweight -r $(BZR_RELEASE) lp:~apparmor-dev/apparmor/master $(BZR_CO_DIR)
-	tar czf $(ORIG_FILE) -C `dirname $(BZR_CO_DIR)` --exclude .bzr `basename $(BZR_CO_DIR)`
-	rm -rf $(BZR_CO_DIR)
+override_dh_install-arch:
+	set -e && for profile in nvidia_modprobe; do \
+	    DH_AUTOSCRIPTDIR=debian/debhelper/ perl debian/debhelper/dh_apparmor --profile-name=$$profile -papparmor; \
+	done
+	dh_install
+	# Fix permissions so that aa-teardown can execute this file
+	chmod 0755 $(CURDIR)/debian/apparmor/lib/apparmor/apparmor.systemd

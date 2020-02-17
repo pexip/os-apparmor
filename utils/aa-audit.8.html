@@ -32,7 +32,7 @@
 
 <h1 id="SYNOPSIS">SYNOPSIS</h1>
 
-<p><b>aa-audit <i>&lt;executable&gt;</i> [<i>&lt;executable&gt;</i> ...] [<i>-d /path/to/profiles</i>] [<i>-r</i>]</b></p>
+<p><b>aa-audit <i>&lt;executable&gt;</i> [<i>&lt;executable&gt;</i> ...] [<i>-d /path/to/profiles</i>] [<i>--no-reload</i>] [<i>-r</i>]</b></p>
 
 <h1 id="OPTIONS">OPTIONS</h1>
 
@@ -41,9 +41,11 @@
 <pre><code>   Specifies where to look for the AppArmor security profile set.
    Defaults to /etc/apparmor.d.</code></pre>
 
+<p><b>--no-reload</b> Do not reload the profile after modifying it.</p>
+
 <p><b>-r --remove</b></p>
 
-<pre><code>   Removes the audit mode for the profile.  </code></pre>
+<pre><code>   Removes the audit mode for the profile.</code></pre>
 
 <h1 id="DESCRIPTION">DESCRIPTION</h1>
 
@@ -57,7 +59,7 @@
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
-<p>apparmor(7), apparmor.d(5), aa-enforce(1), aa-complain(1), aa-disable(1), aa_change_hat(2), and <a href="http://wiki.apparmor.net">http://wiki.apparmor.net</a>.</p>
+<p>apparmor(7), apparmor.d(5), aa-enforce(1), aa-complain(1), aa-disable(1), aa_change_hat(2), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">

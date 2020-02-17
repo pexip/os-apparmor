@@ -11,7 +11,7 @@
 
 import apparmor.aa as aa
 import unittest
-from common_test import AAParseTest, setup_regex_tests
+from common_test import AAParseTest, setup_regex_tests, setup_aa
 
 class BaseAAParseMountTest(AAParseTest):
     def setUp(self):
@@ -39,8 +39,9 @@ class AAParseUmountTest(BaseAAParseMountTest):
         ('unmount /mnt/external,', 'unmount with mount point'),
     ]
 
+setup_aa(aa)
 if __name__ == '__main__':
     setup_regex_tests(AAParseMountTest)
     setup_regex_tests(AAParseRemountTest)
     setup_regex_tests(AAParseUmountTest)
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

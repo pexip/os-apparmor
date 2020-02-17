@@ -6,7 +6,11 @@ set -e
 
 case "$1" in
     install|upgrade|abort-upgrade)
-        # Nothing to do
+        # Remove old click/snapv1 state files on upgrade (dpkg will remove the
+        # directories)
+        if [ "$1" = "upgrade" ] && dpkg --compare-versions "$2" lt-nl "2.12-4ubuntu2"; then
+            rm -f /var/lib/apparmor/profiles/.*.md5sums
+        fi
 	;;
 
     *)

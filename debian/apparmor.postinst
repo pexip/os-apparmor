@@ -5,7 +5,7 @@
 set -e
 
 . /usr/share/debconf/confmodule
-. /lib/apparmor/functions
+. /lib/apparmor/rc.apparmor.functions
 
 # summary of how this script can be called:
 #        * <postinst> `configure' <most-recently-configured-version>
@@ -21,6 +21,19 @@ set -e
 
 case "$1" in
     configure|abort-remove|abort-deconfigure)
+
+	# Remove old cache directories
+	if dpkg --compare-versions "$2" lt-nl "2.13-7"; then
+		rm -rf /etc/apparmor.d/cache /etc/apparmor.d/cache.d
+	fi
+
+	# Remove old cache files that click, snapd or manual invokation
+	# of "apparmor_parser --cache-loc /var/cache/apparmor" may have created:
+	# since 2.13-1 apparmor_parser won't create cache files at the root
+	# of the cache-loc, but instead in sub-directories.
+	if dpkg --compare-versions "$2" lt-nl "2.13-7"; then
+		find /var/cache/apparmor -maxdepth 1 -type f '!' -name CACHEDIR.TAG -delete
+	fi
 
 	# Try to determine values for apparmor/homedirs if the administrator
 	# hasn't already.
@@ -56,7 +69,7 @@ EOM
 EOM
         fi
         mkdir -p /etc/apparmor.d/tunables/home.d 2>/dev/null || true
-        mv -f "$tmp" /etc/apparmor.d/tunables/home.d/ubuntu
+        mv -Z -f "$tmp" /etc/apparmor.d/tunables/home.d/ubuntu
         chmod 644 /etc/apparmor.d/tunables/home.d/ubuntu
 
         if [ ! -e /etc/apparmor.d/tunables/xdg-user-dirs.d/site.local ]; then
@@ -86,8 +99,18 @@ EOM
 EOM
 
             mkdir -p /etc/apparmor.d/tunables/xdg-user-dirs.d 2>/dev/null || true
-            mv -n "$tmp" /etc/apparmor.d/tunables/xdg-user-dirs.d/site.local
+            mv -Z -n "$tmp" /etc/apparmor.d/tunables/xdg-user-dirs.d/site.local
             chmod 644 /etc/apparmor.d/tunables/xdg-user-dirs.d/site.local
+        fi
+
+        # Remove various profiles from Ubuntu Touch since they no longer exist
+        # in the archive and require files from apparmor-easyprof-ubuntu (which
+        # was also removed) to load correctly.
+	if dpkg --compare-versions "$2" lt-nl "2.12-4ubuntu4"; then
+            for i in usr.bin.media-hub-server usr.bin.mediascanner-service-2.0 usr.lib.mediascanner-2.0.mediascanner-extractor usr.bin.messaging-app usr.bin.webbrowser-app ; do
+                rm -f "/etc/apparmor.d/$i"
+                rm -f "/etc/apparmor.d/local/$i"
+            done
         fi
         ;;
 
@@ -108,19 +131,32 @@ esac
 
 # Now that AppArmor is installed, attempt to reload profiles in the
 # case of upgrades.
+aa_log_action_start() {
+    echo "$@"
+}
+aa_log_action_end() {
+    echo -n
+}
+aa_log_daemon_msg() {
+    echo "$@"
+}
+aa_log_end_msg() {
+    echo -n
+}
+aa_log_failure_msg() {
+    echo "Error: $@"
+}
+aa_log_skipped_msg() {
+    echo "Skipped: $@"
+}
+aa_log_warning_msg() {
+    echo "Warning: $@"
+}
 case "$1" in
     configure)
         if aa-status --enabled 2>/dev/null; then
-            clear_cache || true
-            load_configured_profiles || true
+            parse_profiles reload || true
         fi
-
-        # Discard the return code and just make sure the md5sums are updated
-        # so on next boot the upstart/initscript will have updated md5sums and
-        # won't clear out the cache. This does not affect system-image updates
-        # since /etc/system-image/writable-paths is configured to prefer the
-        # files on the device (and the apparmor upstart job handles this).
-        compare_and_save_debsums apparmor || true
         ;;
 esac
 

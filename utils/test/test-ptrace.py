@@ -84,7 +84,7 @@ class PtraceTestParseInvalid(PtraceTest):
 
 class PtraceTestParseFromLog(PtraceTest):
     def test_ptrace_from_log(self):
-        parser = ReadLog('', '', '', '', '')
+        parser = ReadLog('', '', '', '')
         event = 'type=AVC msg=audit(1409700683.304:547661): apparmor="DENIED" operation="ptrace" profile="/home/ubuntu/bzr/apparmor/tests/regression/apparmor/ptrace" pid=22465 comm="ptrace" requested_mask="tracedby" denied_mask="tracedby" peer="/home/ubuntu/bzr/apparmor/tests/regression/apparmor/ptrace"'
 
 
@@ -555,4 +555,4 @@ class PtraceGlobTestAATest(AATest):
 
 setup_all_loops(__name__)
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

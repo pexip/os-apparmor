@@ -12,11 +12,12 @@
 @{TFTP_DIR}=/var/tftp /srv/tftpboot
 
 #include <tunables/global>
-/usr/sbin/dnsmasq flags=(attach_disconnected) {
+/usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
   #include <abstractions/base>
   #include <abstractions/dbus>
   #include <abstractions/nameservice>
 
+  capability chown,
   capability net_bind_service,
   capability setgid,
   capability setuid,
@@ -26,8 +27,8 @@
   network inet raw,
   network inet6 raw,
 
-  signal (receive) peer=/usr/sbin/libvirtd,
-  ptrace (readby) peer=/usr/sbin/libvirtd,
+  signal (receive) peer=/usr/{bin,sbin}/libvirtd,
+  ptrace (readby) peer=/usr/{bin,sbin}/libvirtd,
 
   owner /dev/tty rw,
 
@@ -39,8 +40,15 @@
   /etc/ethers r,
   /etc/NetworkManager/dnsmasq.d/ r,
   /etc/NetworkManager/dnsmasq.d/* r,
+  /etc/NetworkManager/dnsmasq-shared.d/ r,
+  /etc/NetworkManager/dnsmasq-shared.d/* r,
 
-  /usr/sbin/dnsmasq mr,
+  /usr/{bin,sbin}/dnsmasq mr,
+
+  /var/log/dnsmasq*.log w,
+
+  /usr/share/dnsmasq/ r,
+  /usr/share/dnsmasq/* r,
 
   /{,var/}run/*dnsmasq*.pid w,
   /{,var/}run/dnsmasq-forwarders.conf r,
@@ -82,10 +90,13 @@
   /var/lib/lxd/networks/*/dnsmasq.pid rw,
 
   # NetworkManager integration
+  /var/lib/NetworkManager/dnsmasq-*.leases rw,
   /{,var/}run/nm-dns-dnsmasq.conf r,
+  /{,var/}run/nm-dnsmasq-*.pid rw,
   /{,var/}run/sendsigs.omit.d/*dnsmasq.pid w,
   /{,var/}run/NetworkManager/dnsmasq.conf r,
   /{,var/}run/NetworkManager/dnsmasq.pid w,
+  /{,var/}run/NetworkManager/NetworkManager.pid w,
 
   profile libvirt_leaseshelper {
     #include <abstractions/base>
@@ -97,9 +108,9 @@
     owner @{PROC}/@{pid}/net/psched r,
     owner @{PROC}/@{pid}/status r,
 
-    /sys/devices/system/cpu/ r,
-    /sys/devices/system/node/ r,
-    /sys/devices/system/node/*/meminfo r,
+    @{sys}/devices/system/cpu/ r,
+    @{sys}/devices/system/node/ r,
+    @{sys}/devices/system/node/*/meminfo r,
 
     # libvirt lease and status files for dnsmasq
     /var/lib/libvirt/dnsmasq/*.leases  rw,

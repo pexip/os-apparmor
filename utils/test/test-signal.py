@@ -89,7 +89,7 @@ class SignalTestParseInvalid(SignalTest):
 
 class SignalTestParseFromLog(SignalTest):
     def test_signal_from_log(self):
-        parser = ReadLog('', '', '', '', '')
+        parser = ReadLog('', '', '', '')
         event = 'type=AVC msg=audit(1409438250.564:201): apparmor="DENIED" operation="signal" profile="/usr/bin/pulseaudio" pid=2531 comm="pulseaudio" requested_mask="send" denied_mask="send" signal=term peer="/usr/bin/pulseaudio///usr/lib/pulseaudio/pulse/gconf-helper"'
 
         parsed_event = parser.parse_event(event)
@@ -621,4 +621,4 @@ class SignalGlobTestAATest(AATest):
 
 setup_all_loops(__name__)
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

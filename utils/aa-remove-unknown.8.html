@@ -1,0 +1,88 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title></title>
+<link rel="stylesheet" href="apparmor.css" type="text/css" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body>
+<table border="0" width="100%" cellspacing="0" cellpadding="3">
+<tr><td class="_podblock_" valign="middle">
+<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+</td></tr>
+</table>
+
+
+
+<ul id="index">
+  <li><a href="#NAME">NAME</a></li>
+  <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+  <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+  <li><a href="#OPTIONS">OPTIONS</a></li>
+  <li><a href="#EXAMPLES">EXAMPLES</a></li>
+  <li><a href="#BUGS">BUGS</a></li>
+  <li><a href="#SEE-ALSO">SEE ALSO</a></li>
+</ul>
+
+<h1 id="NAME">NAME</h1>
+
+<p>aa-remove-unknown - remove unknown AppArmor profiles</p>
+
+<h1 id="SYNOPSIS">SYNOPSIS</h1>
+
+<p><b>aa-remove-unknown</b> [option]</p>
+
+<h1 id="DESCRIPTION">DESCRIPTION</h1>
+
+<p><b>aa-remove-unknown</b> will inventory all profiles in /etc/apparmor.d/, compare that list to the profiles currently loaded into the kernel, and then remove all of the loaded profiles that were not found in /etc/apparmor.d/. It will also report the name of each profile that it removes on standard out.</p>
+
+<h1 id="OPTIONS">OPTIONS</h1>
+
+<dl>
+
+<dt id="h---help">-h, --help</dt>
+<dd>
+
+<p>displays a short usage statement.</p>
+
+</dd>
+<dt id="n">-n</dt>
+<dd>
+
+<p>dry run; only prints the names of profiles that would be removed</p>
+
+</dd>
+</dl>
+
+<h1 id="EXAMPLES">EXAMPLES</h1>
+
+<pre><code>  $ sudo ./aa-remove-unknown -n
+  Would remove &#39;test//null-/usr/bin/whoami&#39;
+  Would remove &#39;test&#39;
+
+  $ sudo ./aa-remove-unknown
+  Removing &#39;test//null-/usr/bin/whoami&#39;
+  Removing &#39;test&#39;</code></pre>
+
+<h1 id="BUGS">BUGS</h1>
+
+<p>None. Please report any you find to Launchpad at <a href="https://bugs.launchpad.net/apparmor/+filebug">https://bugs.launchpad.net/apparmor/+filebug</a>.</p>
+
+<h1 id="SEE-ALSO">SEE ALSO</h1>
+
+<p>apparmor(7)</p>
+
+<table border="0" width="100%" cellspacing="0" cellpadding="3">
+<tr><td class="_podblock_" valign="middle">
+<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+</td></tr>
+</table>
+
+</body>
+
+</html>
+
+

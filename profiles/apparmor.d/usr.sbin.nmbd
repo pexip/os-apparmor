@@ -1,6 +1,6 @@
 #include <tunables/global>
 
-/usr/sbin/nmbd {
+profile nmbd /usr/{bin,sbin}/nmbd {
   #include <abstractions/base>
   #include <abstractions/nameservice>
   #include <abstractions/samba>
@@ -9,9 +9,11 @@
 
   @{PROC}/sys/kernel/core_pattern r,
 
-  /usr/sbin/nmbd mr,
+  /usr/{bin,sbin}/nmbd mr,
 
   /var/cache/samba/gencache.tdb rwk,
+  /var/cache/samba/gencache_notrans.tdb rwk,
+  /var/cache/samba/names.tdb rwk,
   /var/{cache,lib}/samba/browse.dat* rw,
   /var/{cache,lib}/samba/gencache.dat rw,
   /var/{cache,lib}/samba/wins.dat* rw,
@@ -22,8 +24,11 @@
   /var/{cache,lib}/samba/unexpected rw,
   /var/cache/samba/msg/ rw,
   /var/cache/samba/msg/* w,
+  /var/cache/samba/msg.lock/{,*} rwk,
 
+  /{,var/}run/nmbd.pid rwk,
   /{,var/}run/samba/** rwk,
+  /{,var/}run/systemd/notify w,
 
   # Site-specific additions and overrides. See local/README for details.
   #include <local/usr.sbin.nmbd>

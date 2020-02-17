@@ -55,7 +55,7 @@ B<VARIABLE> = '@{' I<ALPHA> [ ( I<ALPHANUMERIC> | '_' ) ... ] '}'
 
 B<ALIAS RULE> = 'alias' I<ABS PATH> '-E<gt>' I<REWRITTEN ABS PATH> ','
 
-B<INCLUDE> = '#include' ( I<ABS PATH> | I<MAGIC PATH> )
+B<INCLUDE> = ( '#include' | 'include' ) [ 'if exists' ] ( I<ABS PATH> | I<MAGIC PATH> )
 
 B<ABS PATH> = '"' path '"' (the path is passed to open(2))
 
@@ -111,7 +111,7 @@ capabilities(7))
 
 B<NETWORK RULE> = [ I<QUALIFIERS> ] 'network' [ I<DOMAIN> ] [ I<TYPE> | I<PROTOCOL> ]
 
-B<DOMAIN> = ( 'inet' | 'ax25' | 'ipx' | 'appletalk' | 'netrom' | 'bridge' | 'atmpvc' | 'x25' | 'inet6' | 'rose' | 'netbeui' | 'security' | 'key' | 'packet' | 'ash' | 'econet' | 'atmsvc' | 'sna' | 'irda' | 'pppox' | 'wanpipe' | 'bluetooth' | 'netlink' | 'unix' | 'rds' | 'llc' | 'can' | 'tipc' | 'iucv' | 'rxrpc' | 'isdn' | 'phonet' | 'ieee802154' | 'caif' | 'alg' | 'nfc' | 'vsock' | 'mpls' | 'ib' | 'kcm' ) ','
+B<DOMAIN> = ( 'inet' | 'ax25' | 'ipx' | 'appletalk' | 'netrom' | 'bridge' | 'atmpvc' | 'x25' | 'inet6' | 'rose' | 'netbeui' | 'security' | 'key' | 'packet' | 'ash' | 'econet' | 'atmsvc' | 'sna' | 'irda' | 'pppox' | 'wanpipe' | 'bluetooth' | 'netlink' | 'unix' | 'rds' | 'llc' | 'can' | 'tipc' | 'iucv' | 'rxrpc' | 'isdn' | 'phonet' | 'ieee802154' | 'caif' | 'alg' | 'nfc' | 'vsock' | 'mpls' | 'ib' | 'kcm' | 'smc' ) ','
 
 B<TYPE> = ( 'stream' | 'dgram' | 'seqpacket' |  'rdm' | 'raw' | 'packet' )
 
@@ -1414,13 +1414,17 @@ rules into a rule block.
 
 =head2 #include mechanism
 
-AppArmor provides an easy abstraction mechanism to group common file
+AppArmor provides an easy abstraction mechanism to group common
 access requirements; this abstraction is an extremely flexible way to
 grant site-specific rights and makes writing new AppArmor profiles very
 simple by assembling the needed building blocks for any given program.
 
 The use of '#include' is modelled directly after cpp(1); its use will
 replace the '#include' statement with the specified file's contents.
+The leading '#' is optional, and the '#include' keyword can be followed
+by an option conditional 'if exists' that specifies profile compilation
+should continue if the specified file or directory is not found.
+
 B<#include "/absolute/path"> specifies that F</absolute/path> should be
 used.  B<#include "relative/path"> specifies that F<relative/path> should
 be used, where the path is relative to the current working directory.
@@ -1607,6 +1611,6 @@ negative values match when specifying one or the other. Eg, 'rw' matches when
 
 apparmor(7), apparmor_parser(8), aa-complain(1),
 aa-enforce(1), aa_change_hat(2), mod_apparmor(5), and
-L<http://wiki.apparmor.net>.
+L<https://wiki.apparmor.net>.
 
 =cut

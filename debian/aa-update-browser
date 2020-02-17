@@ -139,7 +139,7 @@ EOM
         rm -f "$tmp"
         continue
     fi
-    mv -f "$tmp" "$dir/$include" || {
+    mv -Z -f "$tmp" "$dir/$include" || {
         rm -f "$tmp"
         exit 1
     }

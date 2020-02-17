@@ -35,16 +35,17 @@
 
 const char header_string[] = "\004\010\000version\000\002";
 #define HEADER_STRING_SIZE 12
+#define VERSION_STRING_SIZE 4
 bool valid_cached_file_version(const char *cachename)
 {
-	char buffer[16];
+	char buffer[HEADER_STRING_SIZE + VERSION_STRING_SIZE];
 	autofclose FILE *f;
 	if (!(f = fopen(cachename, "r"))) {
 		PERROR("Error: Could not read cache file '%s', skipping...\n", cachename);
 		return false;
 	}
-	size_t res = fread(buffer, 1, 16, f);
-	if (res < 16) {
+	size_t res = fread(buffer, 1, HEADER_STRING_SIZE + VERSION_STRING_SIZE, f);
+	if (res < HEADER_STRING_SIZE + VERSION_STRING_SIZE) {
 		if (debug_cache)
 			pwarn("%s: cache file '%s' invalid size\n", progname, cachename);
 		return false;
@@ -61,7 +62,7 @@ bool valid_cached_file_version(const char *cachename)
 						      policy_version,
 						      parser_abi_version,
 						      kernel_abi_version));
-	if (memcmp(buffer + 12, &version, 4) != 0) {
+	if (memcmp(buffer + HEADER_STRING_SIZE, &version, VERSION_STRING_SIZE) != 0) {
 		if (debug_cache)
 			pwarn("%s: cache file '%s' has wrong version\n", progname, cachename);
 		return false;
@@ -94,13 +95,15 @@ void update_mru_tstamp(FILE *file, const char *name)
 	}
 }
 
-char *cache_filename(const char *cachedir, const char *basename)
+char *cache_filename(aa_policy_cache *pc, int dir, const char *basename)
 {
 	char *cachename;
+	autofree char *path;
 
-	if (asprintf(&cachename, "%s/%s", cachedir, basename) < 0) {
+	path = aa_policy_cache_dir_path(pc, dir);
+	if (!path || asprintf(&cachename, "%s/%s", path, basename) < 0) {
 		PERROR("Memory allocation error.");
-		exit(1);
+		return NULL;
 	}
 
 	return cachename;
@@ -146,13 +149,13 @@ int setup_cache_tmp(const char **cachetmpname, const char *cachename)
 	*cachetmpname = NULL;
 	if (write_cache) {
 		/* Otherwise, set up to save a cached copy */
-		if (asprintf(&tmpname, "%s-XXXXXX", cachename)<0) {
+		if (asprintf(&tmpname, "%s-XXXXXX", cachename) < 0) {
 			perror("asprintf");
-			exit(1);
+			return -1;
 		}
 		if ((cache_fd = mkstemp(tmpname)) < 0) {
 			perror("mkstemp");
-			exit(1);
+			return -1;
 		}
 		*cachetmpname = tmpname;
 	}
