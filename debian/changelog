@@ -1,3 +1,9 @@
+apparmor (2.13.2-10pexip2) pexip; urgency=medium
+
+  * Rebuild in buster environment
+
+ -- Steve McIntyre <steve.mcintyre@pexip.com>  Wed, 15 Jul 2020 16:47:13 +0000
+
 apparmor (2.13.2-10pexip1) pexip; urgency=medium
 
   * Migrate to Buster
