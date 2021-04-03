@@ -16,7 +16,7 @@ Acked-by: seth.arnold@canonical.com
  1 file changed, 8 insertions(+), 34 deletions(-)
 
 diff --git a/parser/rc.apparmor.functions b/parser/rc.apparmor.functions
-index c9086a6..521cfe7 100644
+index 8c1c57c..875ca08 100644
 --- a/parser/rc.apparmor.functions
 +++ b/parser/rc.apparmor.functions
 @@ -327,42 +327,16 @@ unmount_subdomainfs() {

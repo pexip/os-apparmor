@@ -139,7 +139,7 @@
 
 <p><b>NETWORK RULE</b> = [ <i>QUALIFIERS</i> ] &#39;network&#39; [ <i>DOMAIN</i> ] [ <i>TYPE</i> | <i>PROTOCOL</i> ]</p>
 
-<p><b>DOMAIN</b> = ( &#39;inet&#39; | &#39;ax25&#39; | &#39;ipx&#39; | &#39;appletalk&#39; | &#39;netrom&#39; | &#39;bridge&#39; | &#39;atmpvc&#39; | &#39;x25&#39; | &#39;inet6&#39; | &#39;rose&#39; | &#39;netbeui&#39; | &#39;security&#39; | &#39;key&#39; | &#39;packet&#39; | &#39;ash&#39; | &#39;econet&#39; | &#39;atmsvc&#39; | &#39;sna&#39; | &#39;irda&#39; | &#39;pppox&#39; | &#39;wanpipe&#39; | &#39;bluetooth&#39; | &#39;netlink&#39; | &#39;unix&#39; | &#39;rds&#39; | &#39;llc&#39; | &#39;can&#39; | &#39;tipc&#39; | &#39;iucv&#39; | &#39;rxrpc&#39; | &#39;isdn&#39; | &#39;phonet&#39; | &#39;ieee802154&#39; | &#39;caif&#39; | &#39;alg&#39; | &#39;nfc&#39; | &#39;vsock&#39; | &#39;mpls&#39; | &#39;ib&#39; | &#39;kcm&#39; | &#39;smc&#39; ) &#39;,&#39;</p>
+<p><b>DOMAIN</b> = ( &#39;unix&#39; | &#39;inet&#39; | &#39;ax25&#39; | &#39;ipx&#39; | &#39;appletalk&#39; | &#39;netrom&#39; | &#39;bridge&#39; | &#39;atmpvc&#39; | &#39;x25&#39; | &#39;inet6&#39; | &#39;rose&#39; | &#39;netbeui&#39; | &#39;security&#39; | &#39;key&#39; | &#39;netlink&#39; | &#39;packet&#39; | &#39;ash&#39; | &#39;econet&#39; | &#39;atmsvc&#39; | &#39;rds&#39; | &#39;sna&#39; | &#39;irda&#39; | &#39;pppox&#39; | &#39;wanpipe&#39; | &#39;llc&#39; | &#39;ib&#39; | &#39;mpls&#39; | &#39;can&#39; | &#39;tipc&#39; | &#39;bluetooth&#39; | &#39;iucv&#39; | &#39;rxrpc&#39; | &#39;isdn&#39; | &#39;phonet&#39; | &#39;ieee802154&#39; | &#39;caif&#39; | &#39;alg&#39; | &#39;nfc&#39; | &#39;vsock&#39; | &#39;kcm&#39; | &#39;qipcrtr&#39; | &#39;smc&#39; | &#39;xdp&#39; ) &#39;,&#39;</p>
 
 <p><b>TYPE</b> = ( &#39;stream&#39; | &#39;dgram&#39; | &#39;seqpacket&#39; | &#39;rdm&#39; | &#39;raw&#39; | &#39;packet&#39; )</p>
 
@@ -287,7 +287,7 @@
 
 <p><b>EXEC TARGET</b> = name Requires <i>EXEC TRANSITION</i> specified.</p>
 
-<p><b>LINK RULE</b> = <i>QUALIFIERS</i> [ &#39;owner&#39; ] &#39;link&#39; [ &#39;subset&#39; ] <i>FILEGLOB</i> ( &#39;to&#39; | &#39;-&gt;&#39; ) <i>FILEGLOB</i></p>
+<p><b>LINK RULE</b> = <i>QUALIFIERS</i> [ &#39;owner&#39; ] &#39;link&#39; [ &#39;subset&#39; ] <i>FILEGLOB</i> &#39;-&gt;&#39; <i>FILEGLOB</i></p>
 
 <p><b>ALPHA</b> = (&#39;a&#39;, &#39;b&#39;, &#39;c&#39;, ... &#39;z&#39;, &#39;A&#39;, &#39;B&#39;, ... &#39;Z&#39;)</p>
 
@@ -985,7 +985,7 @@
          peer=(name=(com.example.ExampleName1|com.example.ExampleName2)),
 
     # Allow receive access for all unconfined peers
-    dbus receive peer=(label=unconfined)),
+    dbus receive peer=(label=unconfined),
 
     # Allow eavesdropping on the system bus
     dbus eavesdrop bus=system,
@@ -1071,7 +1071,7 @@
 
     network unix stream,   =&gt;  unix stream,</code></pre>
 
-<p>Fine grained mediation rules however can not be lossly converted back to the coarse grained network rule; e.g.</p>
+<p>Fine grained mediation rules however can not be losslessly converted back to the coarse grained network rule; e.g.</p>
 
 <pre><code>   unix bind addr=@example,</code></pre>
 
@@ -1140,6 +1140,7 @@
   @{apparmorfs}
   @{sys}
   @{tid}
+  @{run}
   @{XDG_DESKTOP_DIR}
   @{XDG_DOWNLOAD_DIR}
   @{XDG_TEMPLATES_DIR}

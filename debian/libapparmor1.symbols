@@ -9,6 +9,7 @@ libapparmor.so.1 libapparmor1 #MINVER#
  APPARMOR_2.9@APPARMOR_2.9 2.8.94
  IMMUNIX_1.0@IMMUNIX_1.0 2.6~devel
  PRIVATE@PRIVATE 2.10
+ _aa_asprintf@PRIVATE 2.13.5
  _aa_autoclose@PRIVATE 2.10
  _aa_autofclose@PRIVATE 2.10
  _aa_autofree@PRIVATE 2.10

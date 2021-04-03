@@ -18,7 +18,9 @@ etc/apparmor.d/usr.lib.dovecot.managesieve /usr/share/apparmor/extra-profiles/
 etc/apparmor.d/usr.lib.dovecot.managesieve-login /usr/share/apparmor/extra-profiles/
 etc/apparmor.d/usr.lib.dovecot.pop3 /usr/share/apparmor/extra-profiles/
 etc/apparmor.d/usr.lib.dovecot.pop3-login /usr/share/apparmor/extra-profiles/
+etc/apparmor.d/usr.lib.dovecot.script-login /usr/share/apparmor/extra-profiles/
 etc/apparmor.d/usr.lib.dovecot.ssl-params /usr/share/apparmor/extra-profiles/
+etc/apparmor.d/usr.lib.dovecot.stats /usr/share/apparmor/extra-profiles/
 etc/apparmor.d/usr.sbin.avahi-daemon
 etc/apparmor.d/usr.sbin.dnsmasq
 etc/apparmor.d/usr.sbin.dovecot /usr/share/apparmor/extra-profiles/
@@ -46,13 +48,15 @@ usr/share/apparmor/extra-profiles/usr.bin.acroread
 usr/share/apparmor/extra-profiles/usr.bin.apropos
 usr/share/apparmor/extra-profiles/usr.bin.evolution-2.10
 usr/share/apparmor/extra-profiles/usr.bin.fam
-usr/share/apparmor/extra-profiles/usr.bin.freshclam
+# The clamav-freshclam package ships its own profile
+#usr/share/apparmor/extra-profiles/usr.bin.freshclam
 usr/share/apparmor/extra-profiles/usr.bin.gaim
 usr/share/apparmor/extra-profiles/usr.bin.man
 usr/share/apparmor/extra-profiles/usr.bin.mlmmj-bounce
 usr/share/apparmor/extra-profiles/usr.bin.mlmmj-maintd
 usr/share/apparmor/extra-profiles/usr.bin.mlmmj-make-ml.sh
 usr/share/apparmor/extra-profiles/usr.bin.mlmmj-process
+usr/share/apparmor/extra-profiles/usr.bin.mlmmj-receive
 usr/share/apparmor/extra-profiles/usr.bin.mlmmj-recieve
 usr/share/apparmor/extra-profiles/usr.bin.mlmmj-send
 usr/share/apparmor/extra-profiles/usr.bin.mlmmj-sub
@@ -77,6 +81,7 @@ usr/share/apparmor/extra-profiles/usr.lib.postfix.anvil
 usr/share/apparmor/extra-profiles/usr.lib.postfix.bounce
 usr/share/apparmor/extra-profiles/usr.lib.postfix.cleanup
 usr/share/apparmor/extra-profiles/usr.lib.postfix.discard
+usr/share/apparmor/extra-profiles/usr.lib.postfix.dnsblog
 usr/share/apparmor/extra-profiles/usr.lib.postfix.error
 usr/share/apparmor/extra-profiles/usr.lib.postfix.flush
 usr/share/apparmor/extra-profiles/usr.lib.postfix.lmtp
@@ -86,6 +91,7 @@ usr/share/apparmor/extra-profiles/usr.lib.postfix.nqmgr
 usr/share/apparmor/extra-profiles/usr.lib.postfix.oqmgr
 usr/share/apparmor/extra-profiles/usr.lib.postfix.pickup
 usr/share/apparmor/extra-profiles/usr.lib.postfix.pipe
+usr/share/apparmor/extra-profiles/usr.lib.postfix.postscreen
 usr/share/apparmor/extra-profiles/usr.lib.postfix.proxymap
 usr/share/apparmor/extra-profiles/usr.lib.postfix.qmgr
 usr/share/apparmor/extra-profiles/usr.lib.postfix.qmqpd

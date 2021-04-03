@@ -17,6 +17,7 @@
   #include <abstractions/nameservice>
   #include <abstractions/dovecot-common>
   #include <abstractions/openssl>
+  #include <abstractions/ssl_certs>
   #include <abstractions/ssl_keys>
 
   capability dac_override,
@@ -27,7 +28,7 @@
   @{DOVECOT_MAILSTORE}/** rwkl,
 
   @{HOME}/.dovecot.svbin r,
-
+  @{PROC}/@{pid}/attr/current rw,
   /proc/*/mounts r,
   /tmp/dovecot.lmtp.* rw,
   /usr/lib/dovecot/lmtp mr,

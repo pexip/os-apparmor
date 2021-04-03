@@ -1,0 +1,20 @@
+Author: Jamie Strandboge <jamie@canonical.com>
+Description: snapd now loads its snap policy via its own systemd unit, so
+ stop loading the snap policy in /var/lib/snapd/apparmor/profiles
+Bug-Ubuntu: https://launchpad.net/bugs/1871148
+
+Index: apparmor-2.13.3/parser/rc.apparmor.functions
+===================================================================
+--- apparmor-2.13.3.orig/parser/rc.apparmor.functions
++++ apparmor-2.13.3/parser/rc.apparmor.functions
+@@ -44,8 +44,8 @@ if [ -d /etc/apparmor.d ] ; then
+ else
+ 	aa_log_warning_msg "Unable to find profiles directory, installation problem?"
+ fi
+-ADDITIONAL_PROFILE_DIR=/var/lib/snapd/apparmor/profiles
+-if [ -d "$ADDITIONAL_PROFILE_DIR" ]; then
++ADDITIONAL_PROFILE_DIR=
++if [ -n "$ADDITIONAL_PROFILE_DIR" ] && [ -d "$ADDITIONAL_PROFILE_DIR" ]; then
+ 	PROFILE_DIRS="${PROFILE_DIRS} ${ADDITIONAL_PROFILE_DIR}"
+ fi
+ AA_STATUS=/usr/sbin/aa-status

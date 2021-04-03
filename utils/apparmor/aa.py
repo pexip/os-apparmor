@@ -559,8 +559,7 @@ def get_profile(prof_name):
         p = profile_hash[options[arg]]
         q.selected = options.index(options[arg])
         if ans == 'CMD_VIEW_PROFILE':
-            pager = get_pager()
-            subprocess.call([pager, orig_filename])
+            aaui.UI_ShowFile(uname, orig_filename)
         elif ans == 'CMD_USE_PROFILE':
             if p['profile_type'] == 'INACTIVE_LOCAL':
                 profile_data = p['profile_data']
@@ -992,7 +991,7 @@ def handle_children(profile, hat, root):
                     hat = default_hat
                 elif ans == 'CMD_DENY':
                     # As unknown hat is denied no entry for it should be made
-                    return None
+                    continue
 
             elif typ == 'capability':
                 # If capability then we (should) have pid, profile, hat, program, mode, capability
@@ -1775,14 +1774,18 @@ def set_logfile(filename):
 
     if filename:
         logfile = filename
-    else:
+    elif 'logfiles' in cfg['settings']:
+        # This line can only run if the 'logfile' exists in settings, otherwise
+        # it will yield a Python KeyError
         logfile = conf.find_first_file(cfg['settings']['logfiles']) or '/var/log/syslog'
+    else:
+        logfile = '/var/log/syslog'
 
     if not os.path.exists(logfile):
         if filename:
-            raise AppArmorException(_('The logfile %s does not exist. Please check the path') % logfile)
+            raise AppArmorException(_('The logfile %s does not exist. Please check the path.') % logfile)
         else:
-            raise AppArmorException('Can\'t find system log "%s".' % (logfile))
+            raise AppArmorException('Can\'t find system log "%s". Please check permissions.' % (logfile))
     elif os.path.isdir(logfile):
         raise AppArmorException(_('%s is a directory. Please specify a file as logfile') % logfile)
 
@@ -1948,6 +1951,10 @@ def collapse_log():
     for aamode in prelog.keys():
         for profile in prelog[aamode].keys():
             for hat in prelog[aamode][profile].keys():
+                # used to avoid to accidently initialize aa[profile][hat] or calling is_known_rule() on events for a non-existing profile
+                hat_exists = False
+                if aa.get(profile) and aa[profile].get(hat):
+                    hat_exists = True
 
                 log_dict[aamode][profile][hat] = ProfileStorage(profile, hat, 'collapse_log()')
 
@@ -1973,12 +1980,12 @@ def collapse_log():
 
                     file_event = FileRule(path, mode, None, FileRule.ALL, owner=owner, log_event=True)
 
-                    if not is_known_rule(aa[profile][hat], 'file', file_event):
+                    if not hat_exists or not is_known_rule(aa[profile][hat], 'file', file_event):
                         log_dict[aamode][profile][hat]['file'].add(file_event)
 
                 for cap in prelog[aamode][profile][hat]['capability'].keys():
                     cap_event = CapabilityRule(cap, log_event=True)
-                    if not is_known_rule(aa[profile][hat], 'capability', cap_event):
+                    if not hat_exists or not is_known_rule(aa[profile][hat], 'capability', cap_event):
                         log_dict[aamode][profile][hat]['capability'].add(cap_event)
 
                 dbus = prelog[aamode][profile][hat]['dbus']
@@ -2001,20 +2008,21 @@ def collapse_log():
                                             else:
                                                 raise AppArmorBug('unexpected dbus access: %s')
 
-                                            log_dict[aamode][profile][hat]['dbus'].add(dbus_event)
+                                            if not hat_exists or not is_known_rule(aa[profile][hat], 'dbus', dbus_event):
+                                                log_dict[aamode][profile][hat]['dbus'].add(dbus_event)
 
                 nd = prelog[aamode][profile][hat]['netdomain']
                 for family in nd.keys():
                     for sock_type in nd[family].keys():
                         net_event = NetworkRule(family, sock_type, log_event=True)
-                        if not is_known_rule(aa[profile][hat], 'network', net_event):
+                        if not hat_exists or not is_known_rule(aa[profile][hat], 'network', net_event):
                             log_dict[aamode][profile][hat]['network'].add(net_event)
 
                 ptrace = prelog[aamode][profile][hat]['ptrace']
                 for peer in ptrace.keys():
                     for access in ptrace[peer].keys():
                         ptrace_event = PtraceRule(access, peer, log_event=True)
-                        if not is_known_rule(aa[profile][hat], 'ptrace', ptrace_event):
+                        if not hat_exists or not is_known_rule(aa[profile][hat], 'ptrace', ptrace_event):
                             log_dict[aamode][profile][hat]['ptrace'].add(ptrace_event)
 
                 sig = prelog[aamode][profile][hat]['signal']
@@ -2022,7 +2030,7 @@ def collapse_log():
                     for access in sig[peer].keys():
                         for signal in sig[peer][access].keys():
                             signal_event = SignalRule(access, signal, peer, log_event=True)
-                            if not is_known_rule(aa[profile][hat], 'signal', signal_event):
+                            if not hat_exists or not is_known_rule(aa[profile][hat], 'signal', signal_event):
                                 log_dict[aamode][profile][hat]['signal'].add(signal_event)
 
     return log_dict
@@ -2094,7 +2102,8 @@ def read_profile(file, active_profile):
     try:
         with open_file_read(file) as f_in:
             data = f_in.readlines()
-    except IOError:
+    except IOError as e:
+        aaui.UI_Important('WARNING: Error reading file %s, skipping.\n    %s' % (file, e))
         debug_logger.debug("read_profile: can't read %s - skipping" % file)
         return None
 
@@ -2361,8 +2370,6 @@ def parse_profile_data(data, file, do_include):
         elif re_match_include(line):
             # Include files
             include_name = re_match_include(line)
-            if include_name.startswith('local/'):
-                profile_data[profile][hat]['localinclude'][include_name] = True
 
             if profile:
                 profile_data[profile][hat]['include'][include_name] = True
@@ -3226,7 +3233,7 @@ def logger_path():
 
 ######Initialisations######
 
-def init_aa(confdir="/etc/apparmor"):
+def init_aa(confdir="/etc/apparmor", profiledir=None):
     global CONFDIR
     global conf
     global cfg
@@ -3249,7 +3256,11 @@ def init_aa(confdir="/etc/apparmor"):
     if cfg['settings'].get('default_owner_prompt', False):
         cfg['settings']['default_owner_prompt'] = ''
 
-    profile_dir = conf.find_first_dir(cfg['settings'].get('profiledir')) or '/etc/apparmor.d'
+    if profiledir:
+        profile_dir = profiledir
+    else:
+        profile_dir = conf.find_first_dir(cfg['settings'].get('profiledir')) or '/etc/apparmor.d'
+    profile_dir = os.path.abspath(profile_dir)
     if not os.path.isdir(profile_dir):
         raise AppArmorException('Can\'t find AppArmor profiles in %s' % (profile_dir))
 

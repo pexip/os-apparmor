@@ -19,7 +19,7 @@ danger_caps = ["audit_control",
                "audit_write",
                "mac_override",
                "mac_admin",
-               "set_fcap",
+               "setfcap",
                "sys_admin",
                "sys_module",
                "sys_rawio"]
@@ -42,24 +42,24 @@ def cmd(command, input=None, stderr=subprocess.STDOUT, stdout=subprocess.PIPE, s
     # Handle redirection of stderr
     if outerr is None:
         outerr = ''
-    return [sp.returncode, out + outerr]
+    return [sp.returncode, out, outerr]
 
 # get capabilities list
-(rc, output) = cmd(['make', '-s', '--no-print-directory', 'list_capabilities'])
+(rc, output, outerr) = cmd(['../../common/list_capabilities.sh'])
 if rc != 0:
-    sys.stderr.write("make list_capabilities failed: " + output)
+    sys.stderr.write("make list_capabilities failed: " + output + outerr)
     exit(rc)
 
-capabilities = re.sub('CAP_', '', output.strip()).lower().split(" ")
+capabilities = re.sub('CAP_', '', output.strip()).lower().split('\n')
 benign_caps = []
 for cap in capabilities:
     if cap not in danger_caps:
         benign_caps.append(cap)
 
 # get network protos list
-(rc, output) = cmd(['make', '-s', '--no-print-directory', 'list_af_names'])
+(rc, output, outerr) = cmd(['../../common/list_af_names.sh'])
 if rc != 0:
-    sys.stderr.write("make list_af_names failed: " + output)
+    sys.stderr.write("make list_af_names failed: " + output + outerr)
     exit(rc)
 
 af_names = []

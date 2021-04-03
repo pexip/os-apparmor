@@ -12,10 +12,10 @@ Bug-Ubuntu: https://launchpad.net/bugs/1227520
  3 files changed, 4 insertions(+)
 
 diff --git a/profiles/apparmor.d/abstractions/base b/profiles/apparmor.d/abstractions/base
-index 533bfb0..ee19e1b 100644
+index fabb427..1dc77a3 100644
 --- a/profiles/apparmor.d/abstractions/base
 +++ b/profiles/apparmor.d/abstractions/base
-@@ -26,6 +26,7 @@
+@@ -30,6 +30,7 @@
    /etc/locale/**                 r,
    /etc/locale.alias              r,
    /etc/localtime                 r,
@@ -24,7 +24,7 @@ index 533bfb0..ee19e1b 100644
    /usr/share/locale-langpack/**  r,
    /usr/share/locale/**           r,
 diff --git a/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java b/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java
-index 4a3a54a..269bd52 100644
+index 8193a5c..e0a67cf 100644
 --- a/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java
 +++ b/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java
 @@ -37,6 +37,7 @@

@@ -8,22 +8,36 @@ used a UNIX domain socket path that was indistinguishable from the
 session bus daemon's path. This patch adjusts the ibus abstraction so
 that access to the new path can be granted to confined ibus-daemon
 client applications.
+
+Later updated for ibus 1.5.22, due to LP: #1856738
+
 Bug-Ubuntu: https://launchpad.net/bugs/1580463
 Forwarded: not-needed
-===================================================================
+
+Forwarded: no
 ---
- profiles/apparmor.d/abstractions/ibus | 4 ++++
- 1 file changed, 4 insertions(+)
+ profiles/apparmor.d/abstractions/ibus | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
 
 diff --git a/profiles/apparmor.d/abstractions/ibus b/profiles/apparmor.d/abstractions/ibus
-index c76fe3b..0ab02fe 100644
+index c76fe3b..a4431b9 100644
 --- a/profiles/apparmor.d/abstractions/ibus
 +++ b/profiles/apparmor.d/abstractions/ibus
-@@ -13,3 +13,7 @@
+@@ -13,3 +13,17 @@
    owner @{HOME}/.config/ibus/ r,
    owner @{HOME}/.config/ibus/bus/ rw,
    owner @{HOME}/.config/ibus/bus/* rw,
 +
++  # abstract path in ibus < 1.5.22 uses /tmp
 +  unix (connect, receive, send)
 +       type=stream
 +       peer=(addr="@/tmp/ibus/dbus-*"),
++
++  # abstract path in ibus >= 1.5.22 uses $XDG_CACHE_HOME (ie, @{HOME}/.cache)
++  # This should use this, but due to LP: #1856738 we cannot
++  #unix (connect, receive, send)
++  #    type=stream
++  #    peer=(addr="@@{HOME}/.cache/ibus/dbus-*"),
++  unix (connect, receive, send)
++       type=stream
++       peer=(addr="@/home/*/.cache/ibus/dbus-*"),

@@ -1,14 +1,14 @@
 From: intrigeri <intrigeri@boum.org>
 Date: Fri, 28 Dec 2018 16:11:26 +0000
 Subject: Make rc.apparmor.functions suitable for Debian and Ubuntu
-
+Forwarded: yes
 Origin: https://gitlab.com/apparmor/apparmor/merge_requests/252
 ---
  parser/rc.apparmor.functions | 217 +++++++++++++++++++++++++------------------
  1 file changed, 125 insertions(+), 92 deletions(-)
 
 diff --git a/parser/rc.apparmor.functions b/parser/rc.apparmor.functions
-index 5655d04..36b6ec6 100644
+index c954c5f..73f6a84 100644
 --- a/parser/rc.apparmor.functions
 +++ b/parser/rc.apparmor.functions
 @@ -1,7 +1,7 @@
@@ -144,7 +144,7 @@ index 5655d04..36b6ec6 100644
 +	local status=0
  
 -	# if profile not in complain mode
--	if ! egrep -q "^/.*[ \t]+flags[ \t]*=[ \t]*\([ \t]*complain[ \t]*\)[ \t]+{" $profile ; then
+-	if ! egrep -q '^/.*[ \t]+flags[ \t]*=[ \t]*\([ \t]*complain[ \t]*\)[ \t]+\{' $profile ; then
 -		local link="${PROFILE_DIR}/force-complain/`basename ${profile}`"
 -		if [ -e "$link" ] ; then
 -			aa_log_warning_msg "found $link, forcing complain mode"
@@ -311,7 +311,7 @@ index 5655d04..36b6ec6 100644
  	# if there is anything in the profiles file don't load
  	if ! read line < "$SFS_MOUNTPOINT/profiles"; then
  		parse_profiles load
-@@ -331,7 +365,7 @@ apparmor_kill() {
+@@ -333,7 +367,7 @@ apparmor_kill() {
  		return 1
  	fi
  
@@ -320,7 +320,7 @@ index 5655d04..36b6ec6 100644
  		MODULE=apparmor
  	else
  		aa_log_failure_msg "AppArmor is builtin"
-@@ -351,7 +385,6 @@ __apparmor_restart() {
+@@ -353,7 +387,6 @@ __apparmor_restart() {
  
  	aa_log_daemon_msg "Restarting AppArmor"
  
