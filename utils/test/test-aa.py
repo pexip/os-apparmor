@@ -130,11 +130,14 @@ class AaTest_create_new_profile(AATest):
         shutil.copytree('../../profiles/apparmor.d/', self.profile_dir, symlinks=True)
 
         # load the abstractions we need in the test
-        apparmor.aa.profiledir = self.profile_dir
+        apparmor.aa.profile_dir = self.profile_dir
         apparmor.aa.load_include('abstractions/base')
         apparmor.aa.load_include('abstractions/bash')
 
         exp_interpreter_path, exp_abstraction = expected
+        # damn symlinks!
+        if exp_interpreter_path:
+            exp_interpreter_path = os.path.realpath(exp_interpreter_path)
 
         program = self.writeTmpfile('script', params)
         profile = create_new_profile(program)
@@ -178,11 +181,8 @@ class AaTest_get_interpreter_and_abstraction(AATest):
         interpreter_path, abstraction = get_interpreter_and_abstraction(program)
 
         # damn symlinks!
-        if exp_interpreter_path and os.path.islink(exp_interpreter_path):
-            dirname = os.path.dirname(exp_interpreter_path)
-            exp_interpreter_path = os.readlink(exp_interpreter_path)
-            if not exp_interpreter_path.startswith('/'):
-                exp_interpreter_path = os.path.join(dirname, exp_interpreter_path)
+        if exp_interpreter_path:
+            exp_interpreter_path = os.path.realpath(exp_interpreter_path)
 
         self.assertEqual(interpreter_path, exp_interpreter_path)
         self.assertEqual(abstraction, exp_abstraction)
@@ -807,7 +807,7 @@ class AaTest_get_file_perms_2(AATest):
         ('/foo/bar',                                {'allow': {'all': {'r', 'w'},       'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/foo/bar'}                                   }),  # exec perms not included
         ('/no/thing',                               {'allow': {'all': set(),            'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': set()                                          }),
         ('/usr/lib/ispell/',                        {'allow': {'all': {'r'},            'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/lib/ispell/', '/{usr/,}lib{,32,64}/**'}    }),  # from abstractions/enchant
-        ('/usr/lib/aspell/*.so',                    {'allow': {'all': {'m', 'r'},       'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/lib/aspell/*', '/usr/lib/aspell/*.so', '/{usr/,}lib{,32,64}/**'} }),  # from abstractions/aspell via abstractions/enchant
+        ('/usr/lib/aspell/*.so',                    {'allow': {'all': {'m', 'r'},       'owner': set()  }, 'deny': {'all':set(),    'owner': set()},    'paths': {'/usr/lib/aspell/*', '/usr/lib/aspell/*.so', '/{usr/,}lib{,32,64}/**', '/{usr/,}lib{,32,64}/**.so*'} }),  # from abstractions/aspell via abstractions/enchant and from abstractions/base
     ]
 
     def _run_test(self, params, expected):
@@ -818,7 +818,7 @@ class AaTest_get_file_perms_2(AATest):
         shutil.copytree('../../profiles/apparmor.d/', self.profile_dir, symlinks=True)
 
         # load the abstractions we need in the test
-        apparmor.aa.profiledir = self.profile_dir
+        apparmor.aa.profile_dir = self.profile_dir
         apparmor.aa.load_include('abstractions/base')
         apparmor.aa.load_include('abstractions/bash')
         apparmor.aa.load_include('abstractions/enchant')
@@ -844,7 +844,7 @@ class AaTest_propose_file_rules(AATest):
         (['/dev/null',                          'wk'],  ['/dev/null rwk,']                                                                                                      ),
         (['/foo/bar',                           'rw'],  ['/foo/bar rw,']                                                                                                        ),
         (['/usr/lib/ispell/',                   'w'],   ['/{usr/,}lib{,32,64}/** rw,', '/usr/lib/ispell/ rw,']                                                                     ),
-        (['/usr/lib/aspell/some.so',            'k'],   ['/usr/lib/aspell/* mrk,', '/usr/lib/aspell/*.so mrk,', '/{usr/,}lib{,32,64}/** mrk,', '/usr/lib/aspell/some.so mrk,']     ),
+        (['/usr/lib/aspell/some.so',            'k'],   ['/usr/lib/aspell/* mrk,', '/usr/lib/aspell/*.so mrk,', '/{usr/,}lib{,32,64}/** mrk,', '/{usr/,}lib{,32,64}/**.so* mrk,', '/usr/lib/aspell/some.so mrk,']     ),
         (['/foo/log',                           'w'],   ['/foo/log w,']                                                                                                            ),
     ]
 
@@ -856,7 +856,7 @@ class AaTest_propose_file_rules(AATest):
         shutil.copytree('../../profiles/apparmor.d/', self.profile_dir, symlinks=True)
 
         # load the abstractions we need in the test
-        apparmor.aa.profiledir = self.profile_dir
+        apparmor.aa.profile_dir = self.profile_dir
         apparmor.aa.load_include('abstractions/base')
         apparmor.aa.load_include('abstractions/bash')
         apparmor.aa.load_include('abstractions/enchant')
@@ -898,7 +898,7 @@ class AaTest_propose_file_rules_with_absolute_includes(AATest):
         shutil.copytree('../../profiles/apparmor.d/', self.profile_dir, symlinks=True)
 
         # load the abstractions we need in the test
-        apparmor.aa.profiledir = self.profile_dir
+        apparmor.aa.profile_dir = self.profile_dir
         apparmor.aa.load_include('abstractions/base')
 
         abs_include1 = write_file(self.tmpdir, 'test-abs1', "/some/random/include rw,")

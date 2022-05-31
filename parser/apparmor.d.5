@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "APPARMOR.D 5"
-.TH APPARMOR.D 5 "2018-12-21" "AppArmor 2.13.2" "AppArmor"
+.TH APPARMOR.D 5 "2020-12-07" "AppArmor 2.13.6" "AppArmor"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -219,7 +219,7 @@ to the policy; this behaviour is modelled after \fIcpp\fR\|(1).
 .Sp
 \&\fB\s-1NETWORK RULE\s0\fR = [ \fI\s-1QUALIFIERS\s0\fR ] 'network' [ \fI\s-1DOMAIN\s0\fR ] [ \fI\s-1TYPE\s0\fR | \fI\s-1PROTOCOL\s0\fR ]
 .Sp
-\&\fB\s-1DOMAIN\s0\fR = ( 'inet' | 'ax25' | 'ipx' | 'appletalk' | 'netrom' | 'bridge' | 'atmpvc' | 'x25' | 'inet6' | 'rose' | 'netbeui' | 'security' | 'key' | 'packet' | 'ash' | 'econet' | 'atmsvc' | 'sna' | 'irda' | 'pppox' | 'wanpipe' | 'bluetooth' | 'netlink' | 'unix' | 'rds' | 'llc' | 'can' | 'tipc' | 'iucv' | 'rxrpc' | 'isdn' | 'phonet' | 'ieee802154' | 'caif' | 'alg' | 'nfc' | 'vsock' | 'mpls' | 'ib' | 'kcm' | 'smc' ) ','
+\&\fB\s-1DOMAIN\s0\fR = ( 'unix' | 'inet' | 'ax25' | 'ipx' | 'appletalk' | 'netrom' | 'bridge' | 'atmpvc' | 'x25' | 'inet6' | 'rose' | 'netbeui' | 'security' | 'key' | 'netlink' | 'packet' | 'ash' | 'econet' | 'atmsvc' | 'rds' | 'sna' | 'irda' | 'pppox' | 'wanpipe' | 'llc' | 'ib' | 'mpls' | 'can' | 'tipc' | 'bluetooth' | 'iucv' | 'rxrpc' | 'isdn' | 'phonet' | 'ieee802154' | 'caif' | 'alg' | 'nfc' | 'vsock' | 'kcm' | 'qipcrtr' | 'smc' | 'xdp' ) ','
 .Sp
 \&\fB\s-1TYPE\s0\fR = ( 'stream' | 'dgram' | 'seqpacket' |  'rdm' | 'raw' | 'packet' )
 .Sp
@@ -379,7 +379,7 @@ to the policy; this behaviour is modelled after \fIcpp\fR\|(1).
 \&\fB\s-1EXEC TARGET\s0\fR = name
   Requires \fI\s-1EXEC TRANSITION\s0\fR specified.
 .Sp
-\&\fB\s-1LINK RULE\s0\fR = \fI\s-1QUALIFIERS\s0\fR [ 'owner' ] 'link' [ 'subset' ] \fI\s-1FILEGLOB\s0\fR ( 'to' | '\->' ) \fI\s-1FILEGLOB\s0\fR
+\&\fB\s-1LINK RULE\s0\fR = \fI\s-1QUALIFIERS\s0\fR [ 'owner' ] 'link' [ 'subset' ] \fI\s-1FILEGLOB\s0\fR '\->' \fI\s-1FILEGLOB\s0\fR
 .Sp
 \&\fB\s-1ALPHA\s0\fR = ('a', 'b', 'c', ... 'z', 'A', 'B', ... 'Z')
 .Sp
@@ -1137,7 +1137,7 @@ Example AppArmor DBus rules:
 \&         peer=(name=(com.example.ExampleName1|com.example.ExampleName2)),
 \&
 \&    # Allow receive access for all unconfined peers
-\&    dbus receive peer=(label=unconfined)),
+\&    dbus receive peer=(label=unconfined),
 \&
 \&    # Allow eavesdropping on the system bus
 \&    dbus eavesdrop bus=system,
@@ -1272,7 +1272,7 @@ E.G.
 \&    network unix stream,   =>  unix stream,
 .Ve
 .PP
-Fine grained mediation rules however can not be lossly converted back
+Fine grained mediation rules however can not be losslessly converted back
 to the coarse grained network rule; e.g.
 .PP
 .Vb 1
@@ -1398,6 +1398,7 @@ provided AppArmor policy:
 \&  @{apparmorfs}
 \&  @{sys}
 \&  @{tid}
+\&  @{run}
 \&  @{XDG_DESKTOP_DIR}
 \&  @{XDG_DOWNLOAD_DIR}
 \&  @{XDG_TEMPLATES_DIR}

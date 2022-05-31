@@ -24,6 +24,8 @@ include $(COMMONDIR)/Make.rules
 
 DESTDIR=/
 APPARMOR_BIN_PREFIX=${DESTDIR}/lib/apparmor
+SBINDIR=${DESTDIR}/sbin
+USR_SBINDIR=${DESTDIR}/usr/sbin
 SYSTEMD_UNIT_DIR=${DESTDIR}/usr/lib/systemd/system
 CONFDIR=/etc/apparmor
 INSTALL_CONFDIR=${DESTDIR}${CONFDIR}
@@ -91,6 +93,10 @@ AAREOBJECT = ${AAREDIR}/libapparmor_re.a
 AAREOBJECTS = $(AAREOBJECT)
 AARE_LDFLAGS = -static-libgcc -static-libstdc++ -L. $(LDFLAGS)
 AALIB = -Wl,-Bstatic -lapparmor -Wl,-Bdynamic -lpthread
+
+ifdef WITH_LIBINTL
+	AALIB += -lintl
+endif
 
 ifdef USE_SYSTEM
   # Using the system libapparmor so Makefile dependencies can't be used
@@ -279,14 +285,23 @@ parser_version.h: Makefile
 # as well as the filtering that occurs for network protocols that
 # apparmor should not mediate.
 
-.PHONY: af_names.h
-af_names.h:
-	echo "$(AF_NAMES)" | LC_ALL=C sed -n -e 's/[ \t]\?AF_MAX[ \t]\+[0-9]\+,//g'  -e 's/[ \t]\+\?AF_\([A-Z0-9_]\+\)[ \t]\+\([0-9]\+\),/#ifndef AF_\1\n#  define AF_\1 \2\n#endif\nAA_GEN_NET_ENT("\L\1", \UAF_\1)\n\n/pg' > $@
-	echo "$(AF_NAMES)" | LC_ALL=C sed -n -e 's/.*,[ \t]\+AF_MAX[ \t]\+\([0-9]\+\),\?.*/#define AA_AF_MAX \1\n/p' >> $@
+af_names.h: ../common/list_af_names.sh
+	../common/list_af_names.sh | LC_ALL=C sed -n -e 's/[ \t]\?AF_MAX[ \t]\+[0-9]\+,//g'  -e 's/[ \t]\+\?AF_\([A-Z0-9_]\+\)[ \t]\+\([0-9]\+\),/#ifndef AF_\1\n#  define AF_\1 \2\n#endif\nAA_GEN_NET_ENT("\L\1", \UAF_\1)\n/pg' > $@
+	../common/list_af_names.sh | LC_ALL=C sed -n -e 's/AF_MAX[ \t]\+\([0-9]\+\),\?.*/\n#define AA_AF_MAX \1\n/p' >> $@
 	# cat $@
 
-cap_names.h: /usr/include/linux/capability.h
-	echo "$(CAPABILITIES)" | LC_ALL=C sed -n -e "s/[ \\t]\\?CAP_\\([A-Z0-9_]\\+\\)/\{\"\\L\\1\", \\UCAP_\\1\},\\n/pg" > $@
+generated_cap_names.h: /usr/include/linux/capability.h
+	../common/list_capabilities.sh | LC_ALL=C sed -n -e "s/[ \\t]\\?CAP_\\([A-Z0-9_]\\+\\)/\{\"\\L\\1\", \\UCAP_\\1\},\\n/pg" > $@
+
+cap_names.h: generated_cap_names.h base_cap_names.h
+	@LC_ALL=C sed -e 's/\([^,]*,[^,]*,\) CAP_[A-Z0-9_]\+,/\1 NO_BACKMAP_CAP,/g' base_cap_names.h | diff -u - generated_cap_names.h | grep '^\+[^+]' ; \
+	if [ $$? -eq 1 ] ; then \
+		cp base_cap_names.h $@ ; \
+	else \
+		echo "Error: new capabilities detected please update base_cap_names.h with values from generated_cap_names.h" ; \
+		LC_ALL=C sed -e 's/\([^,]*,[^,]*,\) CAP_[A-Z0-9_]\+,/\1 NO_BACKMAP_CAP,/g' base_cap_names.h | diff -u - generated_cap_names.h ; \
+		exit 1; \
+	fi
 
 tst_lib: lib.c parser.h $(filter-out lib.o, ${TEST_OBJECTS})
 	$(CXX) $(TEST_CFLAGS) -o $@ $< $(filter-out $(<:.c=.o), ${TEST_OBJECTS}) $(TEST_LDFLAGS) $(TEST_LDLIBS)
@@ -302,10 +317,7 @@ tests: apparmor_parser ${TESTS}
 	sh -e -c 'for test in ${TESTS} ; do echo "*** running $${test}" && ./$${test}; done'
 	$(Q)$(MAKE) -s -C tst tests
 
-# always need to rebuild.
-.SILENT: $(AAREOBJECT)
-.PHONY: $(AAREOBJECT)
-$(AAREOBJECT):
+$(AAREOBJECT): FORCE
 	$(MAKE) -C $(AAREDIR) CFLAGS="$(EXTRA_CXXFLAGS)"
 
 .PHONY: install-rhel4
@@ -318,8 +330,8 @@ install-redhat:
 
 .PHONY: install-suse
 install-suse: install-systemd
-	install -m 755 -d $(DESTDIR)/sbin
-	ln -sf service $(DESTDIR)/sbin/rcapparmor
+	install -m 755 -d $(SBINDIR)
+	ln -sf service $(SBINDIR)/rcapparmor
 
 .PHONY: install-slackware
 install-slackware:
@@ -361,12 +373,14 @@ INSTALLDEPS+=install-$(DISTRO)
 endif
 
 .PHONY: install
-install: install-indep install-arch
+install:
+	$(MAKE) install-indep
+	$(MAKE) install-arch
 
 .PHONY: install-arch
 install-arch: $(INSTALLDEPS)
-	install -m 755 -d $(DESTDIR)/sbin
-	install -m 755 ${TOOLS} $(DESTDIR)/sbin
+	install -m 755 -d $(SBINDIR)
+	install -m 755 ${TOOLS} $(SBINDIR)
 
 .PHONY: install-indep
 install-indep: indep
@@ -384,8 +398,8 @@ install-systemd:
 	install -m 755 -d $(SYSTEMD_UNIT_DIR)
 	install -m 644 apparmor.service $(SYSTEMD_UNIT_DIR)
 	install -m 755 apparmor.systemd $(APPARMOR_BIN_PREFIX)
-	install -m 755 -d $(DESTDIR)/usr/sbin
-	install -m 755 aa-teardown $(DESTDIR)/usr/sbin
+	install -m 755 -d $(USR_SBINDIR)
+	install -m 755 aa-teardown $(USR_SBINDIR)
 
 ifndef VERBOSE
 .SILENT: clean
@@ -400,9 +414,10 @@ clean: pod_clean
 	rm -f parser_version.h
 	rm -f $(NAME)*.tar.gz $(NAME)*.tgz
 	rm -f af_names.h
-	rm -f cap_names.h
+	rm -f cap_names.h generated_cap_names.h
 	rm -rf techdoc.aux techdoc.out techdoc.log techdoc.pdf techdoc.toc techdoc.txt techdoc/
 	$(MAKE) -s -C $(AAREDIR) clean
 	$(MAKE) -s -C po clean
 	$(MAKE) -s -C tst clean
 
+FORCE:

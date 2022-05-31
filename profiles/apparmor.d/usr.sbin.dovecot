@@ -31,7 +31,10 @@ profile dovecot /usr/{bin,sbin}/dovecot flags=(attach_disconnected) {
   capability sys_chroot,
   capability sys_resource,
 
-  signal send set=(int,quit) peer=/usr/lib/dovecot/*,
+  signal send set=(int,quit,term,kill) peer=/usr/lib/dovecot/*,
+  signal send set=(int,quit,term,kill) peer=dovecot-*,
+
+  unix (receive, send) type=stream peer=(label=/usr/lib/dovecot/anvil),
 
   /etc/dovecot/** r,
   /etc/mtab r,
@@ -53,10 +56,12 @@ profile dovecot /usr/{bin,sbin}/dovecot flags=(attach_disconnected) {
   /usr/lib/dovecot/managesieve-login Pxmr,
   /usr/lib/dovecot/pop3 mrPx,
   /usr/lib/dovecot/pop3-login Pxmr,
+  /usr/lib/dovecot/script-login Px,
   /usr/lib/dovecot/ssl-build-param rix,
   /usr/lib/dovecot/ssl-params mrPx,
   /usr/lib/dovecot/stats Px,
   /usr/{bin,sbin}/dovecot mrix,
+  /usr/share/dovecot/dh.pem r,
   /usr/share/dovecot/protocols.d/   r,
   /usr/share/dovecot/protocols.d/** r,
   /var/lib/dovecot/ w,

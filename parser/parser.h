@@ -171,13 +171,23 @@ extern int preprocess_only;
 
 
 #ifdef DEBUG
-#define PDEBUG(fmt, args...) fprintf(stderr, "parser: " fmt, ## args)
+#define PDEBUG(fmt, args...)				\
+do {							\
+	int pdebug_error = errno;			\
+	fprintf(stderr, "parser: " fmt, ## args);	\
+	errno = pdebug_error;				\
+} while (0)
 #else
 #define PDEBUG(fmt, args...)	/* Do nothing */
 #endif
 #define NPDEBUG(fmt, args...)	/* Do nothing */
 
-#define PERROR(fmt, args...) fprintf(stderr, fmt, ## args)
+#define PERROR(fmt, args...)			\
+do {						\
+	int perror_error = errno;		\
+	fprintf(stderr, fmt, ## args);		\
+	errno = perror_error;			\
+} while (0)
 
 #ifndef TRUE
 #define TRUE	(1)
@@ -357,6 +367,7 @@ extern int post_process_entry(struct cod_entry *entry);
 extern int process_policydb(Profile *prof);
 
 extern int process_policy_ents(Profile *prof);
+extern void filter_slashes(char *path);
 
 /* parser_variable.c */
 int expand_entry_variables(char **name);
