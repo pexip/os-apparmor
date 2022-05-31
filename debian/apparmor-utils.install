@@ -14,3 +14,4 @@ usr/sbin/aa-logprof
 usr/sbin/aa-mergeprof
 usr/sbin/aa-unconfined
 usr/share/apparmor/apparmor.vim /usr/share/vim/addons/syntax/
+usr/share/locale/*/LC_MESSAGES/apparmor-utils.mo

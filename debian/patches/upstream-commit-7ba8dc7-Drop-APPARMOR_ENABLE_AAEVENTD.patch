@@ -8,7 +8,7 @@ This is another trace of aa-eventd which is deprecated since years.
  1 file changed, 2 deletions(-)
 
 diff --git a/parser/rc.apparmor.functions b/parser/rc.apparmor.functions
-index 77fda76..5655d04 100644
+index 95cdbd4..c954c5f 100644
 --- a/parser/rc.apparmor.functions
 +++ b/parser/rc.apparmor.functions
 @@ -39,8 +39,6 @@ else

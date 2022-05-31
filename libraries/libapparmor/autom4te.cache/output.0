@@ -2798,7 +2798,7 @@ fi
 # Define the identity of the package.
 
  PACKAGE=libapparmor1
- VERSION=2.13.2
+ VERSION=2.13.6
 
 
 cat >>confdefs.h <<_ACEOF
@@ -4756,7 +4756,7 @@ $as_echo_n "checking python extra libraries... " >&6; }
         if test -z "$PYTHON_EXTRA_LIBS"; then
            PYTHON_EXTRA_LIBS=`$PYTHON -c "import sys; import distutils.sysconfig; \
 conf = distutils.sysconfig.get_config_var; \
-sys.stdout.write('%s %s\n' % (conf('LOCALMODLIBS'), conf('LIBS')))"`
+sys.stdout.write('%s %s %s\n' % (conf('BLDLIBRARY'), conf('LOCALMODLIBS'), conf('LIBS')))"`
         fi
         { $as_echo "$as_me:${as_lineno-$LINENO}: result: $PYTHON_EXTRA_LIBS" >&5
 $as_echo "$PYTHON_EXTRA_LIBS" >&6; }
@@ -4790,7 +4790,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
         # save current global flags
         ac_save_LIBS="$LIBS"
         ac_save_CPPFLAGS="$CPPFLAGS"
-        LIBS="$ac_save_LIBS $PYTHON_LDFLAGS"
+        LIBS="$ac_save_LIBS $PYTHON_LDFLAGS $PYTHON_EXTRA_LIBS"
         CPPFLAGS="$ac_save_CPPFLAGS $PYTHON_CPPFLAGS"
         cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */

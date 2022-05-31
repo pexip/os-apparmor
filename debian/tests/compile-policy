@@ -2,13 +2,14 @@
 
 set -e
 
-PROFILES_NAMES="nvidia_modprobe \
+PROFILES_NAMES="lsb_release \
+                nvidia_modprobe \
                 system_tor \
                 usr.bin.evince \
                 usr.bin.man \
                 usr.bin.onioncircuits \
                 usr.bin.pidgin \
-                usr.bin.thunderbird \
+                usr.bin.tcpdump \
                 usr.bin.totem \
                 usr.bin.totem-previewers \
                 usr.lib.libreoffice.program.oosplash \
@@ -20,10 +21,9 @@ PROFILES_NAMES="nvidia_modprobe \
                 usr.sbin.cupsd \
                 usr.sbin.cups-browsed \
                 usr.sbin.haveged \
+                usr.sbin.libvirtd \
                 usr.sbin.named \
-                usr.sbin.ntpd \
-                usr.sbin.tcpdump \
-                usr.sbin.libvirtd"
+                usr.sbin.ntpd"
 
 for profile_name in $PROFILES_NAMES ; do
    echo "Testing $profile_name"

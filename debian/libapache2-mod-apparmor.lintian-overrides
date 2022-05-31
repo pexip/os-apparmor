@@ -1,4 +1,2 @@
-# Upstream does not ship a changelog.
-libapache2-mod-apparmor binary: no-upstream-changelog
-# https://bugs.debian.org/796285
-apache2-module-depends-on-real-apache2-package apache2-bin
+# The executable is called mod_apparmor.so
+spare-manual-page usr/share/man/man8/mod_apparmor.8.gz

@@ -1,0 +1,31 @@
+From: Christian Boltz <gitlab2@cboltz.de>
+Date: Sun, 25 Oct 2020 10:16:26 +0000
+Subject: Merge branch 'adjust-for-new-ICEauthority-path-in-run' into 'master'
+
+Adjust for new ICEauthority path in /run
+
+Bug-Ubuntu: https://launchpad.net/bugs/1881357
+
+See merge request apparmor/apparmor!668
+
+Acked-by: Christian Boltz <apparmor@cboltz.de> for 3.0 and master
+
+(cherry picked from commit dbb1b900b818d270086e2da3e780cdc83e2c7a1c)
+
+1abe1017 Adjust for new ICEauthority path in /run
+---
+ profiles/apparmor.d/abstractions/X | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/profiles/apparmor.d/abstractions/X b/profiles/apparmor.d/abstractions/X
+index d60ef27..be444fc 100644
+--- a/profiles/apparmor.d/abstractions/X
++++ b/profiles/apparmor.d/abstractions/X
+@@ -15,6 +15,7 @@
+ 
+   # .ICEauthority files required for X authentication, per user
+   owner @{HOME}/.ICEauthority r,
++  owner @{run}/user/*/ICEauthority r,
+ 
+   # .Xauthority files required for X connections, per user
+   owner @{HOME}/.Xauthority r,

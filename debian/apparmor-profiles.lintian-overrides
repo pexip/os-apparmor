@@ -1,10 +1,2 @@
-# Upstream does not ship a changelog.
-apparmor-profiles binary: no-upstream-changelog
-
 # If this README was elsewhere, it would be missed by even more people.
 apparmor-profiles binary: package-contains-documentation-outside-usr-share-doc usr/share/apparmor/extra-profiles/README
-
-# False positive: this merely grants phpsysinfo access to the dpkg database.
-# If phpsysinfo uses that database directly, then it's a bug in phpsysinfo,
-# and this AppArmor profile can't do much about it.
-apparmor-profiles binary: uses-dpkg-database-directly etc/apparmor.d/apache2.d/phpsysinfo

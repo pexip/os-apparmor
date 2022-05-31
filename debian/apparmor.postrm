@@ -30,6 +30,15 @@ case "$1" in
         if [ -e "/etc/apparmor.d/tunables/xdg-user-dirs.d/site.local" ]; then
             rm -f /etc/apparmor.d/tunables/xdg-user-dirs.d/site.local
         fi
+        if [ -d "/var/cache/apparmor" ]; then
+            # remove the parser-created subdirs
+            for i in /var/cache/apparmor/* ; do
+                if [ -d "$i" ]; then
+                    rm -f "$i"/* "$i"/.features
+                    rmdir "$i"
+                fi
+            done
+        fi
         ;;
     abort-install|abort-upgrade|remove|upgrade|failed-upgrade|disappear)
         ;;

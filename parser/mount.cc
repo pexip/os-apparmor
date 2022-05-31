@@ -486,17 +486,31 @@ ostream &mnt_rule::dump(ostream &os)
 /* does not currently support expansion of vars in options */
 int mnt_rule::expand_variables(void)
 {
+	struct value_list *ent;
 	int error = 0;
 
 	error = expand_entry_variables(&mnt_point);
 	if (error)
 		return error;
+	filter_slashes(mnt_point);
 	error = expand_entry_variables(&device);
 	if (error)
 		return error;
+	filter_slashes(device);
 	error = expand_entry_variables(&trans);
 	if (error)
 		return error;
+
+	list_for_each(dev_type, ent) {
+		error = expand_entry_variables(&ent->value);
+		if (error)
+			return error;
+	}
+	list_for_each(opts, ent) {
+		error = expand_entry_variables(&ent->value);
+		if (error)
+			return error;
+	}
 
 	return 0;
 }

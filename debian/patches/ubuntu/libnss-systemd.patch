@@ -1,0 +1,39 @@
+Author: Jamie Strandboge <jamie@ubuntu.com>
+Description: allow accessing the libnss-systemd VarLink sockets and
+ and DBus APIs
+Bug-Ubuntu: https://launchpad.net/bugs/1796911
+Bug-Ubuntu: https://launchpad.net/bugs/1869024
+Index: apparmor-2.13.3/profiles/apparmor.d/abstractions/nameservice
+===================================================================
+--- apparmor-2.13.3.orig/profiles/apparmor.d/abstractions/nameservice
++++ apparmor-2.13.3/profiles/apparmor.d/abstractions/nameservice
+@@ -106,6 +106,29 @@
+        member="Resolve{Address,Hostname,Record,Service}"
+        peer=(name="org.freedesktop.resolve1"),
+ 
++  # libnss-systemd
++  #
++  #   https://systemd.io/USER_GROUP_API/
++  #   https://systemd.io/USER_RECORD/
++  #   https://www.freedesktop.org/software/systemd/man/nss-systemd.html
++  #
++  # Allow User/Group lookups via common VarLink socket APIs. Applications need
++  # to either consult all of them or the io.systemd.Multiplexer frontend.
++  /run/systemd/userdb/ r,
++  /run/systemd/userdb/io.systemd.Multiplexer rw,
++  /run/systemd/userdb/io.systemd.DynamicUser rw,        # systemd-exec users
++  /run/systemd/userdb/io.systemd.Home rw,               # systemd-home dirs
++  /run/systemd/userdb/io.systemd.NameServiceSwitch rw,  # UNIX/glibc NSS
++
++  # Also allow lookups for systemd-exec's DynamicUsers via D-Bus
++  #   https://www.freedesktop.org/software/systemd/man/systemd.exec.html
++  dbus send
++       bus=system
++       path="/org/freedesktop/systemd1"
++       interface="org.freedesktop.systemd1.Manager"
++       member="{GetDynamicUsers,LookupDynamicUserByName,LookupDynamicUserByUID}"
++       peer=(name="org.freedesktop.systemd1"),
++
+   # TCP/UDP network access
+   network inet  stream,
+   network inet6 stream,

@@ -92,10 +92,10 @@ index f9352ee..54f9f36 100644
  
  =cut
 diff --git a/parser/Makefile b/parser/Makefile
-index 5d799f6..0218e1c 100644
+index 1ab173d..714b6a3 100644
 --- a/parser/Makefile
 +++ b/parser/Makefile
-@@ -28,7 +28,7 @@ SYSTEMD_UNIT_DIR=${DESTDIR}/usr/lib/systemd/system
+@@ -30,7 +30,7 @@ SYSTEMD_UNIT_DIR=${DESTDIR}/usr/lib/systemd/system
  CONFDIR=/etc/apparmor
  INSTALL_CONFDIR=${DESTDIR}${CONFDIR}
  LOCALEDIR=/usr/share/locale
@@ -104,7 +104,7 @@ index 5d799f6..0218e1c 100644
  
  YACC	:= bison
  YFLAGS	:= -d
-@@ -70,9 +70,6 @@ endif
+@@ -72,9 +72,6 @@ endif
  # Internationalization support. Define a package and a LOCALEDIR
  EXTRA_CFLAGS+=-DPACKAGE=\"${NAME}\" -DLOCALEDIR=\"${LOCALEDIR}\"
  
@@ -114,7 +114,7 @@ index 5d799f6..0218e1c 100644
  SRCS = parser_common.c parser_include.c parser_interface.c parser_lex.c \
         parser_main.c parser_misc.c parser_merge.c parser_symtab.c \
         parser_yacc.c parser_regex.c parser_variable.c parser_policy.c \
-@@ -371,7 +368,6 @@ install-arch: $(INSTALLDEPS)
+@@ -385,7 +382,6 @@ install-arch: $(INSTALLDEPS)
  .PHONY: install-indep
  install-indep: indep
  	install -m 755 -d $(INSTALL_CONFDIR)
@@ -283,7 +283,7 @@ index 9fc8b83..d312488 100644
  
  FILE *search_path(char *filename, char **fullpath)
 diff --git a/parser/rc.apparmor.functions b/parser/rc.apparmor.functions
-index 521cfe7..7295daf 100644
+index 875ca08..ab2e58c 100644
 --- a/parser/rc.apparmor.functions
 +++ b/parser/rc.apparmor.functions
 @@ -33,25 +33,12 @@
@@ -434,7 +434,7 @@ index 521cfe7..7295daf 100644
  	# doesn't work, since we are removing entries which screws up
  	# our position.  Lets hope there are never enough profiles to
  	# overflow the variable
-@@ -408,11 +335,8 @@ apparmor_kill() {
+@@ -410,11 +337,8 @@ apparmor_kill() {
  		return 1
  	fi
  
@@ -446,7 +446,7 @@ index 521cfe7..7295daf 100644
  	else
  		aa_log_failure_msg "AppArmor is builtin"
  		return 1
-@@ -459,27 +383,11 @@ apparmor_try_restart() {
+@@ -461,27 +385,11 @@ apparmor_try_restart() {
  	return $?
  }
  

@@ -6,8 +6,9 @@ for f in ${PROFILE_DIR}/*
 do
 	[ ! -f "$f" ] && continue
 
-        # put nvidia_modprobe in enforce mode
+        # put lsb_release and nvidia_modprobe in enforce mode
         [ "$f" = "${PROFILE_DIR}/nvidia_modprobe" ] && continue
+        [ "$f" = "${PROFILE_DIR}/lsb_release" ] && continue
 
 	if egrep -q 'flags=\(.*\) {' "$f"; then
 		# Deal with existing flags, but need to account for multiple

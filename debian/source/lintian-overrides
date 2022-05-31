@@ -1,4 +1,6 @@
 # We replace usr/lib/perl5 with the corresponding multiarch path in debian/rules,
 # as a consequence this file contains this string.
 apparmor source: mentions-deprecated-usr-lib-perl5-directory rules
-apparmor source: usr-lib-perl5-mentioned rules
+
+# This is the manpage for a Debian/Ubuntu-specific script
+apparmor source: maintainer-manual-page debian/aa-update-browser.8

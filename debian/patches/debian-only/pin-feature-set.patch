@@ -12,7 +12,7 @@ Forwarded: not-needed
  1 file changed, 4 insertions(+)
 
 diff --git a/parser/parser.conf b/parser/parser.conf
-index 641cf1d..ea27875 100644
+index 641cf1d..58d0d2d 100644
 --- a/parser/parser.conf
 +++ b/parser/parser.conf
 @@ -59,3 +59,7 @@
@@ -20,6 +20,6 @@ index 641cf1d..ea27875 100644
  #Optimize=compress-small
  #Optimize=compress-fast
 +
-+## Pin feature set (avoid regressions when policy is lagging behind
++## Pin the policy feature set (avoid regressions when policy is lagging behind
 +## the kernel)
-+features-file=/usr/share/apparmor-features/features
++compile-features=/usr/share/apparmor-features/features

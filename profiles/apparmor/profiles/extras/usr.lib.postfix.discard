@@ -1,6 +1,7 @@
 # ------------------------------------------------------------------
 #
 #    Copyright (C) 2002-2005 Novell/SUSE
+#    Copyright (C) 2018 Canonical, Ltd.
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -11,8 +12,8 @@
 
 #include <tunables/global>
 
-/usr/lib/postfix/discard {
+profile postfix-discard /usr/lib/postfix/{bin/,sbin/,}discard {
   #include <abstractions/base>
 
-  /usr/lib/postfix/discard rmix,
+  /usr/lib/postfix/{bin/,sbin/,}discard mrix,
 }

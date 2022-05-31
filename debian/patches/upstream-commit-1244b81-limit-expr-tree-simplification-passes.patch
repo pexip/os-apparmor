@@ -2,6 +2,8 @@ From: John Johansen <john.johansen@canonical.com>
 Date: Sat, 20 Oct 2018 15:59:51 -0700
 Subject: parser: limit the number of passes expr tree simplification does
 
+Forwarded: yes
+Origin: commit:2809060bec4a6511e84f5d7cbc80079c1cdc92a8
 ---
  parser/libapparmor_re/expr-tree.cc | 7 ++++---
  1 file changed, 4 insertions(+), 3 deletions(-)

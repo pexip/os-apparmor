@@ -1,13 +1,13 @@
 From: intrigeri <intrigeri@boum.org>
 Date: Fri, 28 Dec 2018 16:20:24 +0000
 Subject: Enable writing cache.
-
+Forwarded: not-needed
 ---
  parser/rc.apparmor.functions | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/parser/rc.apparmor.functions b/parser/rc.apparmor.functions
-index 4ff45f1..09495b9 100644
+index 3e35aeb..74b6bc8 100644
 --- a/parser/rc.apparmor.functions
 +++ b/parser/rc.apparmor.functions
 @@ -33,7 +33,7 @@

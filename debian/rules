@@ -5,7 +5,6 @@ include /usr/share/dpkg/pkg-info.mk
 export DEB_BUILD_MAINT_OPTIONS = hardening=+bindnow
 
 export DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
-export DEB_HOST_MULTIARCH   ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 
 export PERL_VENDORARCH := $(shell perl -MConfig -e 'print substr($$Config{vendorarch},1)' )
 export PYTHON=/usr/bin/python3
@@ -18,7 +17,7 @@ export PYTHON_VERSIONS=python3
 
 override_dh_auto_configure:
 	cd libraries/libapparmor && sh ./autogen.sh
-	dh_auto_configure -D libraries/libapparmor -- --with-perl --libdir /lib/$(DEB_HOST_MULTIARCH)
+	dh_auto_configure -D libraries/libapparmor -- --with-perl
 
 
 override_dh_auto_build:
@@ -29,7 +28,7 @@ override_dh_auto_build:
 	# Build perl
 	dh_auto_build -D libraries/libapparmor
 	# Build pythons
-	set -e && for py in $(shell py3versions -s) ; do \
+	set -e; for py in $(shell py3versions -s) ; do \
 		cp -a $(CURDIR)/libraries/libapparmor $(CURDIR)/libraries/libapparmor.$$py && \
 		PYTHON=/usr/bin/$$py dh_auto_configure \
 			-D libraries/libapparmor.$$py -- --with-python && \
@@ -62,7 +61,7 @@ ifeq (,$(filter $(DEB_HOST_ARCH_OS), kfreebsd knetbsd hurd ))
 	dh_auto_test -Dparser -- V=1
 endif
 	dh_auto_test -Dlibraries/libapparmor -- V=1
-	set -e && for py in $(shell py3versions -s) ; do \
+	set -e; for py in $(shell py3versions -s) ; do \
 		PYTHON=/usr/bin/$$py dh_auto_test \
 			-D libraries/libapparmor.$$py -- PYTHON=/usr/bin/$$py; \
 	done
@@ -78,7 +77,7 @@ override_dh_auto_clean:
 	cd $(CURDIR)/libraries/libapparmor && \
 		[ ! -f Makefile ] || $(MAKE) distclean
 	# Clean up rest of build.
-	set -e && for i in binutils utils parser profiles changehat/mod_apparmor \
+	set -e; for i in binutils utils parser profiles changehat/mod_apparmor \
 		  changehat/pam_apparmor ; do \
 		[ ! -f $$i/Makefile ] || $(MAKE) -C $$i clean; \
 		rm -f $$i/common; \
@@ -99,7 +98,7 @@ override_dh_auto_install:
 	    DESTDIR=$(CURDIR)/debian/tmp \
 	    install
 
-	set -e && for py in $(shell py3versions -s) ; do \
+	set -e; for py in $(shell py3versions -s) ; do \
 		(cd utils.$$py && PYTHON=/usr/bin/$$py $(MAKE) \
 	    	DESTDIR=$(CURDIR)/debian/tmp \
 	    	install) ; \
@@ -141,7 +140,7 @@ endif
 			-c "chmod +w SO && chrpath --delete SO && chmod -w SO"
 
 	# Install python swig modules
-	set -e && for py in $(shell py3versions -s); do \
+	set -e; for py in $(shell py3versions -s); do \
 		PYTHON=/usr/bin/$$py \
 		$(MAKE) -C libraries/libapparmor.$$py \
 		DESTDIR=$(CURDIR)/debian/tmp install; \
@@ -173,26 +172,20 @@ endif
 	# Build debhelper documentation.
 	pod2man -c Debhelper -r "$(DEB_VERSION)" $(CURDIR)/debian/debhelper/dh_apparmor $(CURDIR)/debian/debhelper/dh_apparmor.1
 
-	# Create unversioned link in /usr to the shared library
-	MY_DSO=$$(basename $$(readlink $(CURDIR)/debian/tmp/lib/$(DEB_HOST_MULTIARCH)/libapparmor.so)); \
-	ln -sf /lib/$(DEB_HOST_MULTIARCH)/$${MY_DSO} \
-	    $(CURDIR)/debian/tmp/lib/$(DEB_HOST_MULTIARCH)/libapparmor.so
-
 override_dh_installinit:
-	dh_installinit --no-start --no-restart-on-upgrade --error-handler=true
+	dh_installinit --no-start --no-stop-on-upgrade --error-handler=true
+
+override_dh_installsystemd:
+	dh_installsystemd --no-start --no-stop-on-upgrade
 
 override_dh_compress:
 	dh_compress -Xextras
-
-override_dh_perl:
-	dh_perl -p libapparmor-perl -d
-	dh_perl --no-package=libapparmor-perl
 
 override_dh_apache2:
 	dh_apache2 --noenable
 
 override_dh_install-indep:
-	set -e && for profile in $(shell grep ^etc/apparmor.d/ $(CURDIR)/debian/apparmor-profiles.install | \
+	set -e; for profile in $(shell grep ^etc/apparmor.d/ $(CURDIR)/debian/apparmor-profiles.install | \
 			 cut -d/ -f3- | grep -v /); do \
 	    DH_AUTOSCRIPTDIR=debian/debhelper/ perl debian/debhelper/dh_apparmor --profile-name=$$profile -papparmor-profiles; \
 	done
@@ -202,7 +195,7 @@ override_dh_install-indep:
 	dh_install
 
 override_dh_install-arch:
-	set -e && for profile in nvidia_modprobe; do \
+	set -e; for profile in lsb_release nvidia_modprobe; do \
 	    DH_AUTOSCRIPTDIR=debian/debhelper/ perl debian/debhelper/dh_apparmor --profile-name=$$profile -papparmor; \
 	done
 	dh_install

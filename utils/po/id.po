@@ -14,8 +14,8 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Launchpad-Export-Date: 2017-10-11 05:15+0000\n"
-"X-Generator: Launchpad (build 18474)\n"
+"X-Launchpad-Export-Date: 2019-04-18 05:33+0000\n"
+"X-Generator: Launchpad (build 18928)\n"
 "Language: id\n"
 
 #: ../aa-genprof:56
@@ -1147,11 +1147,11 @@ msgstr "(B)aru"
 
 #: ../apparmor/ui.py:254
 msgid "(G)lob"
-msgstr "(G)umpal"
+msgstr "G(u)mpal"
 
 #: ../apparmor/ui.py:255
 msgid "Glob with (E)xtension"
-msgstr "Gumpal dengan (E)kstensi"
+msgstr "Gumpal dengan E(k)stensi"
 
 #: ../apparmor/ui.py:256
 msgid "(A)dd Requested Hat"
@@ -1159,7 +1159,7 @@ msgstr "(T)ambahkan Topi yang Diminta"
 
 #: ../apparmor/ui.py:257
 msgid "(U)se Default Hat"
-msgstr "(G)unakan Topi Default"
+msgstr "Gunakan Topi (D)efault"
 
 #: ../apparmor/ui.py:258
 msgid "(S)can system log for AppArmor events"
@@ -1175,7 +1175,7 @@ msgstr "(L)ihat Profil"
 
 #: ../apparmor/ui.py:261
 msgid "(U)se Profile"
-msgstr "(G)unakan Profil"
+msgstr "Gunakan (P)rofil"
 
 #: ../apparmor/ui.py:262
 msgid "(C)reate New Profile"

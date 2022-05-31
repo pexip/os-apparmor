@@ -13,7 +13,7 @@ variables in rc.apparmor.functions anymore.
  1 file changed, 2 deletions(-)
 
 diff --git a/parser/rc.apparmor.functions b/parser/rc.apparmor.functions
-index 7295daf..77fda76 100644
+index ab2e58c..95cdbd4 100644
 --- a/parser/rc.apparmor.functions
 +++ b/parser/rc.apparmor.functions
 @@ -55,8 +55,6 @@ elif [ -d /etc/apparmor.d ] ; then
