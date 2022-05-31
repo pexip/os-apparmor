@@ -28,7 +28,7 @@ Vcs-Browser: https://salsa.debian.org/apparmor-team/apparmor
 Vcs-Git: https://salsa.debian.org/apparmor-team/apparmor.git
 Homepage: http://apparmor.net/
 Rules-Requires-Root: no
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
+XS-Pexip-Upstream: http://deb.debian.org/debian/ bullseye
 
 Package: apparmor
 Architecture: any
