@@ -1,3 +1,9 @@
+apparmor (2.13.6-10pexip1) pexip; urgency=medium
+
+  * Initial bullseye build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Thu, 02 Jun 2022 14:41:59 +0100
+
 apparmor (2.13.6-10) unstable; urgency=medium
 
   * autopkgtest: use hint-testsuite-triggers to ensure dummy test is not run
