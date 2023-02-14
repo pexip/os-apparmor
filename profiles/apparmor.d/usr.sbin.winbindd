@@ -1,9 +1,11 @@
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 profile winbindd /usr/{bin,sbin}/winbindd {
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
-  #include <abstractions/samba>
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/samba>
 
   deny capability block_suspend,
 
@@ -24,16 +26,17 @@ profile winbindd /usr/{bin,sbin}/winbindd {
   /usr/lib*/samba/idmap/*.so mr,
   /usr/lib*/samba/nss_info/*.so mr,
   /usr/lib*/samba/pdb/*.so mr,
+  /usr/lib*/samba/{,samba/}samba-dcerpcd Px -> samba-dcerpcd,
   /usr/{bin,sbin}/winbindd mr,
   /var/cache/krb5rcache/* rwk,
   /var/cache/samba/*.tdb rwk,
   /var/log/samba/log.winbindd rw,
-  /{var/,}run/samba/winbindd.pid rwk,
-  /{var/,}run/samba/winbindd/ rw,
-  /{var/,}run/samba/winbindd/pipe w,
-  /{var/,}run/user/*/krb5cc/* rwk,
+  @{run}/{samba/,}winbindd.pid rwk,
+  @{run}/samba/winbindd/ rw,
+  @{run}/samba/winbindd/pipe w,
+  @{run}/user/*/krb5cc/* rwk,
 
   # Site-specific additions and overrides. See local/README for details.
-  #include <local/usr.sbin.winbindd>
+  include if exists <local/usr.sbin.winbindd>
 
 }

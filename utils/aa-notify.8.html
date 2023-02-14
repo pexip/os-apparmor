@@ -2,7 +2,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title></title>
+<title>aa-notify - display information about logged AppArmor messages.</title>
 <link rel="stylesheet" href="apparmor.css" type="text/css" />
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <link rev="made" href="mailto:root@localhost" />
@@ -11,7 +11,7 @@
 <body>
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;aa-notify - display information about logged AppArmor messages.</span></strong></big>
 </td></tr>
 </table>
 
@@ -105,28 +105,28 @@
 
 <p>System-wide configuration for <b>aa-notify</b> is done via /etc/apparmor/notify.conf:</p>
 
-<pre><code>  # set to &#39;yes&#39; to enable AppArmor DENIED notifications
-  show_notifications=&quot;yes&quot;
+<pre><code># set to &#39;yes&#39; to enable AppArmor DENIED notifications
+show_notifications=&quot;yes&quot;
 
-  # only people in use_group can use aa-notify
-  use_group=&quot;admin&quot;
+# only people in use_group can use aa-notify
+use_group=&quot;admin&quot;
 
-  # OPTIONAL - custom notification message body
-  message_body=&quot;This is a custom notification message.&quot;
+# OPTIONAL - custom notification message body
+message_body=&quot;This is a custom notification message.&quot;
 
-  # OPTIONAL - custom notification message footer
-  message_footer=&quot;For more information visit https://foo.com&quot;</code></pre>
+# OPTIONAL - custom notification message footer
+message_footer=&quot;For more information visit https://foo.com&quot;</code></pre>
 
 <p>Per-user configuration is done via $XDG_CONFIG_HOME/apparmor/notify.conf (or the deprecated ~/.apparmor/notify.conf if it exists):</p>
 
-<pre><code>  # set to &#39;yes&#39; to enable AppArmor DENIED notifications
-  show_notifications=&quot;yes&quot;</code></pre>
+<pre><code># set to &#39;yes&#39; to enable AppArmor DENIED notifications
+show_notifications=&quot;yes&quot;</code></pre>
 
 <h1 id="BUGS">BUGS</h1>
 
 <p><b>aa-notify</b> needs to be able to read the logfiles containing the AppArmor DENIED messages.</p>
 
-<p>If you find any additional bugs, please report them to Launchpad at <a href="https://bugs.launchpad.net/apparmor/+filebug">https://bugs.launchpad.net/apparmor/+filebug</a>.</p>
+<p>If you find any additional bugs, please report them to Gitlab at <a href="https://gitlab.com/apparmor/apparmor/-/issues">https://gitlab.com/apparmor/apparmor/-/issues</a>.</p>
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
@@ -134,7 +134,7 @@
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;aa-notify - display information about logged AppArmor messages.</span></strong></big>
 </td></tr>
 </table>
 

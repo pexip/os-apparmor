@@ -47,7 +47,7 @@ aare_rules::~aare_rules(void)
 bool aare_rules::add_rule(const char *rule, int deny, uint32_t perms,
 			  uint32_t audit, dfaflags_t flags)
 {
-	return add_rule_vec(deny, perms, audit, 1, &rule, flags);
+	return add_rule_vec(deny, perms, audit, 1, &rule, flags, false);
 }
 
 void aare_rules::add_to_rules(Node *tree, Node *perms)
@@ -66,8 +66,14 @@ static Node *cat_with_null_seperator(Node *l, Node *r)
 	return new CatNode(new CatNode(l, new CharNode(0)), r);
 }
 
+static Node *cat_with_oob_seperator(Node *l, Node *r)
+{
+	return new CatNode(new CatNode(l, new CharNode(transchar(-1, true))), r);
+}
+
 bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
-			      int count, const char **rulev, dfaflags_t flags)
+			      int count, const char **rulev, dfaflags_t flags,
+			      bool oob)
 {
 	Node *tree = NULL, *accept;
 	int exact_match;
@@ -77,8 +83,11 @@ bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
 	for (int i = 1; i < count; i++) {
 		Node *subtree = NULL;
 		if (regex_parse(&subtree, rulev[i]))
-			return false;
-		tree = cat_with_null_seperator(tree, subtree);
+			goto err;
+		if (oob)
+			tree = cat_with_oob_seperator(tree, subtree);
+		else
+			tree = cat_with_null_seperator(tree, subtree);
 	}
 
 	/*
@@ -102,10 +111,15 @@ bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
 	accept = unique_perms.insert(deny, perms, audit, exact_match);
 
 	if (flags & DFA_DUMP_RULE_EXPR) {
+		const char *seperator;
+		if (oob)
+			seperator = "\\-x01";
+		else
+			seperator = "\\x00";
 		cerr << "rule: ";
 		cerr << rulev[0];
 		for (int i = 1; i < count; i++) {
-			cerr << "\\x00";
+			cerr << seperator;
 			cerr << rulev[i];
 		}
 		cerr << "  ->  ";
@@ -122,6 +136,58 @@ bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
 	rule_count++;
 
 	return true;
+
+err:
+	delete tree;
+	return false;
+}
+
+/*
+ * append_rule is like add_rule, but appends the rule to any existing rules
+ * with a separating transition. The appended rule matches with the same
+ * permissions as the rule it's appended to. If there are no existing rules
+ * append_rule returns true.
+ *
+ * This is used by xattrs matching where, after matching the path, the DFA is
+ * advanced by a null character for each xattr.
+ */
+bool aare_rules::append_rule(const char *rule, bool oob, bool with_perm,
+			     dfaflags_t flags)
+{
+	Node *tree = NULL;
+	if (regex_parse(&tree, rule))
+		return false;
+
+	if (flags & DFA_DUMP_RULE_EXPR) {
+		cerr << "rule: ";
+		cerr << rule;
+		cerr << "  ->  ";
+		tree->dump(cerr);
+		cerr << "\n\n";
+	}
+
+	/*
+	 * For each matching state, we want to create an optional path
+	 * separated by a separating character.
+	 *
+	 * When matching xattrs, the DFA must end up in an accepting state for
+	 * the path, then each value of the xattrs. Using an optional node
+	 * lets each rule end up in an accepting state.
+	 */
+	tree = new CatNode(oob ? new CharNode(transchar(-1, true)) : new CharNode(0), tree);
+	if (expr_map.size() == 0) {
+		// There's nothing to append to. Free the tree reference.
+		delete tree;
+		return true;
+	}
+	PermExprMap::iterator it;
+	for (it = expr_map.begin(); it != expr_map.end(); it++) {
+		if (with_perm)
+			expr_map[it->first] = new CatNode(it->second, new AltNode(it->first, tree));
+		else
+			expr_map[it->first] = new CatNode(it->second, tree);
+	}
+	return true;
 }
 
 /* create a dfa from the ruleset
@@ -129,7 +195,8 @@ bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
  *          else NULL on failure, @min_match_len set to the shortest string
  *          that can match the dfa for determining xmatch priority.
  */
-void *aare_rules::create_dfa(size_t *size, int *min_match_len, dfaflags_t flags)
+void *aare_rules::create_dfa(size_t *size, int *min_match_len, dfaflags_t flags,
+			     bool filedfa)
 {
 	char *buffer = NULL;
 
@@ -183,7 +250,7 @@ void *aare_rules::create_dfa(size_t *size, int *min_match_len, dfaflags_t flags)
 
 	stringstream stream;
 	try {
-		DFA dfa(root, flags);
+		DFA dfa(root, flags, filedfa);
 		if (flags & DFA_DUMP_UNIQ_PERMS)
 			dfa.dump_uniq_perms("dfa");
 
@@ -219,7 +286,7 @@ void *aare_rules::create_dfa(size_t *size, int *min_match_len, dfaflags_t flags)
 		if (flags & DFA_DUMP_GRAPH)
 			dfa.dump_dot_graph(cerr);
 
-		map<uchar, uchar> eq;
+		map<transchar, transchar> eq;
 		if (flags & DFA_CONTROL_EQUIV) {
 			eq = dfa.equivalence_classes(flags);
 			dfa.apply_equivalence_classes(eq);

@@ -140,7 +140,7 @@ class BaseRule(object):
         '''check if other_rule is covered by this rule object'''
 
         if not type(other_rule) == type(self):
-            raise AppArmorBug('Passes %s instead of %s' % (str(other_rule),self.__class__.__name__))
+            raise AppArmorBug('Passes %s instead of %s' % (str(other_rule), self.__class__.__name__))
 
         if check_allow_deny and self.deny != other_rule.deny:
             return False
@@ -191,15 +191,6 @@ class BaseRule(object):
 
         # still here? -> then it is covered
         return True
-
-    def _is_covered_aare_compat(self, self_value, self_all, other_value, other_all, cond_name):
-        '''check if other_* is covered by self_* - for AARE
-           Note: this function checks against other_value.regex, which is not really correct, but avoids overly strict results when matching one regex against another
-        '''
-        if type(other_value) == AARE:
-           other_value = other_value.regex
-
-        return self._is_covered_aare(self_value, self_all, other_value, other_all, cond_name)
 
     def _is_covered_aare(self, self_value, self_all, other_value, other_all, cond_name):
         '''check if other_* is covered by self_* - for AARE'''
@@ -410,6 +401,20 @@ class BaseRuleset(object):
             cleandata.append('')
 
         return cleandata
+
+    def get_clean_unsorted(self, depth=0):
+        '''return all rules (in clean/default formatting) in original order
+           Returns an array of lines, with depth * leading whitespace'''
+
+        all_rules = []
+
+        for rule in self.rules:
+            all_rules.append(rule.get_clean(depth))
+
+        if all_rules:
+            all_rules.append('')
+
+        return all_rules
 
     def is_covered(self, rule, check_allow_deny=True, check_audit=False):
         '''return True if rule is covered by existing rules, otherwise False'''

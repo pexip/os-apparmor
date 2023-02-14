@@ -1,7 +1,9 @@
 debian/aa-update-browser /usr/sbin/
 debian/vim-apparmor.yaml /usr/share/vim/registry/
+etc/apparmor/easyprof.conf
 etc/apparmor/logprof.conf
 etc/apparmor/severity.db
+usr/bin/aa-easyprof
 usr/sbin/aa-audit
 usr/sbin/aa-autodep
 usr/sbin/aa-cleanprof
@@ -14,4 +16,5 @@ usr/sbin/aa-logprof
 usr/sbin/aa-mergeprof
 usr/sbin/aa-unconfined
 usr/share/apparmor/apparmor.vim /usr/share/vim/addons/syntax/
+usr/share/apparmor/easyprof/ /usr/share/apparmor/
 usr/share/locale/*/LC_MESSAGES/apparmor-utils.mo

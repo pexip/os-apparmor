@@ -8,12 +8,14 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/bin/apropos {
-  #include <abstractions/base>
-  #include <abstractions/bash>
-  #include <abstractions/consoles>
+  include <abstractions/base>
+  include <abstractions/bash>
+  include <abstractions/consoles>
   /{usr/,}bin/basename         mixr,
   /{usr/,}bin/bash             mixr,
   /{usr/,}bin/grep             mixr,

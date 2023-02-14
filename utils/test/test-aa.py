@@ -20,11 +20,12 @@ import sys
 import apparmor.aa  # needed to set global vars in some tests
 from apparmor.aa import (check_for_apparmor, get_output, get_reqs, get_interpreter_and_abstraction, create_new_profile,
      get_profile_flags, change_profile_flags, set_options_audit_mode, set_options_owner_mode, is_skippable_file, is_skippable_dir,
-     parse_profile_start, parse_profile_data, separate_vars, store_list_var, write_header,
-     var_transform, serialize_parse_profile_start, get_file_perms, propose_file_rules)
+     parse_profile_start, parse_profile_data, write_header,
+     get_file_perms, propose_file_rules)
 from apparmor.aare import AARE
 from apparmor.common import AppArmorException, AppArmorBug
 from apparmor.rule.file import FileRule
+from apparmor.rule.include import IncludeRule
 
 class AaTestWithTempdir(AATest):
     def AASetup(self):
@@ -131,8 +132,8 @@ class AaTest_create_new_profile(AATest):
 
         # load the abstractions we need in the test
         apparmor.aa.profile_dir = self.profile_dir
-        apparmor.aa.load_include('abstractions/base')
-        apparmor.aa.load_include('abstractions/bash')
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/base'))
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/bash'))
 
         exp_interpreter_path, exp_abstraction = expected
         # damn symlinks!
@@ -149,9 +150,9 @@ class AaTest_create_new_profile(AATest):
             self.assertEqual(set(profile[program][program]['file'].get_clean()), {'%s mr,' % program, ''})
 
         if exp_abstraction:
-            self.assertEqual(set(profile[program][program]['include'].keys()), {exp_abstraction, 'abstractions/base'})
+            self.assertEqual(profile[program][program]['inc_ie'].get_clean(), ['include <abstractions/base>', 'include <%s>' % exp_abstraction, ''])
         else:
-            self.assertEqual(set(profile[program][program]['include'].keys()), {'abstractions/base'})
+            self.assertEqual(profile[program][program]['inc_ie'].get_clean(), ['include <abstractions/base>', ''])
 
 class AaTest_get_interpreter_and_abstraction(AATest):
     tests = [
@@ -507,36 +508,51 @@ class AaTest_is_skippable_dir(AATest):
 class AaTest_parse_profile_start(AATest):
     def _parse(self, line, profile, hat):
         return parse_profile_start(line, 'somefile', 1, profile, hat)
-        # (profile, hat, flags, in_contained_hat, pps_set_profile, pps_set_hat_external)
+        # (profile, hat, attachment, xattrs, flags, in_contained_hat, pps_set_profile, pps_set_hat_external)
 
     def test_parse_profile_start_01(self):
         result = self._parse('/foo {', None, None)
-        expected = ('/foo', '/foo', None, None, False, False, False)
+        expected = ('/foo', '/foo', None, None, None, False, False, False)
         self.assertEqual(result, expected)
 
     def test_parse_profile_start_02(self):
         result = self._parse('/foo (complain) {', None, None)
-        expected = ('/foo', '/foo', None, 'complain', False, False, False)
+        expected = ('/foo', '/foo', None, None, 'complain', False, False, False)
         self.assertEqual(result, expected)
 
     def test_parse_profile_start_03(self):
         result = self._parse('profile foo /foo {', None, None) # named profile
-        expected = ('foo', 'foo', '/foo', None, False, False, False)
+        expected = ('foo', 'foo', '/foo', None, None, False, False, False)
         self.assertEqual(result, expected)
 
     def test_parse_profile_start_04(self):
         result = self._parse('profile /foo {', '/bar', '/bar') # child profile
-        expected = ('/bar', '/foo', None, None, True, True, False)
+        expected = ('/bar', '/foo', None, None, None, True, True, False)
         self.assertEqual(result, expected)
 
     def test_parse_profile_start_05(self):
         result = self._parse('/foo//bar {', None, None) # external hat
-        expected = ('/foo', 'bar', None, None, False, False, True)
+        expected = ('/foo', 'bar', None, None, None, False, False, True)
         self.assertEqual(result, expected)
 
     def test_parse_profile_start_06(self):
         result = self._parse('profile "/foo" (complain) {', None, None)
-        expected = ('/foo', '/foo', None, 'complain', False, False, False)
+        expected = ('/foo', '/foo', None, None, 'complain', False, False, False)
+        self.assertEqual(result, expected)
+
+    def test_parse_profile_start_07(self):
+        result = self._parse('profile "/foo" xattrs=(user.bar=bar) {', None, None)
+        expected = ('/foo', '/foo', None, 'user.bar=bar', None, False, False, False)
+        self.assertEqual(result, expected)
+
+    def test_parse_profile_start_08(self):
+        result = self._parse('profile "/foo" xattrs=(user.bar=bar user.foo=*) {', None, None)
+        expected = ('/foo', '/foo', None, 'user.bar=bar user.foo=*', None, False, False, False)
+        self.assertEqual(result, expected)
+
+    def test_parse_profile_start_09(self):
+        result = self._parse('/usr/bin/xattrs-test xattrs=(myvalue="foo.bar") {', None, None)
+        expected = ('/usr/bin/xattrs-test', '/usr/bin/xattrs-test', None, 'myvalue="foo.bar"', None, False, False, False)
         self.assertEqual(result, expected)
 
     def test_parse_profile_start_unsupported_01(self):
@@ -561,79 +577,57 @@ class AaTest_parse_profile_data(AATest):
         self.assertEqual(prof['/foo']['/foo']['filename'], 'somefile')
         self.assertEqual(prof['/foo']['/foo']['flags'], None)
 
-    def test_parse_empty_profile_02(self):
+    def test_parse_duplicate_profile(self):
         with self.assertRaises(AppArmorException):
             # file contains two profiles with the same name
             parse_profile_data('profile /foo {\n}\nprofile /foo {\n}\n'.split(), 'somefile', False)
 
-class AaTest_separate_vars(AATest):
-    tests = [
-        (''                             , set()                      ),
-        ('       '                      , set()                      ),
-        ('  foo bar'                    , {'foo', 'bar'             }),
-        ('foo "  '                      , AppArmorException          ),
-        (' " foo '                      , AppArmorException          ), # half-quoted
-        ('  foo bar   '                 , {'foo', 'bar'             }),
-        ('  foo bar   # comment'        , {'foo', 'bar', '#', 'comment'}), # XXX should comments be stripped?
-        ('foo'                          , {'foo'                    }),
-        ('"foo" "bar baz"'              , {'foo', 'bar baz'         }),
-        ('foo "bar baz" xy'             , {'foo', 'bar baz', 'xy'   }),
-        ('foo "bar baz '                , AppArmorException          ), # half-quoted
-        ('  " foo" bar'                 , {' foo', 'bar'            }),
-        ('  " foo" bar x'               , {' foo', 'bar', 'x'       }),
-        ('""'                           , {''                       }), # empty value
-        ('"" foo'                       , {'', 'foo'                }), # empty value + 'foo'
-        ('"" foo "bar"'                 , {'', 'foo', 'bar'         }), # empty value + 'foo' + 'bar' (bar has superfluous quotes)
-        ('"bar"'                        , {'bar'                    }), # 'bar' with superfluous quotes
-    ]
+    def test_parse_duplicate_child_profile(self):
+        with self.assertRaises(AppArmorException):
+            # file contains two child profiles with the same name
+            parse_profile_data('profile /foo {\nprofile /bar {\n}\nprofile /bar {\n}\n}\n'.split(), 'somefile', False)
 
-    def _run_test(self, params, expected):
-        if expected == AppArmorException:
-            with self.assertRaises(expected):
-                separate_vars(params)
-        else:
-            result = separate_vars(params)
-            self.assertEqual(result, expected)
+    def test_parse_duplicate_hat(self):
+        with self.assertRaises(AppArmorException):
+            # file contains two hats with the same name
+            parse_profile_data('profile /foo {\n^baz {\n}\n^baz {\n}\n}\n'.split(), 'somefile', False)
 
+    def test_parse_xattrs_01(self):
+        prof = parse_profile_data('/foo xattrs=(user.bar=bar) {\n}\n'.split(), 'somefile', False)
 
-class AaTest_store_list_var(AATest):
-    tests = [
-        #  old var                        value        operation   expected (False for exception)
-        ([ {}                           , 'foo'         , '='   ], {'foo'}                      ), # set
-        ([ {}                           , 'foo bar'     , '='   ], {'foo', 'bar'}               ), # set multi
-        ([ {'@{var}': {'foo'}}          , 'bar'         , '='   ], False                        ), # redefine var
-        ([ {}                           , 'bar'         , '+='  ], False                        ), # add to undefined var
-        ([ {'@{var}': {'foo'}}          , 'bar'         , '+='  ], {'foo', 'bar'}               ), # add
-        ([ {'@{var}': {'foo'}}          , 'bar baz'     , '+='  ], {'foo', 'bar', 'baz'}        ), # add multi
-        ([ {'@{var}': {'foo', 'xy'}}    , 'bar baz'     , '+='  ], {'foo', 'xy', 'bar', 'baz'}  ), # add multi to multi
-        ([ {}                           , 'foo'         , '-='  ], False                        ), # unknown operation
-    ]
+        self.assertEqual(list(prof.keys()), ['/foo'])
+        self.assertEqual(list(prof['/foo'].keys()), ['/foo'])
+        self.assertEqual(prof['/foo']['/foo']['name'], '/foo')
+        self.assertEqual(prof['/foo']['/foo']['filename'], 'somefile')
+        self.assertEqual(prof['/foo']['/foo']['flags'], None)
+        self.assertEqual(prof['/foo']['/foo']['xattrs'], 'user.bar=bar')
 
-    def _run_test(self, params, expected):
-        var         = params[0]
-        value       = params[1]
-        operation   = params[2]
+    def test_parse_xattrs_02(self):
+        prof = parse_profile_data('/foo xattrs=(user.bar=bar user.foo=*) {\n}\n'.split(), 'somefile', False)
 
-        if not expected:
-            with self.assertRaises(AppArmorException):
-                store_list_var(var, '@{var}', value, operation, 'somefile')
-            return
+        self.assertEqual(list(prof.keys()), ['/foo'])
+        self.assertEqual(list(prof['/foo'].keys()), ['/foo'])
+        self.assertEqual(prof['/foo']['/foo']['name'], '/foo')
+        self.assertEqual(prof['/foo']['/foo']['filename'], 'somefile')
+        self.assertEqual(prof['/foo']['/foo']['flags'], None)
+        self.assertEqual(prof['/foo']['/foo']['xattrs'], 'user.bar=bar user.foo=*')
 
-        # dumy value that must not be changed
-        var['@{foo}'] = {'one', 'two'}
+    def test_parse_xattrs_03(self):
+        d = '/foo xattrs=(user.bar=bar) flags=(complain) {\n}\n'
+        prof = parse_profile_data(d.split(), 'somefile', False)
 
-        exp_var = {
-            '@{foo}':   {'one', 'two'},
-            '@{var}':   expected,
-        }
+        self.assertEqual(list(prof.keys()), ['/foo'])
+        self.assertEqual(list(prof['/foo'].keys()), ['/foo'])
+        self.assertEqual(prof['/foo']['/foo']['name'], '/foo')
+        self.assertEqual(prof['/foo']['/foo']['filename'], 'somefile')
+        self.assertEqual(prof['/foo']['/foo']['flags'], 'complain')
+        self.assertEqual(prof['/foo']['/foo']['xattrs'], 'user.bar=bar')
 
-        store_list_var(var, '@{var}', value, operation, 'somefile')
-
-        self.assertEqual(var.keys(), exp_var.keys())
-
-        for key in exp_var:
-            self.assertEqual(var[key], exp_var[key])
-
+    def test_parse_xattrs_04(self):
+        with self.assertRaises(AppArmorException):
+            # flags before xattrs
+            d = '/foo flags=(complain) xattrs=(user.bar=bar) {\n}\n'
+            parse_profile_data(d.split(), 'somefile', False)
 
 class AaTest_write_header(AATest):
     tests = [
@@ -670,107 +664,49 @@ class AaTest_write_header(AATest):
         embedded_hat = params[1]
         write_flags = params[2]
         depth = params[3]
-        prof_data = { 'flags': params[4], 'attachment': params[5], 'profile_keyword': params[6], 'header_comment': params[7] }
+        prof_data = { 'flags': params[4], 'attachment': params[5], 'profile_keyword': params[6], 'header_comment': params[7], 'xattrs': '' }
 
         result = write_header(prof_data, depth, name, embedded_hat, write_flags)
         self.assertEqual(result, [expected])
 
-class AaTest_var_transform(AATest):
+class AaTest_write_header_01(AATest):
     tests = [
-        (['foo', ''],           'foo ""'        ),
-        (['foo', 'bar'],        'foo bar'       ),
-        ([''],                  '""'            ),
-        (['bar baz', 'foo'],    '"bar baz" foo' ),
-    ]
+        (
+            {'name': '/foo', 'write_flags': True, 'depth': 1, 'flags': 'complain'},
+            '  /foo flags=(complain) {',
+        ),
+        (
+            {'name': '/foo', 'write_flags': True, 'depth': 1, 'flags': 'complain', 'profile_keyword': 'profile'},
+            '  profile /foo flags=(complain) {',
+        ),
+        (
+            {'name': '/foo', 'write_flags': True, 'flags': 'complain'},
+            '/foo flags=(complain) {',
+        ),
+        (
+            {'name': '/foo', 'xattrs': 'user.foo=bar', 'write_flags': True, 'flags': 'complain'},
+            '/foo xattrs=(user.foo=bar) flags=(complain) {',
+        ),
+        (
+            {'name': '/foo', 'xattrs': 'user.foo=bar', 'embedded_hat': True},
+            'profile /foo xattrs=(user.foo=bar) {',
+        ),
+     ]
 
     def _run_test(self, params, expected):
-        self.assertEqual(var_transform(params), expected)
-
-class AaTest_serialize_parse_profile_start(AATest):
-    def _parse(self, line, profile, hat, prof_data_profile, prof_data_external):
-        # 'correct' is always True in the code that uses serialize_parse_profile_start() (set some lines above the function call)
-        return serialize_parse_profile_start(line, 'somefile', 1, profile, hat, prof_data_profile, prof_data_external, True)
-
-    def test_serialize_parse_profile_start_01(self):
-        result = self._parse('/foo {', None, None, False, False)
-        expected = ('/foo', '/foo', None, None, False, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_02(self):
-        result = self._parse('/foo (complain) {', None, None, False, False)
-        expected = ('/foo', '/foo', None, 'complain', False, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_03(self):
-        result = self._parse('profile foo /foo {', None, None, False, False) # named profile
-        expected = ('foo', 'foo', '/foo', None, False, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_04(self):
-        result = self._parse('profile /foo {', '/bar', '/bar', False, False) # child profile
-        expected = ('/bar', '/foo', None, None, True, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_05(self):
-        result = self._parse('/foo//bar {', None, None, False, False) # external hat
-        expected = ('/foo', 'bar', None, None, False, False) # note correct == False here
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_06(self):
-        result = self._parse('profile "/foo" (complain) {', None, None, False, False)
-        expected = ('/foo', '/foo', None, 'complain', False, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_07(self):
-        result = self._parse('/foo {', None, None, True, False)
-        expected = ('/foo', '/foo', None, None, False, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_08(self):
-        result = self._parse('/foo {', None, None, False, True)
-        expected = ('/foo', '/foo', None, None, False, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_09(self):
-        result = self._parse('/foo {', None, None, True, True)
-        expected = ('/foo', '/foo', None, None, False, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_10(self):
-        result = self._parse('profile /foo {', '/bar', '/bar', True, False) # child profile
-        expected = ('/bar', '/foo', None, None, True, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_11(self):
-        result = self._parse('profile /foo {', '/bar', '/bar', False, True) # child profile
-        expected = ('/bar', '/foo', None, None, True, True)
-        self.assertEqual(result, expected)
-
-    def test_serialize_parse_profile_start_12(self):
-        result = self._parse('profile /foo {', '/bar', '/bar', True, True) # child profile
-        expected = ('/bar', '/foo', None, None, True, True)
-        self.assertEqual(result, expected)
-
-class AaTestInvalid_serialize_parse_profile_start(AATest):
-    tests = [
-        # line              profile     hat     p_d_profile p_d_external   expected
-        (['/foo {',         '/bar',     '/bar', False,      False       ], AppArmorException), # child profile without 'profile' keyword
-        (['profile /foo {', '/bar',     '/xy',  False,      False       ], AppArmorException), # already inside a child profile - nesting level reached
-        (['/ext//hat {',    '/bar',     '/bar', True,       True        ], AppArmorException), # external hat inside a profile
-        (['/ext//hat {',    '/bar',     '/bar', True,       False       ], AppArmorException), # external hat inside a profile
-        (['xy',             '/bar',     '/bar', False,      False       ], AppArmorBug      ), # not a profile start
-    ]
-
-    def _run_test(self, params, expected):
-        line = params[0]
-        profile = params[1]
-        hat = params[2]
-        prof_data_profile = params[3]
-        prof_data_external = params[4]
-
-        with self.assertRaises(expected):
-            # 'correct' is always True in the code that uses serialize_parse_profile_start() (set some lines above the function call)
-            serialize_parse_profile_start(line, 'somefile', 1, profile, hat, prof_data_profile, prof_data_external, True)
+        name = params['name']
+        embedded_hat = params.get('embedded_hat', False)
+        write_flags = params.get('write_flags', False)
+        depth = params.get('depth', 0)
+        prof_data = {
+            'xattrs': params.get('xattrs', None),
+            'flags': params.get('flags', None),
+            'attachment': params.get('attachment', None),
+            'profile_keyword': params.get('profile_keyword', None),
+            'header_comment': params.get('header_comment', None),
+        }
+        result = write_header(prof_data, depth, name, embedded_hat, write_flags)
+        self.assertEqual(result, [expected])
 
 class AaTest_get_file_perms_1(AATest):
     tests = [
@@ -819,15 +755,15 @@ class AaTest_get_file_perms_2(AATest):
 
         # load the abstractions we need in the test
         apparmor.aa.profile_dir = self.profile_dir
-        apparmor.aa.load_include('abstractions/base')
-        apparmor.aa.load_include('abstractions/bash')
-        apparmor.aa.load_include('abstractions/enchant')
-        apparmor.aa.load_include('abstractions/aspell')
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/base'))
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/bash'))
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/enchant'))
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/aspell'))
 
         profile = apparmor.aa.ProfileStorage('/test', '/test', 'test-aa.py')
-        profile['include']['abstractions/base'] = True
-        profile['include']['abstractions/bash'] = True
-        profile['include']['abstractions/enchant'] = True  # includes abstractions/aspell
+        profile['inc_ie'].add(IncludeRule.parse('include <abstractions/base>'))
+        profile['inc_ie'].add(IncludeRule.parse('include <abstractions/bash>'))
+        profile['inc_ie'].add(IncludeRule.parse('include <abstractions/enchant>'))
 
         profile['file'].add(FileRule.parse('owner /usr/share/common-licenses/**  w,'))
         profile['file'].add(FileRule.parse('owner /usr/share/common-licenses/what/ever a,'))  # covered by the above 'w' rule, so 'a' should be ignored
@@ -857,19 +793,20 @@ class AaTest_propose_file_rules(AATest):
 
         # load the abstractions we need in the test
         apparmor.aa.profile_dir = self.profile_dir
-        apparmor.aa.load_include('abstractions/base')
-        apparmor.aa.load_include('abstractions/bash')
-        apparmor.aa.load_include('abstractions/enchant')
-        apparmor.aa.load_include('abstractions/aspell')
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/base'))
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/bash'))
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/enchant'))
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/aspell'))
 
         # add some user_globs ('(N)ew') to simulate a professional aa-logprof user (and to make sure that part of the code also gets tested)
         apparmor.aa.user_globs['/usr/share/common*/foo/*'] = AARE('/usr/share/common*/foo/*', True)
         apparmor.aa.user_globs['/no/thi*ng'] = AARE('/no/thi*ng', True)
 
         profile = apparmor.aa.ProfileStorage('/test', '/test', 'test-aa.py')
-        profile['include']['abstractions/base'] = True
-        profile['include']['abstractions/bash'] = True
-        profile['include']['abstractions/enchant'] = True  # includes abstractions/aspell
+        profile['inc_ie'].add(IncludeRule.parse('include <abstractions/base>'))
+        profile['inc_ie'].add(IncludeRule.parse('include <abstractions/bash>'))
+        profile['inc_ie'].add(IncludeRule.parse('include <abstractions/enchant>'))
+
 
         profile['file'].add(FileRule.parse('owner /usr/share/common-licenses/**  w,'))
         profile['file'].add(FileRule.parse('/dev/null rwk,'))
@@ -899,7 +836,7 @@ class AaTest_propose_file_rules_with_absolute_includes(AATest):
 
         # load the abstractions we need in the test
         apparmor.aa.profile_dir = self.profile_dir
-        apparmor.aa.load_include('abstractions/base')
+        apparmor.aa.load_include(os.path.join(self.profile_dir, 'abstractions/base'))
 
         abs_include1 = write_file(self.tmpdir, 'test-abs1', "/some/random/include rw,")
         apparmor.aa.load_include(abs_include1)
@@ -911,10 +848,10 @@ class AaTest_propose_file_rules_with_absolute_includes(AATest):
         apparmor.aa.load_include(abs_include3)
 
         profile = apparmor.aa.ProfileStorage('/test', '/test', 'test-aa.py')
-        profile['include']['abstractions/base'] = False
-        profile['include'][abs_include1] = False
-        profile['include'][abs_include2] = False
-        profile['include'][abs_include3] = False
+        profile['inc_ie'].add(IncludeRule.parse('include <abstractions/base>'))
+        profile['inc_ie'].add(IncludeRule.parse('include "%s"' % abs_include1))
+        profile['inc_ie'].add(IncludeRule.parse('include "%s"' % abs_include2))
+        profile['inc_ie'].add(IncludeRule.parse('include "%s"' % abs_include3))
 
         rule_obj = FileRule(params[0], params[1], None, FileRule.ALL, owner=False, log_event=True)
         proposals = propose_file_rules(profile, rule_obj)
@@ -922,15 +859,14 @@ class AaTest_propose_file_rules_with_absolute_includes(AATest):
 
 
 class AaTest_nonexistent_includes(AATest):
-    def test_bad_includes(self):
-        tests = [
-            "/nonexistent/absolute/path",
-            "nonexistent/relative/path",
-        ]
+    tests = [
+        ("/nonexistent/absolute/path",      AppArmorException),
+        ("nonexistent/relative/path",       AppArmorBug),       # load_include() only accepts absolute paths
+    ]
 
-        for i in tests:
-            with self.assertRaises(AppArmorException):
-                apparmor.aa.load_include(i)
+    def _run_test(self, params, expected):
+        with self.assertRaises(expected):
+            apparmor.aa.load_include(params)
 
 
 setup_aa(apparmor.aa)

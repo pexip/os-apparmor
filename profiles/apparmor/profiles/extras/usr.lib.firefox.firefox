@@ -9,7 +9,9 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 # We want to confine the binaries that match:
 #  /usr/lib/firefox-4.0b8/firefox
@@ -17,13 +19,13 @@
 # but not:
 #  /usr/lib/firefox-4.0b8/firefox.sh
 /usr/lib/firefox{,-[0-9]*}/firefox{,*[^s][^h]} {
-  #include <abstractions/audio>
-  #include <abstractions/cups-client>
-  #include <abstractions/dbus-session>
-  #include <abstractions/gnome>
-  #include <abstractions/ibus>
-  #include <abstractions/kde>
-  #include <abstractions/nameservice>
+  include <abstractions/audio>
+  include <abstractions/cups-client>
+  include <abstractions/dbus-session>
+  include <abstractions/gnome>
+  include <abstractions/ibus>
+  include <abstractions/kde>
+  include <abstractions/nameservice>
 
   # for networking
   network inet stream,
@@ -121,8 +123,12 @@
   deny /usr/share/mozilla/extensions/**/ w,
   deny /usr/share/mozilla/ w,
 
+  # needed by widevine
+  ptrace (trace) peer=@{profile_name},
+  @{HOME}/.mozilla/firefox/*/gmp-widevinecdm/*/lib*so m,
+
   # Site-specific additions and overrides. See local/README for details.
   # Local path is disabled, we only enable them for profiles we promote
   # out of extras.
-  ## include <local/usr.bin.firefox>
+  include if exists <local/usr.bin.firefox>
 }

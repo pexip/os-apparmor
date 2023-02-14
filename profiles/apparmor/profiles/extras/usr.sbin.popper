@@ -9,13 +9,16 @@
 # ------------------------------------------------------------------
 # vim:syntax=apparmor
 # Last Modified: Wed Aug 31 11:14:09 2005
-#include <tunables/global>
+
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/popper {
-  #include <abstractions/authentication>
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
-  #include <abstractions/user-mail>
+  include <abstractions/authentication>
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/user-mail>
 
   capability setgid,
   capability setuid,

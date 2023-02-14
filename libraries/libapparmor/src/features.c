@@ -98,9 +98,8 @@ static int features_snprintf(struct features_struct *fst, const char *fmt, ...)
 	return 0;
 }
 
-/* load_features_file - opens and reads a file into @buffer and then NUL-terminates @buffer
- * @dirfd: a directory file descriptory or AT_FDCWD (see openat(2))
- * @path: name of the file
+/* load_features_file - reads a file into @buffer and then NUL-terminates @buffer
+ * @file: file to read the features from
  * @buffer: the buffer to read the features file into (will be NUL-terminated on success)
  * @size: the size of @buffer
  *
@@ -110,24 +109,10 @@ static int features_snprintf(struct features_struct *fst, const char *fmt, ...)
  * ENOBUFS indicating that @buffer was not large enough to contain all of the
  * file contents.
  */
-static ssize_t load_features_file(int dirfd, const char *path,
-				  char *buffer, size_t size)
+static ssize_t load_features_file(int file, char *buffer, size_t size)
 {
-	autoclose int file = -1;
 	char *pos = buffer;
 	ssize_t len;
-
-	file = openat(dirfd, path, O_RDONLY);
-	if (file < 0) {
-		PDEBUG("Could not open '%s'\n", path);
-		return -1;
-	}
-	PDEBUG("Opened features \"%s\"\n", path);
-
-	if (!size) {
-		errno = ENOBUFS;
-		return -1;
-	}
 
 	/* Save room for a NUL-terminator at the end of @buffer */
 	size--;
@@ -151,7 +136,7 @@ static ssize_t load_features_file(int dirfd, const char *path,
 		if (len > 0)
 			errno = ENOBUFS;
 
-		PDEBUG("Error reading features file '%s': %m\n", path);
+		PDEBUG("Error reading features file: %m\n");
 		return -1;
 	}
 
@@ -159,6 +144,42 @@ static ssize_t load_features_file(int dirfd, const char *path,
 	*pos = 0;
 
 	return pos - buffer;
+}
+
+/* open_and_load_features_file - opens and reads a file into @buffer and then NUL-terminates @buffer
+ * @dirfd: a directory file descriptory or AT_FDCWD (see openat(2))
+ * @path: name of the file
+ * @buffer: the buffer to read the features file into (will be NUL-terminated on success)
+ * @size: the size of @buffer
+ *
+ * Returns: The number of bytes copied into @buffer on success (not counting
+ * the NUL-terminator), else -1 and errno is set. Note that @size must be
+ * larger than the size of the file or -1 will be returned with errno set to
+ * ENOBUFS indicating that @buffer was not large enough to contain all of the
+ * file contents.
+ */
+static ssize_t open_and_load_features_file(int dirfd, const char *path,
+					   char *buffer, size_t size)
+{
+	autoclose int file = -1;
+	ssize_t rc;
+
+	file = openat(dirfd, path, O_RDONLY);
+	if (file < 0) {
+		PDEBUG("Could not open '%s': %m\n", path);
+		return -1;
+	}
+	PDEBUG("Opened features '%s': %m\n", path);
+
+	if (!size) {
+		errno = ENOBUFS;
+		return -1;
+	}
+
+	rc = load_features_file(file, buffer, size);
+	if (rc == -1)
+		PDEBUG("Error failed to load features file '%s': %m\n", path);
+	return rc;
 }
 
 static int features_dir_cb(int dirfd, const char *name, struct stat *st,
@@ -173,6 +194,8 @@ static int features_dir_cb(int dirfd, const char *name, struct stat *st,
 	if (features_snprintf(fst, "%s {", name) == -1)
 		return -1;
 
+	/* Handle symlink here. See _aa_dirat_for_each in private.c */
+
 	if (S_ISREG(st->st_mode)) {
 		ssize_t len;
 		size_t remaining;
@@ -180,7 +203,7 @@ static int features_dir_cb(int dirfd, const char *name, struct stat *st,
 		if (features_buffer_remaining(fst, &remaining) == -1)
 			return -1;
 
-		len = load_features_file(dirfd, name, fst->pos, remaining);
+		len = open_and_load_features_file(dirfd, name, fst->pos, remaining);
 		if (len < 0)
 			return -1;
 
@@ -429,7 +452,7 @@ int aa_features_new(aa_features **features, int dirfd, const char *path)
 
 	retval = S_ISDIR(stat_file.st_mode) ?
 		 load_features_dir(dirfd, path, f->string, STRING_SIZE) :
-		 load_features_file(dirfd, path, f->string, STRING_SIZE);
+		 open_and_load_features_file(dirfd, path, f->string, STRING_SIZE);
 	if (retval == -1) {
 		aa_features_unref(f);
 		return -1;
@@ -493,6 +516,48 @@ int aa_features_new_from_string(aa_features **features,
 }
 
 /**
+ * aa_features_new_from_file - create a new aa_features object based on an open file
+ * @features: will point to the address of an allocated and initialized
+ *            aa_features object upon success
+ * @file: file to load features from
+ *
+ * Returns: 0 on success, -1 on error with errno set and *@features pointing to
+ *          NULL
+ */
+int aa_features_new_from_file(aa_features **features, int file)
+{
+	aa_features *f;
+	ssize_t retval;
+
+	*features = NULL;
+
+	f = calloc(1, sizeof(*f));
+	if (!f) {
+		errno = ENOMEM;
+		return -1;
+	}
+	aa_features_ref(f);
+
+	retval = load_features_file(file, f->string, STRING_SIZE);
+	if (retval == -1) {
+		aa_features_unref(f);
+		return -1;
+	}
+
+	if (init_features_hash(f) == -1) {
+		int save = errno;
+
+		aa_features_unref(f);
+		errno = save;
+		return -1;
+	}
+
+	*features = f;
+
+	return 0;
+}
+
+/**
  * aa_features_new_from_kernel - create a new aa_features object based on the current kernel
  * @features: will point to the address of an allocated and initialized
  *            aa_features object upon success
@@ -532,26 +597,17 @@ void aa_features_unref(aa_features *features)
 }
 
 /**
- * aa_features_write_to_file - write a string representation of an aa_features object to a file
+ * aa_features_write_to_fd - write a string representation of an aa_features object to an @fd
  * @features: the features
- * @dirfd: directory file descriptor or AT_FDCWD (see openat(2))
- * @path: the path to write to
+ * @fd: the file descriptor to write to
  *
  * Returns: 0 on success, -1 on error with errno set
  */
-int aa_features_write_to_file(aa_features *features,
-			      int dirfd, const char *path)
+int aa_features_write_to_fd(aa_features *features, int fd)
 {
-	autoclose int fd = -1;
 	size_t size;
 	ssize_t retval;
 	char *string;
-
-	fd = openat(dirfd, path,
-		    O_WRONLY | O_CREAT | O_TRUNC | O_SYNC | O_CLOEXEC,
-		    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	if (fd == -1)
-		return -1;
 
 	string = features->string;
 	size = strlen(string);
@@ -568,6 +624,28 @@ int aa_features_write_to_file(aa_features *features,
 }
 
 /**
+ * aa_features_write_to_file - write a string representation of an aa_features object to a file
+ * @features: the features
+ * @dirfd: directory file descriptor or AT_FDCWD (see openat(2))
+ * @path: the path to write to
+ *
+ * Returns: 0 on success, -1 on error with errno set
+ */
+int aa_features_write_to_file(aa_features *features,
+			      int dirfd, const char *path)
+{
+	autoclose int fd = -1;
+
+	fd = openat(dirfd, path,
+		    O_WRONLY | O_CREAT | O_TRUNC | O_SYNC | O_CLOEXEC,
+		    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if (fd == -1)
+		return -1;
+
+	return aa_features_write_to_fd(features, fd);
+}
+
+/**
  * aa_features_is_equal - equality test for two aa_features objects
  * @features1: the first features (can be NULL)
  * @features2: the second features (can be NULL)
@@ -580,17 +658,7 @@ bool aa_features_is_equal(aa_features *features1, aa_features *features2)
 	       strcmp(features1->string, features2->string) == 0;
 }
 
-/**
- * aa_features_supports - provides aa_features object support status
- * @features: the features
- * @str: the string representation of a feature to check
- *
- * Example @str values are "dbus/mask/send", "caps/mask/audit_read", and
- * "policy/versions/v7".
- *
- * Returns: a bool specifying the support status of @str feature
- */
-bool aa_features_supports(aa_features *features, const char *str)
+static const char *features_lookup(aa_features *features, const char *str)
 {
 	const char *features_string = features->string;
 	struct component components[32];
@@ -616,10 +684,71 @@ bool aa_features_supports(aa_features *features, const char *str)
 	/* Ensure that all components are valid and found */
 	for (i = 0; i < num_components; i++) {
 		if (!walk_one(&features_string, &components[i], i == 0))
-			return false;
+			return NULL;
 	}
 
+	return features_string;
+}
+
+/**
+ * aa_features_supports - provides aa_features object support status
+ * @features: the features
+ * @str: the string representation of a feature to check
+ *
+ * Example @str values are "dbus/mask/send", "caps/mask/audit_read", and
+ * "policy/versions/v7".
+ *
+ * Returns: a bool specifying the support status of @str feature
+ */
+bool aa_features_supports(aa_features *features, const char *str)
+{
+	const char *value = features_lookup(features, str);
+
+	if (!value)
+		return false;
+
 	return true;
+}
+
+/**
+ * aa_features_value - lookup the value for a give feature
+ * @features: the features
+ * @str: the feature to look up the value for
+ * @len: return: if set length of returned str on success
+ *
+ * Returns: null terminated string or NULL on error with errno set to
+ * ENOENT - @str not found
+ * EISDIR - @str is not a leaf node in the feature tree
+ */
+
+char *aa_features_value(aa_features *features, const char *str, size_t *len)
+{
+	const char *start, *cur = features_lookup(features, str);
+
+	errno = ENOENT;
+	if (!cur)
+		return NULL;
+
+	if (!islbrace(*cur))
+		return NULL;
+	cur++;
+	start = cur;
+
+	while (!isbrace_or_nul(*cur)) {
+		if (!isascii(*cur))
+			return NULL;
+		if (islbrace(*cur)) {
+			/* component is not leaf */
+			errno = EISDIR;
+			return NULL;
+		}
+		cur++;
+	}
+
+	errno = 0;
+	if (len)
+		*len = cur - start;
+	return strndup(start, cur - start);
 }
 
 /**

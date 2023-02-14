@@ -8,11 +8,14 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/dhcpd {
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/hosts_access>
 
   capability dac_override,
   capability net_bind_service,
@@ -27,11 +30,10 @@
   /db/dhcpd.leases*     lrw,
   /etc/dhcpd.conf	r,
   /etc/named.d/*	r,
-  /etc/hosts.allow	r,
-  /etc/hosts.deny	r,
   @{PROC}/net/dev	r,
+  @{PROC}/sys/net/ipv4/ip_local_port_range r,
   /usr/sbin/dhcpd	rmix,
-  /var/lib/dhcp/{db/,}dhcpd.leases*	rwl,
+  /var/lib/dhcp/{db/,}dhcpd{6,}.leases*	rwl,
   /var/lib/dhcp/etc/dhcpd.conf  r,
   /{,var/}run/dhcpd.pid	wl,
 }

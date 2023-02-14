@@ -1,0 +1,95 @@
+From: Christian Boltz <apparmor@cboltz.de>
+Date: Sun, 27 Nov 2022 13:06:35 +0000
+Subject: Merge abstractions/nvidia: allow reading @{pid}/comm
+
+On Debian Sid, NVIDIA driver spams log with:
+
+```
+type=AVC msg=audit(1669542108.552:11855): apparmor="DENIED"
+operation="open" profile="qtox" name="/proc/21222/comm" pid=21222
+comm="qtox" requested_mask="r" denied_mask="r" fsuid=1000
+ouid=1000FSUID="vincas" OUID="vincas"
+```
+
+```
+type=AVC msg=audit(1669541506.703:11329): apparmor="DENIED"
+operation="open" profile="skypeforlinux" name="/proc/19851/comm"
+pid=19851 comm="skypeforlinux" requested_mask="r" denied_mask="r"
+fsuid=1000 ouid=1000FSUID="vincas" OUID="vincas"
+```
+
+Read is initiated within libnvidia-glcore.so:
+
+```
+Thread 1 "qtox" hit Catchpoint 1 (call to syscall openat), 0x00007fb797b16ed0 in __libc_open64 (file=file@entry=0x7fb742adbb50 "/proc/self/comm", oflag=0) at ../sysdeps/unix/sysv/linux/open64.c:41
+41	in ../sysdeps/unix/sysv/linux/open64.c
+$27 = 0x7fb742adbb50 "/proc/self/comm"
+0  0x00007fb797b16ed0 in __libc_open64 (file=file@entry=0x7fb742adbb50 "/proc/self/comm", oflag=0) at ../sysdeps/unix/sysv/linux/open64.c:41
+1  0x00007fb797aa0862 in __GI__IO_file_open (fp=fp@entry=0x55795176e600, filename=filename@entry=0x7fb742adbb50 "/proc/self/comm", posix_mode=<optimized out>, prot=prot@entry=438, read_write=8, is32not64=<optimized out>) at ./libio/fileops.c:188
+2  0x00007fb797aa0a1b in _IO_new_file_fopen (fp=fp@entry=0x55795176e600, filename=filename@entry=0x7fb742adbb50 "/proc/self/comm", mode=<optimized out>, mode@entry=0x7fb7428effe2 "r", is32not64=is32not64@entry=1) at ./libio/fileops.c:280
+3  0x00007fb797a950f9 in __fopen_internal (filename=0x7fb742adbb50 "/proc/self/comm", mode=0x7fb7428effe2 "r", is32=1) at ./libio/iofopen.c:75
+4  0x00007fb7423d791f in ?? () from /lib/x86_64-linux-gnu/libnvidia-glcore.so.470.141.03
+5  0x00007fb7423d4515 in ?? () from /lib/x86_64-linux-gnu/libnvidia-glcore.so.470.141.03
+6  0x00007fb7423d0226 in ?? () from /lib/x86_64-linux-gnu/libnvidia-glcore.so.470.141.03
+7  0x00007fb7423e1961 in ?? () from /lib/x86_64-linux-gnu/libnvidia-glcore.so.470.141.03
+8  0x00007fb74824bc79 in ?? () from /lib/x86_64-linux-gnu/libGLX_nvidia.so.0
+9  0x00007fb7482b1c56 in ?? () from /lib/x86_64-linux-gnu/libGLX_nvidia.so.0
+10 0x000000000000001d in ?? ()
+11 0x00005579518975f0 in ?? ()
+12 0x0000000000000001 in ?? ()
+13 0x00007fb74824b1eb in ?? () from /lib/x86_64-linux-gnu/libGLX_nvidia.so.0
+14 0x00005579518975f0 in ?? ()
+15 0x00007fb79b2dda79 in call_init (env=0x7ffd92d7aac8, argv=0x7ffd92d7aab8, argc=-1831363648, l=0x7fb748516f70) at ./elf/dl-init.c:56
+16 call_init (l=0x7fb748516f70, argc=-1831363648, argv=0x7ffd92d7aab8, env=0x7ffd92d7aac8) at ./elf/dl-init.c:26
+17 0x00007fb79b2ddba4 in _dl_init (main_map=0x5579518975f0, argc=1, argv=0x7ffd92d7aab8, env=0x7ffd92d7aac8) at ./elf/dl-init.c:117
+18 0x00007fb797b6def4 in __GI__dl_catch_exception (exception=<optimized out>, operate=<optimized out>, args=<optimized out>) at ./elf/dl-error-skeleton.c:182
+19 0x00007fb79b2e430e in dl_open_worker (a=a@entry=0x7ffd92d79f20) at ./elf/dl-open.c:808
+20 0x00007fb797b6de9a in __GI__dl_catch_exception (exception=<optimized out>, operate=<optimized out>, args=<optimized out>) at ./elf/dl-error-skeleton.c:208
+21 0x00007fb79b2e46a8 in _dl_open (file=0x557951888020 "libGLX_nvidia.so.0", mode=<optimized out>, caller_dlopen=0x7fb78d7d4d27, nsid=<optimized out>, argc=1, argv=0x7ffd92d7aab8, env=0x7ffd92d7aac8) at ./elf/dl-open.c:884
+22 0x00007fb797aa42d8 in dlopen_doit (a=a@entry=0x7ffd92d7a190) at ./dlfcn/dlopen.c:56
+23 0x00007fb797b6de9a in __GI__dl_catch_exception (exception=exception@entry=0x7ffd92d7a0f0, operate=<optimized out>, args=<optimized out>) at ./elf/dl-error-skeleton.c:208
+24 0x00007fb797b6df4f in __GI__dl_catch_error (objname=0x7ffd92d7a148, errstring=0x7ffd92d7a150, mallocedp=0x7ffd92d7a147, operate=<optimized out>, args=<optimized out>) at ./elf/dl-error-skeleton.c:227
+25 0x00007fb797aa3dc7 in _dlerror_run (operate=operate@entry=0x7fb797aa4280 <dlopen_doit>, args=args@entry=0x7ffd92d7a190) at ./dlfcn/dlerror.c:138
+26 0x00007fb797aa4389 in dlopen_implementation (dl_caller=<optimized out>, mode=<optimized out>, file=<optimized out>) at ./dlfcn/dlopen.c:71
+27 ___dlopen (file=<optimized out>, mode=<optimized out>) at ./dlfcn/dlopen.c:81
+28 0x00007fb78d7d4d27 in ?? () from /lib/x86_64-linux-gnu/libGLX.so.0
+29 0x00007fb78d7d6335 in ?? () from /lib/x86_64-linux-gnu/libGLX.so.0
+30 0x00007fb78d7cf9f8 in glXChooseFBConfig () from /lib/x86_64-linux-gnu/libGLX.so.0
+31 0x00007fb748646f6a in ?? () from /usr/lib/x86_64-linux-gnu/qt5/plugins/xcbglintegrations/libqxcb-glx-integration.so
+32 0x00007fb748644450 in ?? () from /usr/lib/x86_64-linux-gnu/qt5/plugins/xcbglintegrations/libqxcb-glx-integration.so
+33 0x00007fb7486421b7 in ?? () from /usr/lib/x86_64-linux-gnu/qt5/plugins/xcbglintegrations/libqxcb-glx-integration.so
+34 0x00007fb79838262d in QOpenGLContext::create() () from /lib/x86_64-linux-gnu/libQt5Gui.so.5
+35 0x00007fb74bb4303c in ?? () from /usr/lib/x86_64-linux-gnu/qt5/plugins/platformthemes/KDEPlasmaPlatformTheme.so
+36 0x00007fb797eb7aaf in qt_call_pre_routines () at kernel/qcoreapplication.cpp:317
+37 QCoreApplicationPrivate::init (this=<optimized out>) at kernel/qcoreapplication.cpp:849
+38 0x00007fb7983379dc in QGuiApplicationPrivate::init() () from /lib/x86_64-linux-gnu/libQt5Gui.so.5
+39 0x00007fb798b684c9 in QApplicationPrivate::init() () from /lib/x86_64-linux-gnu/libQt5Widgets.so.5
+40 0x0000557950f1d597 in main ()
+```
+
+Add read rule to allow reading @{pid}/comm.
+
+MR: https://gitlab.com/apparmor/apparmor/-/merge_requests/954
+Approved-by: Christian Boltz <apparmor@cboltz.de>
+Merged-by: Christian Boltz <apparmor@cboltz.de>
+
+
+(cherry picked from commit 2597fd5db85e482657c001f68a0d574ac2ba2fb7)
+
+948cbb56 abstractions/nvidia: allow reading @{pid}/comm
+---
+ profiles/apparmor.d/abstractions/nvidia | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/profiles/apparmor.d/abstractions/nvidia b/profiles/apparmor.d/abstractions/nvidia
+index b2d475f..893ed09 100644
+--- a/profiles/apparmor.d/abstractions/nvidia
++++ b/profiles/apparmor.d/abstractions/nvidia
+@@ -26,6 +26,7 @@
+   owner @{HOME}/.nv/ w,
+   owner @{HOME}/.nv/GLCache/ rw,
+   owner @{HOME}/.nv/GLCache/** rwk,
++  owner @{PROC}/@{pid}/comm r, # somehwere in libnvidia-glcore.so
+ 
+   unix (send, receive) type=dgram peer=(addr="@nvidia[0-9a-f]*"),
+ 

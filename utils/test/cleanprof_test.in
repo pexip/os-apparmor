@@ -1,12 +1,26 @@
 # A simple test comment which will persist
 #include <tunables/global>
 
+#include  if  exists <tunables/nothing>
+
+  #include if exists <tunables/global>
+  include if exists <tunables/global>
+
 		alias /foo    ->    /bar	,
+
+@{xy}    =   y   x
+
   abi  <abi/4.19>    ,
+
+  @{asdf}       =   foo           ""
 
 /usr/bin/a/simple/cleanprof/test/profile {
 	# Just for the heck of it, this comment wont see the day of light
 	#include <abstractions/base>
+
+#include  if  exists <foo>
+	#include if exists <abstractions/base>
+	include <abstractions/base>
 
     capability sys_admin,
     audit capability,
@@ -44,6 +58,12 @@
 
     ^foo, # hat declarations are obsolete and will be removed when aa-cleanprof or aa-logprof writes the profile
 
+	mount options=(rw,suid) /c -> /3,
+
+	pivot_root oldroot=/mnt/root/old/,
+
+	deny    owner       link       /some/thing    ->     /foo/bar    ,
+	unix shutdown addr=@HypotheticalServiceDaemon,
 
 	link subset /alpha/beta -> /tmp/**,
 
@@ -57,3 +77,9 @@
 	allow /home/*/** rw,
 	allow /home/foo/bar r,
 }
+
+/what/ever/xattr   xattrs=(   foo=bar      )
+       flags=(  complain
+	   ) {
+ /what/ever r,
+ }

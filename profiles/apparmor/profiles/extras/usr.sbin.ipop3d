@@ -8,14 +8,16 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/ipop3d {
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
-  #include <abstractions/authentication>
-  #include <abstractions/user-mail>
-  #include <abstractions/openssl>
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/authentication>
+  include <abstractions/user-mail>
+  include <abstractions/openssl>
 
   /dev/urandom                           r     ,
   /tmp/.*                                rwl   ,

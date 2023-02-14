@@ -43,9 +43,136 @@
 		__asm__ (".symver " #real "," #name "@" #version)
 #define default_symbol_version(real, name, version) \
 		__asm__ (".symver " #real "," #name "@@" #version)
+#define DLLEXPORT __attribute__((visibility("default"),externally_visible))
 
 #define UNCONFINED		"unconfined"
 #define UNCONFINED_SIZE		strlen(UNCONFINED)
+
+/*
+ * AppArmor kernel interfaces. Potentially used by this code to
+ * implement the various library functions.
+ *
+ *
+ * /sys/module/apparmor/parameters/ *
+ *
+ * Available on all kernels, some options may not be available and policy
+ * may block access.
+ *     audit                - normal,quiet_denied,quiet,noquiet,all
+ *     debug (bool)         - turn on debug messages if enabled during compile
+ *     hash_policy (bool)   - provide a hash of loaded policy
+ *     logsyscall (bool)    - ignored
+ *     paranoid_load (bool) - whether full policy checks are done. Should only
+ *                            be disabled for embedded device kernels
+ *     audit_header (bool)  - include "apparmor=<mode> in messages"
+ *     enabled (bool)       - whether apparmor is enabled. This can be
+ *                            different than whether apparmor is available.
+ *                            See virtualization and LSM stacking.
+ *     lock_policy (bool)   - one way trigger. Once set policy can not be
+ *                            loaded, replace, removed.
+ *      mode                - global policy namespace control of whether
+ *                            apparmor is in "enforce", "complain"
+ *      path_max            - maximum path size. Can always be read but
+ *                            can only be set on some kernels.
+ *
+ * securityfs/apparmor - usually mounted at /sys/kernel/security/apparmor/ *
+ *     .access    - transactional interface used to query kernel
+ *     .ns_level  - RO policy namespace level of current task
+ *     .ns_name   - RO current policy namespace of current task
+ *     .ns_stacked - RO boolean if stacking is in use with the namespace
+ *     .null - special device file used to redirect closed fds to
+ *     profiles   - RO virtualized text list of visible loaded profiles
+ *     .remove    - WO names of profiles to remove
+ *     .replace   - WO binary policy to replace (will load if not present)
+ *     .load      - WO binary policy to load (will fail if already present)
+ *     revision   - RO unique incrementing revision number for policy
+ *     .stacked   - RO boolean if label is currently stacked
+ *     features/  - RO feature set supported by kernel
+ *     policy/    - RO policy loaded into kernel
+ *
+ *
+ * /proc/<tid>/attr/apparmor/ *
+ * New proc attr interface compatible with LSM stacking. Available even
+ * when LSM stacking is not in use.
+ *     current    - see /proc/<tid>/attr/current
+ *     exec       - see /proc/<tid>/attr/exec
+ *     prev       - see /proc/<tid>/attr/prev
+ *
+ * /proc/<tid>/attr/ * Old proc attr interface shared between LSMs goes
+ * to first registered LSM that wants the proc interface, but can be
+ * virtualized by setting the display LSM. So if LSM stacking is in
+ * use this interface may belong to another LSM. Use
+ *    /proc/<tid>/attr/apparmor/ *
+ * first if possible, and do NOT use if
+ *    /sys/module/apparmor/parameters/enabled=N.
+ * Note: older version of the library only used this interface and did not
+ *       check if it was available. Which could lead to weird failures if
+ *       another LSM has claimed it. This version of the library tries to
+ *       fix this problem, but unfortunately it is impossible to completely
+ *       address, because access to interfaces required to determine
+ *       whether apparmor owns the interface may be restricted, either
+ *       by existing apparmor policy that has not been updated to use the
+ *       new interface or by another LSM.
+ *     current    - current confinement
+ *     display    - LSM stacking. Which LSM currently owns the interface.
+ *     exec       - label to switch to at exec
+ *     fscreate   - unused by apparmor
+ *     keycreate  - unused by apparmor
+ *     prev       - when in HAT set to parent label
+ *     sockcreate - unused by apparmor
+ *
+ *
+ * Below /proc/ interface combinations are documented on how the library
+ * currently behaves and how it used to behave. This serves to document
+ * known failure points as we can not entirely fix this mess.
+ * Note: userspace applications using the interface directly have all
+ *       the issues/failures of AppArmor 2.x unless they have specifically
+ *       been updated to deal with this mess.
+ *
+ *
+ * AppArmor 2.x Lib
+ *
+ * LSM   AA            sys      sys    proc/   proc/   user
+ * Stk | Blt |  LSM  | enabl | avail |  aa/  |   *   | space |
+ * ----+-----+-------+-------+-------+-------+-------+-------+--------+
+ *  N  |  N  |   -   |   -   |   -   |   -   |   N   | AA2.x |   -    |
+ *  N  |  N  | other |   -   |   -   |   -   |   N   | AA2.x |  FAIL  |
+ *  N  |  N  | other |denied |   -   |   -   |   N   | AA2.x |  FAIL  |
+ *  N  |  Y  |   -   |   N   |   -   |   -   |   N   | AA2.x |   -    |
+ *  N  |  Y  | other |   -   |   -   |   -   |   N   | AA2.x |  FAIL  |
+ *  N  |  Y  |  AA   |   -   |   -   |   -   |   Y   | AA2.x |  PASS  |
+ *  Y  |  N  |   -   |   -   |   -   |   -   |   N   | AA2.x |   -    |
+ *  Y  |  N  | other |   -   |   -   |   -   |   N   | AA2.x |  FAIL  |
+ *  Y  |  Y  |   -   |   N   |   -   |   -   |   N   | AA2.x |   -    |
+ *  Y  |  Y  | other |   -   |   -   |   -   |   N   | AA2.x |  FAIL  |
+ *  Y  |  Y  |  AA   |   -   |   -   |   -   |   Y   | AA2.x |  PASS  |
+ *  Y  |  Y  | major |   -   |   -   |   -   |   Y   | AA2.x |  PASS  |
+ *  Y  |  Y  | minor |   -   |   -   |   -   |   N   | AA2.x |  FAIL  |
+ *
+ *
+ * AppArmor 3.x Lib - adds stacking support.
+ *
+ * Will FAIL in a few cases because it can not determine if apparmor
+ * is enabled and has control of the old interface. Not failing in these
+ * cases where AppArmor is available will result in regressions where
+ * the library will not work correctly with old kernels. In these
+ * cases its better that apparmor userspace is not used.
+ *
+ * AppArmor 3.x will avoid the failure cases if any of enabled, avail
+ * or the new proc interfaces are available to the task. AppArmor 3.x
+ * will also automatically add permissions to access the new proc
+ * interfaces so change_hat and change_profile won't experience these
+ * failures, it will only happen for confined applications hitting the
+ * interfaces and not using change_hat or change_profile.
+ *
+ * LSM   AA            sys      sys    proc/   proc/
+ * Stk | Blt |  LSM  | enabl | avail |  aa/  |   *   |
+ * ----+-----+-------+-------+-------+-------+-------+-----------------
+ * Y/N |  N  | other | denied|   NA  |   NA  |   Y   | old interface avail
+ * Y/N |  Y  | other | denied|   NA  |   NA  |   Y   | old interface avail
+ *  Y  |  Y  | minor | denied|   NA  |   NA  |   Y   | old interface avail
+ *  Y  |  Y  | minor | denied|   NA  | denied|   Y   | old interface avail
+ * Y/N |  Y  | minor | denied| denied| denied|   Y   | old interface avail
+ */
 
 /**
  * aa_find_mountpoint - find where the apparmor interface filesystem is mounted
@@ -94,6 +221,85 @@ int aa_find_mountpoint(char **mnt)
 }
 
 /**
+ * pararm_check_base - return boolean value for PARAM
+ * PARAM: parameter to check
+ *
+ * Returns: 1 == Y
+ *          0 == N
+ *         <0 == error
+ *
+ * done as a macro so we can paste the param
+ */
+
+#define param_check_base(PARAM)						\
+({									\
+	int rc, fd;							\
+	fd = open("/sys/module/apparmor/parameters/" PARAM, O_RDONLY);	\
+	if (fd == -1) {							\
+		rc = -errno;						\
+	} else {							\
+		char buffer[2];						\
+		int size = read(fd, &buffer, 2);			\
+		rc = -errno;						\
+		close(fd);						\
+		errno = -rc;						\
+		if (size > 0) {						\
+			if (buffer[0] == 'Y')				\
+				rc = 1;					\
+			else						\
+				rc = 0;					\
+		}							\
+	}								\
+	(rc);								\
+})
+
+static pthread_once_t param_enabled_ctl = PTHREAD_ONCE_INIT;
+static int param_enabled = 0;
+
+static pthread_once_t param_private_enabled_ctl = PTHREAD_ONCE_INIT;
+static int param_private_enabled = 0;
+
+static void param_check_enabled_init_once(void)
+{
+	param_enabled = param_check_base("enabled");
+}
+
+static int param_check_enabled()
+{
+	if (pthread_once(&param_enabled_ctl, param_check_enabled_init_once) == 0 && param_enabled >= 0)
+		return param_enabled;
+	/* fallback if not initialized OR we recorded an error when
+	 * initializing.
+	 */
+	return param_check_base("enabled");
+}
+
+static int is_enabled(void)
+{
+	return param_check_enabled() == 1;
+}
+
+static void param_check_private_enabled_init_once(void)
+{
+	param_private_enabled = param_check_base("available");
+}
+
+static int param_check_private_enabled()
+{
+	if (pthread_once(&param_private_enabled_ctl, param_check_private_enabled_init_once) == 0 && param_private_enabled >= 0)
+		return param_private_enabled;
+	/* fallback if not initialized OR we recorded an error when
+	 * initializing.
+	 */
+	return param_check_base("available");
+}
+
+static int is_private_enabled(void)
+{
+	return param_check_private_enabled() == 1;
+}
+
+/**
  * aa_is_enabled - determine if apparmor is enabled
  *
  * Returns: 1 if enabled else reason it is not, or 0 on error
@@ -105,36 +311,47 @@ int aa_find_mountpoint(char **mnt)
  */
 int aa_is_enabled(void)
 {
-	int serrno, fd, rc, size;
-	char buffer[2];
+	int rc;
 	char *mnt;
+	bool private = false;
 
-	/* if the interface mountpoint is available apparmor is enabled */
+	rc = param_check_enabled();
+	if (rc < 1) {
+		if (!is_private_enabled()) {
+			if (rc == 0)
+				errno = ECANCELED;
+			else if (rc == -ENOENT)
+				errno = ENOSYS;
+			else
+				errno = -rc;
+
+			return 0;
+		}
+		/* actually available but only on private interfaces */
+		private = true;
+	}
+
+	/* if the interface mountpoint is available apparmor may not
+	 * be locally enabled for older interfaces but still present
+	 * so make sure to check after, checking available status
+	 * also we don't cache the enabled status like available
+	 * because the mount status can change.
+	 */
 	rc = aa_find_mountpoint(&mnt);
 	if (rc == 0) {
 		free(mnt);
-		return 1;
+		if (!private)
+			return 1;
+		/* provide an error code to indicate apparmor is available
+		 * on private interfaces, but we can note that apparmor
+		 * is enabled because some applications hit the low level
+		 * interfaces directly and don't know about the new
+		 * private interfaces
+		 */
+		errno = EBUSY;
+		/* fall through to return 0 */
 	}
 
-	/* determine why the interface mountpoint isn't available */
-	fd = open("/sys/module/apparmor/parameters/enabled", O_RDONLY);
-	if (fd == -1) {
-		if (errno == ENOENT)
-			errno = ENOSYS;
-		return 0;
-	}
-
-	size = read(fd, &buffer, 2);
-	serrno = errno;
-	close(fd);
-	errno = serrno;
-
-	if (size > 0) {
-		if (buffer[0] == 'Y')
-			errno = ENOENT;
-		else
-			errno = ECANCELED;
-	}
 	return 0;
 }
 
@@ -147,12 +364,133 @@ static inline pid_t aa_gettid(void)
 #endif
 }
 
+/*
+ * Check for the new apparmor proc interface once on the first api call
+ * and then reuse the result on all subsequent api calls. This avoids
+ * a double syscall overhead on each api call if the interface is not
+ * present.
+ */
+static pthread_once_t proc_attr_base_ctl = PTHREAD_ONCE_INIT;
+static const char *proc_attr_base_old = "/proc/%d/attr/%s";
+static const char *proc_attr_new_dir = "/proc/%d/attr/apparmor/";
+static const char *proc_attr_base_stacking = "/proc/%d/attr/apparmor/%s";
+static const char *proc_attr_base_unavailable = "/proc/%d/attr/apparmor/unavailable/%s";
+static const char *proc_attr_base = NULL;
+static int proc_stacking_present = -1;	/* unknown */
+
+static void proc_attr_base_init_once(void)
+{
+	autofree char *tmp;
+
+	/* if we fail we just fall back to the default value */
+	if (asprintf(&tmp, proc_attr_new_dir, aa_gettid()) > 0) {
+		struct stat sb;
+		if (stat(tmp, &sb) == 0) {
+			proc_attr_base = proc_attr_base_stacking;
+			proc_stacking_present = 1;
+			return;
+		} else if (errno == ENOENT) {
+			/* no stacking - try falling back */
+			proc_stacking_present = 0;
+		} else if (errno == EACCES) {
+			/* the dir exists, but access is denied */
+			proc_stacking_present = 1;
+			proc_attr_base = proc_attr_base_stacking;
+		} /* else
+			   denied by policy, or other error try falling back */
+	} else {
+		/* failed allocation - proc_attr_base stays NULL */
+		return;
+	}
+	/* check for new interface failed, see if we can fallback */
+	if (param_check_enabled() == 0) {
+		/* definate NO (not just an error) on enabled. Do not fall
+		 * back to old shared proc interface
+		 *
+		 * First try an alternate check for private proc interface
+		 */
+		int enabled = param_check_private_enabled();
+		if (enabled == 1) {
+			/* the private interface exists and we can't
+			 * fallback so just keep trying on the new
+			 * interface.
+			 */
+			proc_attr_base = proc_attr_base_stacking;
+		} else if (enabled == 0) {
+			/* definite NO - no interface available */
+			proc_attr_base = proc_attr_base_unavailable;
+		} else {
+			/* error can't determine, proc_attr_base stays NULL */
+		}
+	} else if (param_check_enabled() == 1) {
+		/* apparmor is enabled, we can use the old interface */
+		proc_attr_base = proc_attr_base_old;
+	} else if (errno != EACCES) {
+		/* this shouldn't happen unless apparmor is not builtin
+		 * or proc isn't mounted
+		 */
+		proc_attr_base = proc_attr_base_unavailable;
+	} /* else
+		   denied by policy - proc_attr_base stays NULL */
+
+	return;
+}
+
 static char *procattr_path(pid_t pid, const char *attr)
 {
 	char *path = NULL;
-	if (asprintf(&path, "/proc/%d/attr/%s", pid, attr) > 0)
+	const char *tmp;
+
+	/* TODO: rework this with futex or userspace RCU so we can update
+	 * the base value instead of continually using the same base
+	 * after we have hit an error
+	 */
+	/* ignore failure, we just fallback to the default value */
+	(void) pthread_once(&proc_attr_base_ctl, proc_attr_base_init_once);
+
+	if (proc_attr_base)
+		tmp = proc_attr_base;
+	else if (proc_stacking_present)
+		/* couldn't determine during init */
+		tmp = proc_attr_base_stacking;
+	else
+		/* couldn't determine during init and no stacking */
+		tmp = proc_attr_base_old;
+	if (asprintf(&path, tmp, pid, attr) > 0)
 		return path;
 	return NULL;
+}
+
+static int procattr_open(pid_t tid, const char *attr, int flags)
+{
+	char *tmp;
+	int fd;
+
+	tmp = procattr_path(tid, attr);
+	if (!tmp) {
+		return -1;
+	}
+	fd = open(tmp, flags);
+	free(tmp);
+	/* Test is we can fallback to the old interface (this is ugly).
+	 * If we haven't tried the old interface already
+	 *    proc_attr_base == proc_attr_base_old - no fallback
+	 * else if is_enabled()
+	 *    apparmor is available on the old interface
+	 *    we do NOT use is_private_enabled() as
+	 *    1. the new private interface would have been tried first above
+	 *    2. that can be true even when another LSM is using the
+	 *       old interface where is_enabled() is only successful if
+	 *       the old interface is available to apparmor.
+	 */
+	if (fd == -1 && tmp != proc_attr_base_old && param_check_enabled() != 0) {
+		if (asprintf(&tmp, proc_attr_base_old, tid, attr) < 0)
+			return -1;
+		fd = open(tmp, flags);
+		free(tmp);
+	}
+
+	return fd;
 }
 
 /**
@@ -264,12 +602,7 @@ int aa_getprocattr_raw(pid_t tid, const char *attr, char *buf, int len,
 		goto out;
 	}
 
-	tmp = procattr_path(tid, attr);
-	if (!tmp)
-		goto out;
-
-	fd = open(tmp, O_RDONLY);
-	free(tmp);
+	fd = procattr_open(tid, attr, O_RDONLY);
 	if (fd == -1) {
 		goto out;
 	}
@@ -380,18 +713,13 @@ static int setprocattr(pid_t tid, const char *attr, const char *buf, int len)
 {
 	int rc = -1;
 	int fd, ret;
-	char *ctl = NULL;
 
 	if (!buf) {
 		errno = EINVAL;
 		goto out;
 	}
 
-	ctl = procattr_path(tid, attr);
-	if (!ctl)
-		goto out;
-
-	fd = open(ctl, O_WRONLY);
+	fd = procattr_open(tid, attr, O_WRONLY);
 	if (fd == -1) {
 		goto out;
 	}
@@ -412,9 +740,6 @@ static int setprocattr(pid_t tid, const char *attr, const char *buf, int len)
 	(void)close(fd);
 
 out:
-	if (ctl) {
-		free(ctl);
-	}
 	return rc;
 }
 
@@ -500,7 +825,7 @@ int aa_change_onexec(const char *profile)
 }
 
 /* create an alias for the old change_hat@IMMUNIX_1.0 symbol */
-extern typeof((__change_hat)) __old_change_hat __attribute__((alias ("__change_hat")));
+DLLEXPORT extern typeof((__change_hat)) __old_change_hat __attribute__((alias ("__change_hat")));
 symbol_version(__old_change_hat, change_hat, IMMUNIX_1.0);
 default_symbol_version(__change_hat, change_hat, APPARMOR_1.0);
 
@@ -690,16 +1015,24 @@ int aa_getcon(char **label, char **mode)
  * Returns: length of confinement context including null termination or -1 on
  *          error if errno == ERANGE then @len will hold the size needed
  */
-int aa_getpeercon_raw(int fd, char *buf, int *len, char **mode)
+int aa_getpeercon_raw(int fd, char *buf, socklen_t *len, char **mode)
 {
-	socklen_t optlen = *len;
+	socklen_t optlen;
 	int rc;
 
-	if (optlen <= 0 || buf == NULL) {
+	if (*len <= 0 || buf == NULL) {
 		errno = EINVAL;
 		return -1;
 	}
+	optlen = *len;
 
+	if (!is_enabled()) {
+		errno = EINVAL;
+		return -1;
+	}
+	/* TODO: add check for private_enabled when alternate interface
+	 * is approved
+	 */
 	rc = getsockopt(fd, SOL_SOCKET, SO_PEERSEC, buf, &optlen);
 	if (rc == -1 || optlen <= 0)
 		goto out;
@@ -747,7 +1080,8 @@ out:
  */
 int aa_getpeercon(int fd, char **label, char **mode)
 {
-	int rc, last_size, size = INITIAL_GUESS_SIZE;
+	socklen_t last_size, size = INITIAL_GUESS_SIZE;
+	int rc;
 	char *buffer = NULL;
 
 	if (!label) {
@@ -849,7 +1183,7 @@ int query_label(uint32_t mask, char *query, size_t size, int *allowed,
 	memcpy(query, AA_QUERY_CMD_LABEL, AA_QUERY_CMD_LABEL_SIZE);
 	errno = 0;
 	ret = write(fd, query, size);
-	if (ret != size) {
+	if (ret < 0 || ((size_t) ret != size)) {
 		if (ret >= 0)
 			errno = EPROTO;
 		/* IMPORTANT: This is the only valid error path that can have
@@ -889,7 +1223,7 @@ int query_label(uint32_t mask, char *query, size_t size, int *allowed,
 
 /* export multiple aa_query_label symbols to compensate for downstream
  * releases with differing symbol versions. */
-extern typeof((query_label)) __aa_query_label __attribute__((alias ("query_label")));
+DLLEXPORT extern typeof((query_label)) __aa_query_label __attribute__((alias ("query_label")));
 symbol_version(__aa_query_label, aa_query_label, APPARMOR_1.1);
 default_symbol_version(query_label, aa_query_label, APPARMOR_2.9);
 

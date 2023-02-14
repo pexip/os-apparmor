@@ -22,7 +22,6 @@
 
 #include <iomanip>
 #include <string>
-#include <iostream>
 #include <sstream>
 #include <map>
 
@@ -236,20 +235,9 @@ int signal_rule::expand_variables(void)
 	return expand_entry_variables(&peer_label);
 }
 
-/* do we want to warn once/profile or just once per compile?? */
-static void warn_once(const char *name)
+void signal_rule::warn_once(const char *name)
 {
-	static const char *warned_name = NULL;
-
-	if ((warnflags & WARN_RULE_NOT_ENFORCED) && warned_name != name) {
-		cerr << "Warning from profile " << name << " (";
-		if (current_filename)
-			cerr << current_filename;
-		else
-			cerr << "stdin";
-		cerr << ") signal rules not enforced\n";
-		warned_name = name;
-	}
+	rule_t::warn_once(name, "signal rules not enforced");
 }
 
 int signal_rule::gen_policy_re(Profile &prof)
@@ -264,7 +252,7 @@ int signal_rule::gen_policy_re(Profile &prof)
 	 * it. We may want to switch this so that a compile could be
 	 * used for full support on kernels that don't support the feature
 	 */
-	if (!kernel_supports_signal) {
+	if (!features_supports_signal) {
 		warn_once(prof.name);
 		return RULE_NOT_SUPPORTED;
 	}

@@ -49,7 +49,7 @@
  * Allow libapparmor to build on older glibcs and other libcs that do
  * not support reallocarray.
  */
-#ifndef HAVE_REALLOCARRY
+#ifndef HAVE_REALLOCARRAY
 void *reallocarray(void *ptr, size_t nmemb, size_t size)
 {
 	return realloc(ptr, nmemb * size);
@@ -126,7 +126,7 @@ bool atomic_dec_and_test(unsigned int *v)
 
 int _aa_is_blacklisted(const char *name)
 {
-	size_t name_len = strlen(name);
+	ssize_t name_len = strlen(name);
 	struct ignored_suffix_t *suffix;
 
 	/* skip dot files and files with no name */
@@ -315,8 +315,7 @@ static ssize_t readdirfd(int dirfd, struct dirent ***out,
 			  int (*dircmp)(const struct dirent **, const struct dirent **))
 {
 	struct dirent **dents = NULL, *dent;
-	ssize_t n = 0;
-	size_t i;
+	ssize_t n = 0, i;
 	int save;
 	DIR *dir;
 
@@ -389,7 +388,7 @@ int _aa_overlaydirat_for_each(int dirfd[], int n, void *data,
 {
 	autofree struct dirent **list = NULL;
 	autofree struct overlaydir *overlay = NULL;
-	int i, k;
+	int i;
 	int n_list, size = 0, max_size = 0;
 	int rc = 0;
 
@@ -400,10 +399,10 @@ int _aa_overlaydirat_for_each(int dirfd[], int n, void *data,
 			return -1;
 		}
 		if (merge(overlay, size, max_size, list, n_list, dirfd[i])) {
-			for (k = 0; k < n_list; k++)
-				free(list[k]);
-			for (k = 0; k < size; k++)
-				free(overlay[k].dent);
+			for (i = 0; i < n_list; i++)
+				free(list[i]);
+			for (i = 0; i < size; i++)
+				free(overlay[i].dent);
 			return -1;
 		}
 	}
@@ -453,7 +452,8 @@ int _aa_overlaydirat_for_each(int dirfd[], int n, void *data,
  *
  * The cb function is called with the DIR in use and the name of the
  * file in that directory.  If the file is to be opened it should
- * use the openat, fstatat, and related fns.
+ * use the openat, fstatat, and related fns. If the file is a symlink
+ * _aa_dirat_for_each currently tries to traverse it for the caller
  *
  * Returns: 0 on success, else -1 and errno is set to the error code
  */
@@ -475,7 +475,7 @@ int _aa_dirat_for_each(int dirfd, const char *name, void *data,
 		return -1;
 	}
 
-	num_dirs = readdirfd(cb_dirfd, &namelist, NULL);
+	num_dirs = readdirfd(cb_dirfd, &namelist, alphasort);
 	if (num_dirs == -1) {
 		PDEBUG("scandirat of directory '%s' failed: %m\n", name);
 		return -1;
@@ -486,13 +486,33 @@ int _aa_dirat_for_each(int dirfd, const char *name, void *data,
 		autofree struct dirent *dir = namelist[i];
 		struct stat my_stat;
 
-		if (rc)
-			continue;
-
-		if (fstatat(cb_dirfd, dir->d_name, &my_stat, 0)) {
+		if (fstatat(cb_dirfd, dir->d_name, &my_stat, AT_SYMLINK_NOFOLLOW)) {
 			PDEBUG("stat failed for '%s': %m\n", dir->d_name);
 			rc = -1;
 			continue;
+		}
+		/* currently none of the callers handle symlinks, and this
+		 * same basic code was applied to each. So for this patch
+		 * just drop it here.
+		 *
+		 * Going forward we need to start handling symlinks as
+		 * they have meaning.
+		 * In the case of
+		 * cache: they act as a place holder for files that have been
+		 *        combined into a single binary. This enables the
+		 *        file based cache lookup time find that relation
+		 *        and dedup, so multiple loads aren't done.
+		 * profiles: just a profile in an alternate location, but
+		 *           should do dedup detection when doing dir reads
+		 *           so we don't double process.
+		 */
+		if (S_ISLNK(my_stat.st_mode)) {
+			/* just traverse the symlink */
+			if (fstatat(cb_dirfd, dir->d_name, &my_stat, 0)) {
+				PDEBUG("symlink target stat failed for '%s': %m\n", dir->d_name);
+				rc = -1;
+				continue;
+			}
 		}
 
 		if (cb(cb_dirfd, dir->d_name, &my_stat, data)) {

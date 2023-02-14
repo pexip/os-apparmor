@@ -30,20 +30,21 @@ RE_PATH                 = '/\S*|"/[^"]*"'  # filename (starting with '/') withou
 RE_PROFILE_PATH         = '(?P<%s>(' + RE_PATH + '))'  # quoted or unquoted filename. %s is the match group name
 RE_PROFILE_PATH_OR_VAR  = '(?P<%s>(' + RE_PATH + '|@{\S+}\S*|"@{\S+}[^"]*"))'  # quoted or unquoted filename or variable. %s is the match group name
 RE_SAFE_OR_UNSAFE       = '(?P<execmode>(safe|unsafe))'
+RE_XATTRS               = '(\s+xattrs\s*=\s*\((?P<xattrs>([^)=]+(=[^)=]+)?\s?)+)\)\s*)?'
+RE_FLAGS                = '(\s+(flags\s*=\s*)?\((?P<flags>[^)]+)\))?'
 
 RE_PROFILE_END          = re.compile('^\s*\}' + RE_EOL)
 RE_PROFILE_CAP          = re.compile(RE_AUDIT_DENY + 'capability(?P<capability>(\s+\S+)+)?' + RE_COMMA_EOL)
-RE_PROFILE_LINK         = re.compile(RE_AUDIT_DENY + 'link\s+(((subset)|(<=))\s+)?([\"\@\/].*?"??)\s+->\s*([\"\@\/].*?"??)' + RE_COMMA_EOL)
-RE_PROFILE_ALIAS        = re.compile('^\s*alias\s+("??.+?"??)\s+->\s*("??.+?"??)' + RE_COMMA_EOL)
+RE_PROFILE_ALIAS        = re.compile('^\s*alias\s+(?P<orig_path>"??.+?"??)\s+->\s*(?P<target>"??.+?"??)' + RE_COMMA_EOL)
 RE_PROFILE_RLIMIT       = re.compile('^\s*set\s+rlimit\s+(?P<rlimit>[a-z]+)\s*<=\s*(?P<value>[^ ]+(\s+[a-zA-Z]+)?)' + RE_COMMA_EOL)
 RE_PROFILE_BOOLEAN      = re.compile('^\s*(\$\{?\w*\}?)\s*=\s*(true|false)\s*,?' + RE_EOL, flags=re.IGNORECASE)
-RE_PROFILE_VARIABLE     = re.compile('^\s*(@\{?\w+\}?)\s*(\+?=)\s*(@*.+?)\s*,?' + RE_EOL)
+RE_PROFILE_VARIABLE     = re.compile('^\s*(?P<varname>@\{?\w+\}?)\s*(?P<mode>\+?=)\s*(?P<values>@*.+?)' + RE_EOL)
 RE_PROFILE_CONDITIONAL  = re.compile('^\s*if\s+(not\s+)?(\$\{?\w*\}?)\s*\{' + RE_EOL)
 RE_PROFILE_CONDITIONAL_VARIABLE = re.compile('^\s*if\s+(not\s+)?defined\s+(@\{?\w+\}?)\s*\{\s*(#.*)?$')
 RE_PROFILE_CONDITIONAL_BOOLEAN = re.compile('^\s*if\s+(not\s+)?defined\s+(\$\{?\w+\}?)\s*\{\s*(#.*)?$')
 RE_PROFILE_NETWORK      = re.compile(RE_AUDIT_DENY + 'network(?P<details>\s+.*)?' + RE_COMMA_EOL)
 RE_PROFILE_CHANGE_HAT   = re.compile('^\s*\^(\"??.+?\"??)' + RE_COMMA_EOL)
-RE_PROFILE_HAT_DEF      = re.compile('^(?P<leadingspace>\s*)(?P<hat_keyword>\^|hat\s+)(?P<hat>\"??.+?\"??)\s+((flags=)?\((?P<flags>.+)\)\s+)*\{' + RE_EOL)
+RE_PROFILE_HAT_DEF      = re.compile('^(?P<leadingspace>\s*)(?P<hat_keyword>\^|hat\s+)(?P<hat>\"??[^)]+?\"??)' + RE_FLAGS + '\s*\{' + RE_EOL)
 RE_PROFILE_DBUS         = re.compile(RE_AUDIT_DENY + '(dbus\s*,|dbus(?P<details>\s+[^#]*)\s*,)' + RE_EOL)
 RE_PROFILE_MOUNT        = re.compile(RE_AUDIT_DENY + '((mount|remount|umount|unmount)(\s+[^#]*)?\s*,)' + RE_EOL)
 RE_PROFILE_SIGNAL       = re.compile(RE_AUDIT_DENY + '(signal\s*,|signal(?P<details>\s+[^#]*)\s*,)' + RE_EOL)
@@ -68,7 +69,9 @@ RE_PROFILE_START          = re.compile(
         '|' + # or
         '(' + 'profile' + '\s+' + RE_PROFILE_NAME % 'namedprofile' + '(\s+' + RE_PROFILE_PATH_OR_VAR % 'attachment' + ')?' + ')' + # 'profile', profile name, optionally attachment
     ')' +
-    '\s+((flags\s*=\s*)?\((?P<flags>.+)\)\s*)?\{' +
+    RE_XATTRS +
+    RE_FLAGS +
+    '\s*\{' +
     RE_EOL)
 
 
@@ -98,6 +101,12 @@ RE_PROFILE_FILE_ENTRY = re.compile(
             RE_PATH_PERMS % 'perms2' + '\s+' + RE_PROFILE_PATH_OR_VAR % 'path2' +  # perms and path
         ')' +
         '(\s+->\s*' + RE_PROFILE_NAME % 'target' + ')?' +
+    '|' + # or
+        '(?P<link_keyword>link\s+)' +  # 'link' keyword
+        '(?P<subset_keyword>subset\s+)?' +  # optional 'subset' keyword
+        RE_PROFILE_PATH_OR_VAR % 'link_path' +  # path
+        '\s+' + '->' + '\s+' +  # ' -> '
+        RE_PROFILE_PATH_OR_VAR % 'link_target' +  # path
     ')' +
     RE_COMMA_EOL)
 
@@ -110,7 +119,7 @@ def parse_profile_start_line(line, filename):
 
     result = {}
 
-    for section in [ 'leadingspace', 'plainprofile', 'namedprofile', 'attachment', 'flags', 'comment']:
+    for section in [ 'leadingspace', 'plainprofile', 'namedprofile', 'attachment', 'xattrs', 'flags', 'comment']:
         if matches.group(section):
             result[section] = matches.group(section)
 
@@ -132,40 +141,72 @@ def parse_profile_start_line(line, filename):
 
     return result
 
-RE_ABI = re.compile('^\s*#?abi\s*(<(?P<magicpath>.*)>|"(?P<quotedpath>.*)"|(?P<unquotedpath>[^<>"]*))' + RE_COMMA_EOL)
+RE_MAGIC_OR_QUOTED_PATH = '(<(?P<magicpath>.*)>|"(?P<quotedpath>.*)"|(?P<unquotedpath>[^<>"]*))'
+RE_ABI = re.compile('^\s*#?abi\s*' + RE_MAGIC_OR_QUOTED_PATH + RE_COMMA_EOL)
+RE_INCLUDE = re.compile('^\s*#?include(?P<ifexists>\s+if\s+exists)?\s*' + RE_MAGIC_OR_QUOTED_PATH + RE_EOL)
 
-RE_INCLUDE = re.compile('^\s*#?include\s*(<(?P<magicpath>.*)>|"(?P<quotedpath>.*)"|(?P<unquotedpath>[^<>"]*))' + RE_EOL)
+def re_match_include_parse(line, rule_name):
+    '''Matches the path for include, include if exists and abi rules
 
-def re_match_include(line):
-    """Matches the path for include and returns the include path"""
-    matches = RE_INCLUDE.search(line)
+    rule_name can be 'include' or 'abi'
+
+    Returns a tuple with
+    - if the "if exists" condition is given
+    - the include/abi path
+    - if the path is a magic path (enclosed in <...>)
+    '''
+
+    if rule_name == 'include':
+        matches = RE_INCLUDE.search(line)
+    elif rule_name == 'abi':
+        matches = RE_ABI.search(line)
+    else:
+        raise AppArmorBug('re_match_include_parse() called with invalid rule name %s' % rule_name)
 
     if not matches:
-        return None
+        return None, None, None
 
     path = None
+    ismagic = False
     if matches.group('magicpath'):
         path = matches.group('magicpath').strip()
+        ismagic = True
     elif matches.group('unquotedpath'):
+        path = matches.group('unquotedpath').strip()
+        if re.search('\s', path):
+            raise AppArmorException(_('Syntax error: %s must use quoted path or <...>') % rule_name)
         # LP: #1738879 - parser doesn't handle unquoted paths everywhere
-        # path = matches.group('unquotedpath').strip()
-        raise AppArmorException(_('Syntax error: #include must use quoted path or <...>'))
+        if rule_name == 'include':
+            raise AppArmorException(_('Syntax error: %s must use quoted path or <...>') % rule_name)
     elif matches.group('quotedpath'):
         path = matches.group('quotedpath')
         # LP: 1738880 - parser doesn't handle relative paths everywhere, and
         # neither do we (see aa.py)
-        if len(path) > 0 and path[0] != '/':
-            raise AppArmorException(_('Syntax error: #include must use quoted path or <...>'))
+        if rule_name == 'include' and len(path) > 0 and path[0] != '/':
+            raise AppArmorException(_('Syntax error: %s must use quoted path or <...>') % rule_name)
 
     # if path is empty or the empty string
     if path is None or path == "":
-        raise AppArmorException(_('Syntax error: #include rule with empty filename'))
+        raise AppArmorException(_('Syntax error: %s rule with empty filename') % rule_name)
 
     # LP: #1738877 - parser doesn't handle files with spaces in the name
-    if re.search('\s', path):
-        raise AppArmorException(_('Syntax error: #include rule filename cannot contain spaces'))
+    if rule_name == 'include' and re.search('\s', path):
+        raise AppArmorException(_('Syntax error: %s rule filename cannot contain spaces') % rule_name)
 
-    return path
+    ifexists = False
+    if rule_name == 'include' and matches.group('ifexists'):
+        ifexists = True
+
+    return path, ifexists, ismagic
+
+def re_match_include(line):
+    ''' return path of a 'include' rule '''
+    (path, ifexists, ismagic) = re_match_include_parse(line, 'include')
+
+    if not ifexists:
+        return path
+
+    return None
 
 def strip_parenthesis(data):
     '''strips parenthesis from the given string and returns the strip()ped result.

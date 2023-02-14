@@ -2,7 +2,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title></title>
+<title>AppArmor - kernel enhancement to confine programs to a limited set of resources.</title>
 <link rel="stylesheet" href="apparmor.css" type="text/css" />
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <link rev="made" href="mailto:root@localhost" />
@@ -11,7 +11,7 @@
 <body>
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;AppArmor - kernel enhancement to confine programs to a limited set of resources.</span></strong></big>
 </td></tr>
 </table>
 
@@ -42,9 +42,9 @@
 
 <p>AppArmor confinement is provided via <i>profiles</i> loaded into the kernel via apparmor_parser(8), typically through the <i>/etc/init.d/apparmor</i> SysV initscript, which is used like this:</p>
 
-<pre><code>        # /etc/init.d/apparmor start
-        # /etc/init.d/apparmor stop
-        # /etc/init.d/apparmor restart</code></pre>
+<pre><code># /etc/init.d/apparmor start
+# /etc/init.d/apparmor stop
+# /etc/init.d/apparmor restart</code></pre>
 
 <p>AppArmor can operate in two modes: <i>enforcement</i>, and <i>complain or learning</i>:</p>
 
@@ -64,47 +64,47 @@
 
 <p>AppArmor supports the Linux kernel&#39;s securityfs filesystem, and makes available the list of the profiles currently loaded; to mount the filesystem:</p>
 
-<pre><code>        # mount -tsecurityfs securityfs /sys/kernel/security
-        $ cat /sys/kernel/security/apparmor/profiles
-        /usr/bin/mutt
-        /usr/bin/gpg
-           ...</code></pre>
+<pre><code># mount -tsecurityfs securityfs /sys/kernel/security
+$ cat /sys/kernel/security/apparmor/profiles
+/usr/bin/mutt
+/usr/bin/gpg
+   ...</code></pre>
 
 <p>Normally, the initscript will mount securityfs if it has not already been done.</p>
 
 <p>AppArmor also restricts what privileged operations a confined process may execute, even if the process is running as root. A confined process cannot call the following system calls:</p>
 
-<pre><code>        create_module(2) delete_module(2) init_module(2) ioperm(2)
-        iopl(2) ptrace(2) reboot(2) setdomainname(2)
-        sethostname(2) swapoff(2) swapon(2) sysctl(2)</code></pre>
+<pre><code>create_module(2) delete_module(2) init_module(2) ioperm(2)
+iopl(2) ptrace(2) reboot(2) setdomainname(2)
+sethostname(2) swapoff(2) swapon(2) sysctl(2)</code></pre>
 
 <h1 id="ERRORS">ERRORS</h1>
 
 <p>When a confined process tries to access a file it does not have permission to access, the kernel will report a message through audit, similar to:</p>
 
-<pre><code>        audit(1386511672.612:238): apparmor=&quot;DENIED&quot; operation=&quot;exec&quot; 
-          parent=7589 profile=&quot;/tmp/sh&quot; name=&quot;/bin/uname&quot; pid=7605 
-          comm=&quot;sh&quot; requested_mask=&quot;x&quot; denied_mask=&quot;x&quot; fsuid=0 ouid=0
+<pre><code>audit(1386511672.612:238): apparmor=&quot;DENIED&quot; operation=&quot;exec&quot; 
+  parent=7589 profile=&quot;/tmp/sh&quot; name=&quot;/bin/uname&quot; pid=7605 
+  comm=&quot;sh&quot; requested_mask=&quot;x&quot; denied_mask=&quot;x&quot; fsuid=0 ouid=0
 
-        audit(1386511672.613:239): apparmor=&quot;DENIED&quot; operation=&quot;open&quot; 
-          parent=7589 profile=&quot;/tmp/sh&quot; name=&quot;/bin/uname&quot; pid=7605 
-          comm=&quot;sh&quot; requested_mask=&quot;r&quot; denied_mask=&quot;r&quot; fsuid=0 ouid=0
+audit(1386511672.613:239): apparmor=&quot;DENIED&quot; operation=&quot;open&quot; 
+  parent=7589 profile=&quot;/tmp/sh&quot; name=&quot;/bin/uname&quot; pid=7605 
+  comm=&quot;sh&quot; requested_mask=&quot;r&quot; denied_mask=&quot;r&quot; fsuid=0 ouid=0
 
-        audit(1386511772.804:246): apparmor=&quot;DENIED&quot; operation=&quot;capable&quot;
-          parent=7246 profile=&quot;/tmp/sh&quot; pid=7589 comm=&quot;sh&quot; pid=7589 
-          comm=&quot;sh&quot; capability=2  capname=&quot;dac_override&quot;</code></pre>
+audit(1386511772.804:246): apparmor=&quot;DENIED&quot; operation=&quot;capable&quot;
+  parent=7246 profile=&quot;/tmp/sh&quot; pid=7589 comm=&quot;sh&quot; pid=7589 
+  comm=&quot;sh&quot; capability=2  capname=&quot;dac_override&quot;</code></pre>
 
 <p>The permissions requested by the process are described in the operation= and denied_mask= (for files - capabilities etc. use a slightly different log format). The &quot;name&quot; and process id of the running program are reported, as well as the profile name including any &quot;hat&quot; that may be active, separated by &quot;//&quot;. (&quot;Name&quot; is in quotes, because the process name is limited to 15 bytes; it is the same as reported through the Berkeley process accounting.)</p>
 
 <p>For confined processes running under a profile that has been loaded in complain mode, enforcement will not take place and the log messages reported to audit will be of the form:</p>
 
-<pre><code>        audit(1386512577.017:275): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quot;
-          parent=8012 profile=&quot;/usr/bin/du&quot; name=&quot;/etc/apparmor.d/tunables/&quot;
-          pid=8049 comm=&quot;du&quot; requested_mask=&quot;r&quot; denied_mask=&quot;r&quot; fsuid=1000 ouid=0
+<pre><code>audit(1386512577.017:275): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quot;
+  parent=8012 profile=&quot;/usr/bin/du&quot; name=&quot;/etc/apparmor.d/tunables/&quot;
+  pid=8049 comm=&quot;du&quot; requested_mask=&quot;r&quot; denied_mask=&quot;r&quot; fsuid=1000 ouid=0
 
-        audit(1386512577.017:276): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quot;
-          parent=8012 profile=&quot;/usr/bin/du&quot; name=&quot;/etc/apparmor.d/tunables/&quot;
-          pid=8049 comm=&quot;du&quot; requested_mask=&quot;r&quot; denied_mask=&quot;r&quot; fsuid=1000 ouid=0</code></pre>
+audit(1386512577.017:276): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quot;
+  parent=8012 profile=&quot;/usr/bin/du&quot; name=&quot;/etc/apparmor.d/tunables/&quot;
+  pid=8049 comm=&quot;du&quot; requested_mask=&quot;r&quot; denied_mask=&quot;r&quot; fsuid=1000 ouid=0</code></pre>
 
 <p>If the userland auditd is not running, the kernel will send audit events to klogd; klogd will send the messages to syslog, which will log the messages with the KERN facility. Thus, REJECTING and PERMITTING messages may go to either <i>/var/log/audit/audit.log</i> or <i>/var/log/messages</i>, depending upon local configuration.</p>
 
@@ -118,7 +118,7 @@
 
 <p>To enable debug mode, run:</p>
 
-<pre><code>        echo 1 &gt; /sys/module/apparmor/parameters/debug</code></pre>
+<pre><code>echo 1 &gt; /sys/module/apparmor/parameters/debug</code></pre>
 
 <h2 id="Turn-off-deny-audit-quieting">Turn off deny audit quieting</h2>
 
@@ -126,7 +126,7 @@
 
 <p>To turn off deny audit quieting, run:</p>
 
-<pre><code>        echo -n noquiet &gt;/sys/module/apparmor/parameters/audit</code></pre>
+<pre><code>echo -n noquiet &gt;/sys/module/apparmor/parameters/audit</code></pre>
 
 <h2 id="Force-audit-mode">Force audit mode</h2>
 
@@ -136,15 +136,15 @@
 
 <p>To set a specific profile in force audit mode, add the <code>audit</code> flag:</p>
 
-<pre><code>        profile foo flags=(audit) { ... }</code></pre>
+<pre><code>profile foo flags=(audit) { ... }</code></pre>
 
 <p>To enable force audit mode globally, run:</p>
 
-<pre><code>        echo -n all &gt; /sys/module/apparmor/parameters/audit</code></pre>
+<pre><code>echo -n all &gt; /sys/module/apparmor/parameters/audit</code></pre>
 
 <p>If auditd is not running, to avoid losing too many of the extra log messages, you will likely have to turn off rate limiting by doing:</p>
 
-<pre><code>        echo 0 &gt; /proc/sys/kernel/printk_ratelimit</code></pre>
+<pre><code>echo 0 &gt; /proc/sys/kernel/printk_ratelimit</code></pre>
 
 <p>But even then the kernel ring buffer may overflow and you might lose messages.</p>
 
@@ -178,11 +178,11 @@
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
-<p>apparmor_parser(8), aa_change_hat(2), apparmor.d(5), subdomain.conf(5), aa-autodep(1), clean(1), auditd(8), aa-unconfined(8), aa-enforce(1), aa-complain(1), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
+<p>apparmor_parser(8), aa_change_hat(2), apparmor.d(5), aa-autodep(1), clean(1), auditd(8), aa-unconfined(8), aa-enforce(1), aa-complain(1), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;AppArmor - kernel enhancement to confine programs to a limited set of resources.</span></strong></big>
 </td></tr>
 </table>
 

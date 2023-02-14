@@ -13,7 +13,7 @@ import unittest
 from common_test import AATest, setup_all_loops
 
 from apparmor.common import AppArmorBug
-from apparmor.profile_storage import ProfileStorage, add_or_remove_flag, split_flags
+from apparmor.profile_storage import ProfileStorage, add_or_remove_flag, split_flags, var_transform
 
 class TestUnknownKey(AATest):
     def AASetup(self):
@@ -50,6 +50,14 @@ class AaTest_add_or_remove_flag(AATest):
         ([ None,                'audit',        False           ],  []                          ),
         ([ 'complain',          'audit',        True            ],  ['audit', 'complain']       ),
         ([ '  complain  ',      'audit',        False           ],  ['complain']                ),
+        ([ 'audit complain',    ['audit', 'complain'],  False   ],  []                          ),
+        ([ 'audit complain',    'audit complain',       False   ],  []                          ),
+        ([ 'audit complain',    ['audit', 'enforce'],   False   ],  ['complain']                ),
+        ([ 'audit complain',    'audit enforce',        False   ],  ['complain']                ),
+        ([ '',                  ['audit', 'complain'],  True    ],  ['audit', 'complain']       ),
+        ([ '',                  'audit complain',       True    ],  ['audit', 'complain']       ),
+        ([ 'audit',             ['audit', 'enforce'],   True    ],  ['audit', 'enforce']        ),
+        ([ 'audit',             'audit enforce',        True    ],  ['audit', 'enforce']        ),
     ]
 
     def _run_test(self, params, expected):
@@ -71,6 +79,17 @@ class AaTest_split_flags(AATest):
     def _run_test(self, params, expected):
         split = split_flags(params)
         self.assertEqual(split, expected)
+
+class AaTest_var_transform(AATest):
+    tests = [
+        (['foo', ''],           '"" foo'        ),
+        (['foo', 'bar'],        'bar foo'       ),
+        ([''],                  '""'            ),
+        (['bar baz', 'foo'],    '"bar baz" foo' ),
+    ]
+
+    def _run_test(self, params, expected):
+        self.assertEqual(var_transform(params), expected)
 
 
 setup_all_loops(__name__)

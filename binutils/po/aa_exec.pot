@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: apparmor@lists.ubuntu.com\n"
-"POT-Creation-Date: 2020-10-14 03:37-0700\n"
+"POT-Creation-Date: 2020-10-14 03:58-0700\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: ../aa_exec.c:48
+#: ../aa_exec.c:50
 #, c-format
 msgid ""
 "USAGE: %s [OPTIONS] <prog> <args>\n"
@@ -34,19 +34,22 @@ msgid ""
 "\n"
 msgstr ""
 
-#: ../aa_exec.c:63
-msgid "aa-exec: ERROR: "
-msgstr ""
-
-#: ../aa_exec.c:74
-msgid "aa-exec: DEBUG: "
-msgstr ""
-
-#: ../aa_exec.c:87
-msgid "\n"
-msgstr ""
-
-#: ../aa_exec.c:105
+#: ../aa_exec.c:65
 #, c-format
-msgid "exec"
+msgid "[%ld] aa-exec: ERROR: "
+msgstr ""
+
+#: ../aa_exec.c:76
+#, c-format
+msgid "[%ld] aa-exec: DEBUG: "
+msgstr ""
+
+#: ../aa_exec.c:89
+#, c-format
+msgid "[%ld] "
+msgstr ""
+
+#: ../aa_exec.c:107
+#, c-format
+msgid "[%ld] exec"
 msgstr ""

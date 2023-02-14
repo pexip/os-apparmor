@@ -67,10 +67,10 @@ system aa-exec by adding USE_SYSTEM=1 to your make command.${nl}\
   LDLIBS += -Wl,-Bstatic -lapparmor -Wl,-Bdynamic -lpthread
 endif # USE_SYSTEM
 
-CFLAGS += -g -O0 -Wall -Wstrict-prototypes
++SYSCTL_INCLUDE="\#include <sys/sysctl.h>"
++USE_SYSCTL:=$(shell echo $(SYSCTL_INCLUDE) | cpp -dM >/dev/null 2>/dev/null && echo true)
 
-USE_SYSCTL:=$(shell echo "#include <sys/sysctl.h>" | cpp -dM >/dev/null 2>/dev/null && echo true)
-
+CFLAGS += -g -O0 $(EXTRA_WARNINGS)
 
 SRC=access.c \
     at_secure.c \
@@ -141,7 +141,8 @@ SRC=access.c \
     unix_socket.c \
     unix_socket_client.c \
     unlink.c \
-    xattrs.c
+    xattrs.c \
+    xattrs_profile.c
 
 #only do the ioperm/iopl tests for x86 derived architectures
 ifneq (,$(findstring $(shell uname -i),i386 i486 i586 i686 x86 x86_64))
@@ -166,10 +167,14 @@ Install libdbus-1-dev or equivalent package to build and run these tests${nl}\
 endif
 
 TRANSITION_CFLAGS=
+AA_POLICY_CACHE_CFLAGS=
 ifdef USE_SYSTEM
   ifneq (,$(shell pkg-config --atleast-version 2.10 libapparmor && echo TRUE))
     SRC+=aa_policy_cache.c
     CONDITIONAL_TESTS+=aa_policy_cache
+    ifeq (,$(shell pkg-config --atleast-version 2.13 libapparmor && echo TRUE))
+        AA_POLICY_CACHE_CFLAGS=-DCOMPAT_PATH_PREVIEW
+    endif
   else
     $(warning ${nl}\
     ************************************************************************${nl}\
@@ -178,7 +183,7 @@ ifdef USE_SYSTEM
   endif
 
   ifneq (,$(shell pkg-config --atleast-version 2.10.95 libapparmor && echo TRUE))
-    CONDITIONAL_TESTS+=exec_stack stackonexec stackprofile
+    CONDITIONAL_TESTS+=exec_stack nnp stackonexec stackprofile
   else
     $(warning ${nl}\
     ************************************************************************${nl}\
@@ -188,7 +193,7 @@ ifdef USE_SYSTEM
   endif
 else
   SRC+=aa_policy_cache.c
-  CONDITIONAL_TESTS+=exec_stack aa_policy_cache stackonexec stackprofile
+  CONDITIONAL_TESTS+=exec_stack aa_policy_cache nnp stackonexec stackprofile
 endif
 
 EXEC=$(SRC:%.c=%)
@@ -245,8 +250,10 @@ TESTS=aa_exec \
       unix_socket_pathname \
       unix_socket_abstract \
       unix_socket_unnamed \
+      unix_socket_autobind \
       unlink\
       xattrs\
+      xattrs_profile\
       longpath
 
 #only do dbus if proper libs are installl
@@ -273,6 +280,9 @@ ifdef USE_SYSTEM
 else # !USE_SYSTEM
 	cp uservars.inc.source uservars.inc
 endif # USE_SYSTEM
+
+aa_policy_cache: aa_policy_cache.c
+	${CC} ${CFLAGS} ${AA_POLICY_CACHE_CFLAGS} ${LDFLAGS} $< -o $@ ${LDLIBS}
 
 at_secure: at_secure.c transition
 	${CC} ${CFLAGS} ${LDFLAGS} $< -o $@ ${LDLIBS}
@@ -306,6 +316,27 @@ unix_socket_client: unix_socket_client.c unix_socket_common.o
 
 unix_socket: unix_socket.c unix_socket_common.o unix_socket_client
 	${CC} ${CFLAGS} ${LDFLAGS} $(filter-out unix_socket_client, $^) -o $@ ${LDLIBS}
+
+build-dep:
+	@if [ `whoami` = "root" ] ;\
+	then \
+		if [ -z ${DISTRO} ] ;\
+		then \
+			echo "must set DISTRO before using target 'build-dep'" ;\
+			exit 1;\
+		fi; \
+		\
+		if [ ${DISTRO} = "ubuntu" ] || [ ${DISTRO} = "debian" ] ;\
+		then \
+			apt install apparmor libapparmor1 libapparmor-dev perl python gcc libc-dev ;\
+		else \
+			echo "Unknown option for DISTRO: '$(DISTRO)'. Supported options are 'ubuntu' or 'debian'" ;\
+			exit 1;\
+		fi; \
+	else \
+		echo "must be root to install build dependencies" ;\
+		exit 1;\
+	fi
 
 tests: all
 	@if [ `whoami` = "root" ] ;\

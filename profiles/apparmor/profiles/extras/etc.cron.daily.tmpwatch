@@ -8,10 +8,12 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+  abi <abi/3.0>,
+
+include <tunables/global>
 
 /etc/cron.daily/tmpwatch {
-  #include <abstractions/base>
+  include <abstractions/base>
   /etc/cron.daily/tmpwatch  r,
   /tmp                      r,
   /tmp/**                   rwl,

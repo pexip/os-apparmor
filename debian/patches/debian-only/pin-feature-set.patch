@@ -5,21 +5,23 @@ Subject: pin the AppArmor feature set to the one shipped by the apparmor
 
 Let's smooth UX on kernel upgrades and allow ourselves to update the AppArmor
 policy in a relaxed manner.
-Bug-Debian: https://bugs.debian.org/879584 
+Bug-Debian: https://bugs.debian.org/879584
 Forwarded: not-needed
 ---
- parser/parser.conf | 4 ++++
- 1 file changed, 4 insertions(+)
+ parser/parser.conf | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/parser/parser.conf b/parser/parser.conf
-index 641cf1d..58d0d2d 100644
+index 1d1c0da..43598d4 100644
 --- a/parser/parser.conf
 +++ b/parser/parser.conf
-@@ -59,3 +59,7 @@
- ## Adjust compression
- #Optimize=compress-small
- #Optimize=compress-fast
+@@ -76,4 +76,8 @@
+ #policy-features=/etc/apparmor.d/abi/kernel-5.4-vanilla
+ 
+ ## Pin older policy to the 5.4 kernel abi + out of tree network and af_unix
+-#policy-features=/etc/apparmor.d/abi/kernel-5.4-outoftree-network
++#policy-features=/etc/apparmor.d/abi/kernel-5.4-vanilla
 +
-+## Pin the policy feature set (avoid regressions when policy is lagging behind
++## Pin feature set (avoid regressions when policy is lagging behind
 +## the kernel)
-+compile-features=/usr/share/apparmor-features/features
++policy-features=/usr/share/apparmor-features/features

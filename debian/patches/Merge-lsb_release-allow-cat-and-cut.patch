@@ -1,0 +1,59 @@
+From: Christian Boltz <apparmor@cboltz.de>
+Date: Sun, 27 Nov 2022 13:00:07 +0000
+Subject: Merge lsb_release: allow cat and cut
+
+lsb_release fails on Debian Sid:
+
+```
+$ sudo aa-exec -p lsb_release lsb_release
+/usr/bin/lsb_release: 70: cut: Permission denied
+/usr/bin/lsb_release: 70: cut: Permission denied
+```
+
+```
+$ sudo aa-exec -p lsb_release lsb_release -h
+/usr/bin/lsb_release: 11: cat: Permission denied
+```
+
+```
+type=AVC msg=audit(1669540199.087:2680): apparmor="DENIED"
+operation="exec" profile="lsb_release" name="/usr/bin/cut" pid=17419
+comm="lsb_release" requested_mask="x" denied_mask="x" fsuid=0
+ouid=0FSUID="root" OUID="root"
+```
+
+```
+type=AVC msg=audit(1669540392.244:2944): apparmor="DENIED"
+operation="exec" profile="lsb_release" name="/usr/bin/cat" pid=17847
+comm="lsb_release" requested_mask="x" denied_mask="x" fsuid=0
+ouid=0FSUID="root" OUID="root"
+```
+
+Update profile to allow lsb_release script to invoke required
+executables.
+
+MR: https://gitlab.com/apparmor/apparmor/-/merge_requests/953
+Approved-by: Christian Boltz <apparmor@cboltz.de>
+Merged-by: Christian Boltz <apparmor@cboltz.de>
+
+
+(cherry picked from commit 495f68c797ac7254e62e77d3ee8a4b91b8aa1767)
+
+f596a176 lsb_release: allow cat and cut
+---
+ profiles/apparmor.d/lsb_release | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/profiles/apparmor.d/lsb_release b/profiles/apparmor.d/lsb_release
+index ad8b998..421a52f 100644
+--- a/profiles/apparmor.d/lsb_release
++++ b/profiles/apparmor.d/lsb_release
+@@ -30,6 +30,8 @@ profile lsb_release {
+   /{usr/,}bin/dash ixr,
+   /usr/bin/basename ixr,
+   /usr/bin/dpkg-query ixr,
++  /usr/bin/cat ixr,
++  /usr/bin/cut ixr,
+   /usr/bin/getopt ixr,
+   /usr/bin/sed ixr,
+   /usr/bin/tr ixr,

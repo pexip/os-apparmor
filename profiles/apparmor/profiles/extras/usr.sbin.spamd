@@ -10,13 +10,15 @@
 # vim:syntax=apparmor
 # Last Modified: Wed Feb 23 11:03:18 2005
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/spamd {
-  #include <abstractions/authentication>
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
-  #include <abstractions/perl>
+  include <abstractions/authentication>
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/perl>
 
   capability net_bind_service,
   capability setgid,

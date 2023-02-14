@@ -1,0 +1,31 @@
+From: Christian Boltz <apparmor@cboltz.de>
+Date: Mon, 23 Jan 2023 20:34:57 +0000
+Subject: Merge Add pipewire client.conf to audio abstractions
+
+Fixes: https://bugs.launchpad.net/bugs/2003702
+
+MR: https://gitlab.com/apparmor/apparmor/-/merge_requests/970
+Approved-by: Jon Tourville <jon.tourville@canonical.com>
+Merged-by: Christian Boltz <apparmor@cboltz.de>
+
+
+(cherry picked from commit dedb5d94cb8ce2c5a843f9e06f0cedeaaacad7d2)
+
+b5a7641d Add pipewire client.conf to audio abstractions
+---
+ profiles/apparmor.d/abstractions/audio | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/profiles/apparmor.d/abstractions/audio b/profiles/apparmor.d/abstractions/audio
+index 0149326..dd78399 100644
+--- a/profiles/apparmor.d/abstractions/audio
++++ b/profiles/apparmor.d/abstractions/audio
+@@ -85,5 +85,8 @@ owner @{HOME}/.local/share/openal/hrtf/{,**} r,
+ # wildmidi
+ /etc/wildmidi/wildmidi.cfg r,
+ 
++# pipewire
++/usr/share/pipewire/client.conf r,
++
+   # Include additions to the abstraction
+   include if exists <abstractions/audio.d>

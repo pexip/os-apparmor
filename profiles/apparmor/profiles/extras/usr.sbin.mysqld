@@ -12,20 +12,21 @@
 # ------------------------------------------------------------------
 # vim:syntax=apparmor
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/mysqld {
-  #include <abstractions/base>
-  #include <abstractions/mysql>
-  #include <abstractions/nameservice>
-  #include <abstractions/user-tmp>
+  include <abstractions/base>
+  include <abstractions/mysql>
+  include <abstractions/nameservice>
+  include <abstractions/user-tmp>
+  include <abstractions/hosts_access>
 
   capability dac_override,
   capability setgid,
   capability setuid,
 
-  /etc/hosts.allow r,
-  /etc/hosts.deny r,
   /etc/my.cnf r,
   /etc/my.cnf.d/ r,
   /etc/my.cnf.d/*.cnf r,
@@ -41,6 +42,6 @@
   /var/log/mysql/mysqld-upgrade-run.log w,
   /var/log/mysql/mysqld.log w,
   /var/log/mysql/mysqld.log-20* w,
-  /{,var/}run/mysql/mysqld.pid w,
+  /{,var/}run/mysql{,d}/mysqld.pid w,
 
 }

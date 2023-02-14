@@ -20,8 +20,9 @@
 /* Definitions section */
 /* %option main */
 
-/* eliminates need to link with libfl */
+/* options set to noXXX eliminates need to link with libfl */
 %option noyywrap
+/* set %option noyy_top_state in Makefile, so can be used when DEBUG=1 */
 %option nounput
 %option stack
 %option nodefault
@@ -43,6 +44,7 @@
 #include "parser_yacc.h"
 #include "lib.h"
 #include "policy_cache.h"
+#include "file_cache.h"
 
 #ifdef PDEBUG
 #undef PDEBUG
@@ -133,10 +135,19 @@ static int include_dir_cb(int dirfd unused, const char *name, struct stat *st,
 	if (is_blacklisted(name, path))
 		return 0;
 
+	if (g_includecache->find(path)) {
+		PDEBUG("skipping reinclude of \'%s\' in \'%s\'\n", path,
+			d->filename);
+		return 0;
+	}
+
+	/* Handle symlink here. See _aa_dirat_for_each in private.c */
+
 	if (S_ISREG(st->st_mode)) {
 		if (!(yyin = fopen(path,"r")))
 			yyerror(_("Could not open '%s' in '%s'"), path, d->filename);
 		PDEBUG("Opened include \"%s\" in \"%s\"\n", path, d->filename);
+		(void) g_includecache->insert(path);
 		update_mru_tstamp(yyin, path);
 		push_include_stack(path);
 		yypush_buffer_state(yy_create_buffer(yyin, YY_BUF_SIZE));
@@ -150,16 +161,29 @@ void include_filename(char *filename, int search, bool if_exists)
 	FILE *include_file = NULL;
 	struct stat my_stat;
 	autofree char *fullpath = NULL;
+	bool cached;
 
 	if (search) {
-		if (preprocess_only)
+		include_file = search_path(filename, &fullpath, &cached);
+		if (!include_file && cached) {
+			goto skip;
+		} else if (preprocess_only) {
 			fprintf(yyout, "\n\n##included <%s>\n", filename);
-		include_file = search_path(filename, &fullpath);
+		} else if (!include_file && preprocess_only) {
+			fprintf(yyout, "\n\n##failed include <%s>\n", filename);
+		}
+
+	} else if (g_includecache->find(filename)) {
+		/* duplicate entry skip */
+		goto skip;
 	} else {
 		if (preprocess_only)
 			fprintf(yyout, "\n\n##included \"%s\"\n", filename);
 		fullpath = strdup(filename);
 		include_file = fopen(fullpath, "r");
+		if (include_file)
+			/* ignore failure to insert into cache */
+			(void) g_includecache->insert(filename);
 	}
 
 	if (!include_file) {
@@ -180,6 +204,7 @@ void include_filename(char *filename, int search, bool if_exists)
 		yypush_buffer_state(yy_create_buffer( yyin, YY_BUF_SIZE ));
         } else if (S_ISDIR(my_stat.st_mode)) {
 		struct cb_struct data = { fullpath, filename };
+		update_mru_tstamp(include_file, fullpath);
 		fclose(include_file);
 		include_file = NULL;
 		if (dirat_for_each(AT_FDCWD, fullpath, &data, include_dir_cb)) {
@@ -187,7 +212,33 @@ void include_filename(char *filename, int search, bool if_exists)
 				  " '%s' in '%s'"), fullpath, filename);;
 		}
 	}
+
+	return;
+
+skip:
+	if (preprocess_only)
+		fprintf(yyout, "\n\n##skipped duplicate include <%s>\n", filename);
+	return;
 }
+
+static char *lsntrim(char *s, int l)
+{
+	const char *end = s + l;
+
+	while (s <= end && isspace(*s))
+		s++;
+	return s;
+}
+
+static int rsntrim(const char *s, int l)
+{
+	const char *r = s + l;
+
+	while (r > s && isspace(*--r))
+		l--;
+	return l;
+}
+
 
 %}
 
@@ -207,13 +258,15 @@ NUMBER		[[:digit:]]+
 ID_CHARS	[^ \t\r\n"!,]
 ID 		{ID_CHARS}|(,{ID_CHARS}|\\[ ]|\\\t|\\\"|\\!|\\,)
 IDS		{ID}+
+INC_ID 		[^ \t\r\n"!,<>]|(,[^ \t\r\n"!,<>]|\\[ ]|\\\t|\\\"|\\!|\\,)
+INC_IDS		{INC_ID}+
 POST_VAR_ID_CHARS	[^ \t\n"!,]{-}[=\+]
 POST_VAR_ID 	{POST_VAR_ID_CHARS}|(,{POST_VAR_ID_CHARS}|\\[ ]|\\\t|\\\"|\\!|\\,|\\\(|\\\))
 LIST_VALUE_ID_CHARS	([^ \t\n"!,]{-}[()]|\\[ ]|\\\t|\\\"|\\!|\\,|\\\(|\\\))
 LIST_VALUE_QUOTED_ID_CHARS [^\0"]|\\\"
 LIST_VALUE_ID	{LIST_VALUE_ID_CHARS}+
 QUOTED_LIST_VALUE_ID	\"{LIST_VALUE_QUOTED_ID_CHARS}+\"
-ID_CHARS_NOEQ	[^ \t\n"!,]{-}[=]
+ID_CHARS_NOEQ	[^ \t\n"!,]{-}[=)]
 LEADING_ID_CHARS_NOEQ [^ \t\n"!,]{-}[=()+&]
 ID_NOEQ		{ID_CHARS_NOEQ}|(,{ID_CHARS_NOEQ})
 IDS_NOEQ	{LEADING_ID_CHARS_NOEQ}{ID_NOEQ}*
@@ -240,6 +293,8 @@ EQUALS		=
 ADD_ASSIGN	\+=
 ARROW		->
 LT_EQUAL	<=
+LT		<
+GT		>
 
 /* IF adding new state please update state_names table and default rule (just
  * above the state_names table) at the eof.
@@ -288,54 +343,27 @@ LT_EQUAL	<=
 	{WS}+	{  DUMP_PREPROCESS; /* Ignoring whitespace */ }
 }
 
-<INCLUDE_EXISTS>{
-	(\<([^"\>\t\r\n]+)\>|{QUOTED_ID})	{ /* <filename> | "filename" */
-		autofree char *filename = strndup(yytext, yyleng - 1);
-		include_filename(filename + 1, *filename == '<', true);
-		POP_NODUMP();
-	}
-
-	(\<{QUOTED_ID}\>)	{	/* <"filename"> */
-		autofree char *filename = strndup(yytext, yyleng - 2);
-		include_filename(filename + 2, true, true);
-		POP_NODUMP();
-	}
-
-	({IDS}|{QUOTED_ID}) {	/* filename */
-		include_filename(yytext, 0, true);
-		POP_NODUMP();
-	}
-}
-
-<INCLUDE>{
-	(\<([^"\>\t\r\n]+)\>|{QUOTED_ID})	{ /* <filename> | "filename" */
-		autofree char *filename = strndup(yytext, yyleng - 1);
-		include_filename(filename + 1, *filename == '<', false);
-		POP_NODUMP();
-	}
-
-	(\<{QUOTED_ID}\>)	{	/* <"filename"> */
-		autofree char *filename = strndup(yytext, yyleng - 2);
-		include_filename(filename + 2, true, false);
-		POP_NODUMP();
-	}
-
-	({IDS}|{QUOTED_ID}) {	/* filename */
-		include_filename(yytext, 0, false);
-		POP_NODUMP();
-	}
-}
-
-<ABI_MODE>{
-	(\<(([^"\>\t\r\n]+)|{QUOTED_ID})\>|{QUOTED_ID}|{IDS})	{ /* <filename> | <"filename"> | "filename" | filename */
+<INCLUDE,INCLUDE_EXISTS,ABI_MODE>{
+	(\<((([^"\>\t\r\n])+)|{QUOTED_ID})\>|{QUOTED_ID}|({INC_IDS}))	{ /* <filename> | <"filename"> | "filename" | filename */
 		int lt = *yytext == '<'  ? 1 : 0;
-		char *filename = processid(yytext + lt, yyleng - lt*2);
+		int len = yyleng - lt*2;
+		char *s = yytext + lt;
+		char * filename = lsntrim(s, yyleng);
 		bool exists = YYSTATE == INCLUDE_EXISTS;
 
+		filename = processid(filename, rsntrim(filename, len - (filename - s)));
 		if (!filename)
 			yyerror(_("Failed to process filename\n"));
-		yylval.id = filename;
-		POP_AND_RETURN(TOK_ID);
+		if (YYSTATE == ABI_MODE) {
+			yylval.id = filename;
+			if (lt)
+				RETURN_TOKEN(TOK_ID);
+			else
+				RETURN_TOKEN(TOK_VALUE);
+		}
+		include_filename(filename, lt, exists);
+		free(filename);
+		POP_NODUMP();
 	}
 }
 
@@ -348,7 +376,7 @@ LT_EQUAL	<=
 }
 
 <INITIAL,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE>{
-	peer/{WS}*={WS}*\(	{
+	(peer|xattrs)/{WS}*={WS}*\(	{
 		/* we match to the = in the lexer so that we can switch scanner
 		 * state.  By the time the parser see the = it may be too late
 		 * as bison may have requested the next token from the scanner
@@ -700,7 +728,7 @@ include/{WS}	{
 	PUSH_AND_RETURN(state, token);
 }
 
-<INITIAL,NETWORK_MODE,RLIMIT_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE>{
+<INITIAL,NETWORK_MODE,RLIMIT_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,ABI_MODE>{
 	{END_OF_RULE}	{
 		if (YY_START != INITIAL)
 			POP_NODUMP();
@@ -715,7 +743,7 @@ include/{WS}	{
 	}
 }
 
-<INITIAL,SUB_ID,SUB_ID_WS,SUB_VALUE,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,ASSIGN_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,RLIMIT_MODEINCLUDE,INCLUDE_EXISTS,ABI_MODE>{
+<INITIAL,SUB_ID,SUB_ID_WS,SUB_VALUE,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,ASSIGN_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,RLIMIT_MODE,INCLUDE,INCLUDE_EXISTS,ABI_MODE>{
 	(.|\n)	{
 		DUMP_PREPROCESS;
 		/* Something we didn't expect */

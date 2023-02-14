@@ -40,7 +40,7 @@ from apparmor.common import AppArmorException, open_file_read  # , warn, msg,
 
 # CFG = None
 # REPO_CFG = None
-# SHELL_FILES = ['easyprof.conf', 'notify.conf', 'parser.conf', 'subdomain.conf']
+# SHELL_FILES = ['easyprof.conf', 'notify.conf', 'parser.conf']
 class Config(object):
     def __init__(self, conf_type, conf_dir='/etc/apparmor'):
         self.CONF_DIR = conf_dir
@@ -60,14 +60,9 @@ class Config(object):
 
     def read_config(self, filename):
         """Reads the file and returns a config[section][attribute]=property object"""
-        # LP: Bug #692406
-        # Explicitly disabled repository
-        filepath = self.CONF_DIR + '/' + filename
+        filepath = os.path.join(self.CONF_DIR, filename)
         self.input_file = filepath
-        if filename == "repository.conf":
-            config = dict()
-            config['repository'] = {'enabled': 'no'}
-        elif self.conf_type == 'shell':
+        if self.conf_type == 'shell':
             config = self.read_shell(filepath)
         elif self.conf_type == 'ini':
             if sys.version_info > (3, 0):
@@ -89,7 +84,7 @@ class Config(object):
 
     def write_config(self, filename, config):
         """Writes the given config to the specified file"""
-        filepath = self.CONF_DIR + '/' + filename
+        filepath = os.path.join(self.CONF_DIR, filename)
         permission_600 = stat.S_IRUSR | stat.S_IWUSR    # Owner read and write
         try:
             # Open a temporary file in the CONF_DIR to write the config file
@@ -133,6 +128,7 @@ class Config(object):
 
     def read_shell(self, filepath):
         """Reads the shell type conf files and returns config[''][option]=value"""
+        # @TODO: Use standard ConfigParser when https://bugs.python.org/issue22253 is fixed
         config = {'': dict()}
         with open_file_read(filepath) as conf_file:
             for line in conf_file:

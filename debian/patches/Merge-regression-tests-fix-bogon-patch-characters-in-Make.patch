@@ -1,0 +1,43 @@
+From: John Johansen <john@jjmx.net>
+Date: Thu, 5 Jan 2023 00:44:37 +0000
+Subject: Merge regression tests: fix bogon patch characters in Makefile
+
+Commit 8cf3534a5 ("tests regression: fix failure on older versions of
+Make") from https://gitlab.com/apparmor/apparmor/-/merge_requests/639
+was incorrectly applied, including the `+` prefixes from the proposed
+patch. This causes the sysctl syscall() checks to not correctly be
+applied and results in a mismatch of expectations in the
+syscall_sysctl.sh test script, causing it and the testsuite to fail.
+
+Thus, remove the bogon `+` characters from the Makefile, to make
+USE_SYSCTL be set correctly.
+
+Fixes: 8cf3534a5 ("tests regression: fix failure on older versions of Make")
+Signed-off-by: Steve Beattie <steve.beattie@canonical.com>
+
+MR: https://gitlab.com/apparmor/apparmor/-/merge_requests/963
+Approved-by: Georgia Garcia <georgia.garcia@canonical.com>
+Approved-by: Christian Boltz <apparmor@cboltz.de>
+Approved-by: John Johansen <john@jjmx.net>
+Merged-by: John Johansen <john@jjmx.net>
+(cherry picked from commit f0bc1a89a4cf52678b58525c7bf3d0f38e01ae54)
+Signed-off-by: John Johansen <john.johansen@canonical.com>
+---
+ tests/regression/apparmor/Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/regression/apparmor/Makefile b/tests/regression/apparmor/Makefile
+index 5c275a3..384417a 100644
+--- a/tests/regression/apparmor/Makefile
++++ b/tests/regression/apparmor/Makefile
+@@ -67,8 +67,8 @@ system aa-exec by adding USE_SYSTEM=1 to your make command.${nl}\
+   LDLIBS += -Wl,-Bstatic -lapparmor -Wl,-Bdynamic -lpthread
+ endif # USE_SYSTEM
+ 
+-+SYSCTL_INCLUDE="\#include <sys/sysctl.h>"
+-+USE_SYSCTL:=$(shell echo $(SYSCTL_INCLUDE) | cpp -dM >/dev/null 2>/dev/null && echo true)
++SYSCTL_INCLUDE="\#include <sys/sysctl.h>"
++USE_SYSCTL:=$(shell echo $(SYSCTL_INCLUDE) | cpp -dM >/dev/null 2>/dev/null && echo true)
+ 
+ CFLAGS += -g -O0 $(EXTRA_WARNINGS)
+ 

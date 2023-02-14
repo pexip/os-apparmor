@@ -19,7 +19,7 @@ DIRS=libraries/libapparmor \
 
 # with conversion to git, we don't export from the remote
 REPO_URL?=git@gitlab.com:apparmor/apparmor.git
-REPO_BRANCH?=apparmor-2.13
+REPO_BRANCH?=master
 
 COVERITY_DIR=cov-int
 RELEASE_DIR=apparmor-${VERSION}
@@ -54,12 +54,12 @@ snapshot: clean
 .PHONY: coverity
 coverity: snapshot
 	cd $(SNAPSHOT_NAME)/libraries/libapparmor && ./configure --with-python
-	$(foreach dir, $(filter-out utils profiles tests, $(DIRS)), \
-		cov-build --dir $(COVERITY_DIR) -- $(MAKE) -C $(SNAPSHOT_NAME)/$(dir); \
-		mv $(COVERITY_DIR)/build-log.txt $(COVERITY_DIR)/build-log-$(subst /,.,$(dir)).txt ;)
 	$(foreach dir, libraries/libapparmor utils, \
 		cov-build --dir $(COVERITY_DIR) --no-command --fs-capture-search $(SNAPSHOT_NAME)/$(dir); \
 		mv $(COVERITY_DIR)/build-log.txt $(COVERITY_DIR)/build-log-python-$(subst /,.,$(dir)).txt ;)
+	cov-build --dir $(COVERITY_DIR) -- sh -c \
+	"$(foreach dir, $(filter-out utils profiles tests, $(DIRS)), \
+		$(MAKE) -C $(SNAPSHOT_NAME)/$(dir);) "
 	tar -cvzf $(SNAPSHOT_NAME)-$(COVERITY_DIR).tar.gz $(COVERITY_DIR)
 
 .PHONY: export_dir

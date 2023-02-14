@@ -55,7 +55,7 @@ dh_apparmor --manifest=manifest.json --profile-name=bin.bar -p bar
 
 Because not all build environments support the apparmor kernel interface,
 B<aa-easyprof(8)> is called with the --no-verify option. Use of this option
-requires that apparmor-easyprof is installed.
+requires that apparmor-utils is installed.
 
 
 =back

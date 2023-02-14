@@ -22,7 +22,6 @@
 
 #include <iomanip>
 #include <string>
-#include <iostream>
 #include <sstream>
 
 #include "parser.h"
@@ -190,20 +189,9 @@ int dbus_rule::expand_variables(void)
 	return 0;
 }
 
-/* do we want to warn once/profile or just once per compile?? */
-static void warn_once(const char *name)
+void dbus_rule::warn_once(const char *name)
 {
-	static const char *warned_name = NULL;
-
-	if ((warnflags & WARN_RULE_NOT_ENFORCED) && warned_name != name) {
-		cerr << "Warning from profile " << name << " (";
-		if (current_filename)
-			cerr << current_filename;
-		else
-			cerr << "stdin";
-		cerr << ") dbus rules not enforced\n";
-		warned_name = name;
-	}
+	rule_t::warn_once(name, "dbus rules not enforced");
 }
 
 int dbus_rule::gen_policy_re(Profile &prof)
@@ -220,7 +208,7 @@ int dbus_rule::gen_policy_re(Profile &prof)
 	pattern_t ptype;
 	int pos;
 
-	if (!kernel_supports_dbus) {
+	if (!features_supports_dbus) {
 		warn_once(prof.name);
 		return RULE_NOT_SUPPORTED;
 	}
@@ -292,21 +280,21 @@ int dbus_rule::gen_policy_re(Profile &prof)
 	if (mode & AA_DBUS_BIND) {
 		if (!prof.policy.rules->add_rule_vec(deny, mode & AA_DBUS_BIND,
 						    audit & AA_DBUS_BIND,
-						    2, vec, dfaflags))
+						    2, vec, dfaflags, false))
 			goto fail;
 	}
 	if (mode & (AA_DBUS_SEND | AA_DBUS_RECEIVE)) {
 		if (!prof.policy.rules->add_rule_vec(deny,
 				       mode & (AA_DBUS_SEND | AA_DBUS_RECEIVE),
 				       audit & (AA_DBUS_SEND | AA_DBUS_RECEIVE),
-				       6, vec, dfaflags))
+				       6, vec, dfaflags, false))
 			goto fail;
 	}
 	if (mode & AA_DBUS_EAVESDROP) {
 		if (!prof.policy.rules->add_rule_vec(deny,
 						    mode & AA_DBUS_EAVESDROP,
 						    audit & AA_DBUS_EAVESDROP,
-						    1, vec, dfaflags))
+						    1, vec, dfaflags, false))
 			goto fail;
 	}
 

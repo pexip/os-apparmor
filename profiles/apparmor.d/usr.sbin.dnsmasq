@@ -9,19 +9,15 @@
 #
 # ------------------------------------------------------------------
 
-@{TFTP_DIR}=/var/tftp /srv/tftpboot
+abi <abi/3.0>,
 
-#include <tunables/global>
+@{TFTP_DIR}=/var/tftp /srv/tftp /srv/tftpboot
 
-# This profile has the name "/usr/sbin/dnsmasq", but attaches to both /usr/bin/dnsmasq and /usr/sbin/dnsmasq.
-# We are sorry for the confusion ;-) but this trick is needed to support distributions with merged bin and sbin
-# while not breaking the libvirtd profile that has rules with peer=/usr/sbin/dnsmasq
-# Future versions of AppArmor (> 2.13.x) will have "dnsmasq" as profile name.
-
-profile /usr/sbin/dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
-  #include <abstractions/base>
-  #include <abstractions/dbus>
-  #include <abstractions/nameservice>
+include <tunables/global>
+profile dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/dbus>
+  include <abstractions/nameservice>
 
   capability chown,
   capability net_bind_service,
@@ -34,10 +30,8 @@ profile /usr/sbin/dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
   network inet6 raw,
 
   signal (receive) peer=/usr/{bin,sbin}/libvirtd,
-  signal (receive) peer=/usr/sbin/libvirtd,
   signal (receive) peer=libvirtd,
   ptrace (readby) peer=/usr/{bin,sbin}/libvirtd,
-  ptrace (readby) peer=/usr/sbin/libvirtd,
   ptrace (readby) peer=libvirtd,
 
   owner /dev/tty rw,
@@ -54,6 +48,8 @@ profile /usr/sbin/dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
   /etc/NetworkManager/dnsmasq.d/* r,
   /etc/NetworkManager/dnsmasq-shared.d/ r,
   /etc/NetworkManager/dnsmasq-shared.d/* r,
+  /etc/dnsmasq-conf.conf r,
+  /etc/dnsmasq-resolv.conf r,
 
   /usr/{bin,sbin}/dnsmasq mr,
 
@@ -62,10 +58,10 @@ profile /usr/sbin/dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
   /usr/share/dnsmasq{-base,}/ r,
   /usr/share/dnsmasq{-base,}/* r,
 
-  /{,var/}run/*dnsmasq*.pid w,
-  /{,var/}run/dnsmasq-forwarders.conf r,
-  /{,var/}run/dnsmasq/ r,
-  /{,var/}run/dnsmasq/* rw,
+  @{run}/*dnsmasq*.pid w,
+  @{run}/dnsmasq-forwarders.conf r,
+  @{run}/dnsmasq/ r,
+  @{run}/dnsmasq/* rw,
 
   /var/lib/misc/dnsmasq.leases rw, # Required only for DHCP server usage
 
@@ -84,19 +80,19 @@ profile /usr/sbin/dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
   /var/lib/libvirt/dnsmasq/*         r,
 
   # libvirt pid files for dnsmasq
-  /{,var/}run/libvirt/network/      r,
-  /{,var/}run/libvirt/network/*.pid rw,
+  @{run}/libvirt/network/      r,
+  @{run}/libvirt/network/*.pid rw,
 
   # libvirt lease helper
   /usr/lib{,64}/libvirt/libvirt_leaseshelper Cx -> libvirt_leaseshelper,
   /usr/libexec/libvirt_leaseshelper Cx -> libvirt_leaseshelper,
 
   # lxc-net pid and lease files
-  /{,var/}run/lxc/dnsmasq.pid    rw,
+  @{run}/lxc/dnsmasq.pid    rw,
   /var/lib/misc/dnsmasq.*.leases rw,
 
   # lxd-bridge pid and lease files
-  /{,var/}run/lxd-bridge/dnsmasq.pid   rw,
+  @{run}/lxd-bridge/dnsmasq.pid   rw,
   /var/lib/lxd-bridge/dnsmasq.*.leases rw,
   /var/lib/lxd/networks/*/dnsmasq.* r,
   /var/lib/lxd/networks/*/dnsmasq.leases rw,
@@ -104,25 +100,34 @@ profile /usr/sbin/dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
 
   # NetworkManager integration
   /var/lib/NetworkManager/dnsmasq-*.leases rw,
-  /{,var/}run/nm-dns-dnsmasq.conf r,
-  /{,var/}run/nm-dnsmasq-*.pid rw,
-  /{,var/}run/sendsigs.omit.d/*dnsmasq.pid w,
-  /{,var/}run/NetworkManager/dnsmasq.conf r,
-  /{,var/}run/NetworkManager/dnsmasq.pid w,
-  /{,var/}run/NetworkManager/NetworkManager.pid w,
+  @{run}/nm-dns-dnsmasq.conf r,
+  @{run}/nm-dnsmasq-*.pid rw,
+  @{run}/sendsigs.omit.d/*dnsmasq.pid w,
+  @{run}/NetworkManager/dnsmasq.conf r,
+  @{run}/NetworkManager/dnsmasq.pid w,
+  @{run}/NetworkManager/NetworkManager.pid w,
+
+  # dnsname plugin in podman
+  @{run}/containers/cni/dnsname/*/dnsmasq.conf r,
+  @{run}/containers/cni/dnsname/*/addnhosts r,
+  @{run}/containers/cni/dnsname/*/pidfile rw,
+  owner @{run}/user/*/containers/cni/dnsname/*/dnsmasq.conf r,
+  owner @{run}/user/*/containers/cni/dnsname/*/addnhosts r,
+  owner @{run}/user/*/containers/cni/dnsname/*/pidfile rw,
 
   profile libvirt_leaseshelper {
-    #include <abstractions/base>
+    include <abstractions/base>
 
     /etc/libnl-3/classid r,
 
-    /usr/lib{,64}/libvirt/libvirt_leaseshelper m,
-    /usr/libexec/libvirt_leaseshelper m,
+    /usr/lib{,64}/libvirt/libvirt_leaseshelper mr,
+    /usr/libexec/libvirt_leaseshelper mr,
 
     owner @{PROC}/@{pid}/net/psched r,
     owner @{PROC}/@{pid}/status r,
 
     @{sys}/devices/system/cpu/ r,
+    @{sys}/devices/system/cpu/possible r,
     @{sys}/devices/system/node/ r,
     @{sys}/devices/system/node/*/meminfo r,
 
@@ -130,9 +135,9 @@ profile /usr/sbin/dnsmasq /usr/{bin,sbin}/dnsmasq flags=(attach_disconnected) {
     /var/lib/libvirt/dnsmasq/*.leases  rw,
     /var/lib/libvirt/dnsmasq/*.status* rw,
 
-    /{,var/}run/leaseshelper.pid rwk,
+    @{run}/leaseshelper.pid rwk,
   }
 
   # Site-specific additions and overrides. See local/README for details.
-  #include <local/usr.sbin.dnsmasq>
+  include if exists <local/usr.sbin.dnsmasq>
 }

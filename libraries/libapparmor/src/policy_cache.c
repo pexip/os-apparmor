@@ -45,6 +45,8 @@ struct aa_policy_cache {
 static int clear_cache_cb(int dirfd, const char *path, struct stat *st,
 			  void *data unused)
 {
+	/* Handle symlink here. See _aa_dirat_for_each in private.c */
+
 	if (S_ISREG(st->st_mode)) {
 		/* remove regular files */
 		return unlinkat(dirfd, path, 0);
@@ -260,7 +262,7 @@ static int cache_dir_from_path_and_features(char **cache_path,
 {
 	autofree const char *features_id = NULL;
 	char *cache_dir;
-	size_t len;
+	ssize_t len;
 	int rc;
 
 	features_id = aa_features_id(features);
@@ -688,8 +690,8 @@ char *aa_policy_cache_dir_path_preview(aa_features *kernel_features,
 
 	aa_features_unref(kernel_features);
 
-	if (asprintf(&dir_path, "%s%s%s",
-		     cache_loc ? : "", cache_loc ? "/" : "", cache_dir) == -1) {
+	if (asprintf(&dir_path, "%s%s%s", cache_loc ? cache_loc : "",
+		     cache_loc ? "/" : "", cache_dir) == -1) {
 		errno = ENOMEM;
 		return NULL;
 	}

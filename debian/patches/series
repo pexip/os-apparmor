@@ -1,23 +1,19 @@
-upstream-commit-1244b81-limit-expr-tree-simplification-passes.patch
-upstream-commit-0d5ab43-rc.apparmor.functions-drop-module-loading-support.patch
-upstream-commit-94ff870-remove-subdomainfs-support.patch
-upstream-commit-3a89e98-Remove-traces-of-aa-eventd.patch
-upstream-commit-7ba8dc7-Drop-APPARMOR_ENABLE_AAEVENTD.patch
-upstream-mr-252-Make-rc.apparmor.functions-suitable-for-Debian-and-Ubuntu.patch
-lp1824812.patch
-Avoid-blhc-CPPFLAGS-missing-false-positive.patch
-upstream-commit-1ba978b6-adjust-for-new-ICEauthority-path-in-run.patch
-upstream-commit-8f9046b-port-aa-status-to-c.patch
+fix-expected-library-version.patch
+Merge-lsb_release-allow-cat-and-cut.patch
+Merge-abstractions-nvidia-allow-reading-pid-comm.patch
+Merge-aa-status-Fix-malformed-json-output-with-unconfined.patch
+Merge-regression-tests-fix-bogon-patch-characters-in-Make.patch
+Merge-Add-pipewire-client.conf-to-audio-abstractions.patch
+Merge-Extend-crypto-and-ssl_certs-abstractions.patch
+Merge-Fix-Opening-links-with-Brave.patch
 debian/add-debian-integration-to-lighttpd.patch
 debian/libapparmor-layout-deb.patch
 debian/etc-writable.patch
-debian/allow-access-to-ibus-socket.patch
 debian/Enable-writing-cache.patch
-debian/Make-the-systemd-unit-a-no-op-in-containers-with-no-inter.patch
-debian/smbd-include-snippet-generated-at-runtime.patch
-debian/dont-include-site-local-with-dovecot.patch
 debian-only/pin-feature-set.patch
 debian-only/aa-notify-point-to-Debian-documentation.patch
 debian-only/Document-which-AppArmor-features-are-not-supported-on-Deb.patch
-# ubuntu/libnss-systemd.patch
-# ubuntu/stop-loading-snapd-profiles.patch
+# ubuntu/communitheme-snap-support.patch
+# ubuntu/mimeinfo-snap-support.patch
+# ubuntu/profiles-grant-access-to-systemd-resolved.patch
+# ubuntu/enable-pinning-of-pre-AppArmor-3.x-poli.patch

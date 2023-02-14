@@ -9,7 +9,7 @@ Forwarded: not-needed
  1 file changed, 12 insertions(+)
 
 diff --git a/parser/apparmor.d.pod b/parser/apparmor.d.pod
-index 59ac72c..2f484cd 100644
+index c4ba078..39a86bb 100644
 --- a/parser/apparmor.d.pod
 +++ b/parser/apparmor.d.pod
 @@ -33,6 +33,18 @@ programs and are fed to the AppArmor policy enforcement module using
@@ -30,4 +30,4 @@ index 59ac72c..2f484cd 100644
 +
  =head1 FORMAT
  
- The following is a BNF-style description of AppArmor policy
+ AppArmor policy is written in a declarative language, in which the

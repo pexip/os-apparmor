@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------
 #
 #    Copyright (C) 2009-2011 Canonical Ltd.
-#    Copyright (C) 2013 Christian Boltz
+#    Copyright (C) 2013-2020 Christian Boltz
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -10,12 +10,14 @@
 # ------------------------------------------------------------------
 # vim: ft=apparmor
 
-#include <tunables/global>
-/usr/lib/dovecot/imap-login {
-  #include <abstractions/base>
-  #include <abstractions/ssl_certs>
-  #include <abstractions/ssl_keys>
-  #include <abstractions/dovecot-common>
+abi <abi/3.0>,
+
+include <tunables/global>
+
+profile dovecot-imap-login /usr/lib/dovecot/imap-login {
+  include <abstractions/base>
+  include <abstractions/dovecot-common>
+  include <abstractions/openssl>
 
   capability setuid,
   capability sys_chroot,
@@ -25,11 +27,11 @@
   network unix stream,
 
   /usr/lib/dovecot/imap-login mr,
-  /{,var/}run/dovecot/anvil rw,
-  /{,var/}run/dovecot/login-master-notify* rw,
-  /{,var/}run/dovecot/login/ r,
-  /{,var/}run/dovecot/login/* rw,
+  @{run}/dovecot/anvil rw,
+  @{run}/dovecot/login-master-notify* rw,
+  @{run}/dovecot/login/ r,
+  @{run}/dovecot/login/* rw,
 
   # Site-specific additions and overrides. See local/README for details.
-  #include <local/usr.lib.dovecot.imap-login>
+  include if exists <local/usr.lib.dovecot.imap-login>
 }
