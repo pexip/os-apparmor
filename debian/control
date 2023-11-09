@@ -30,7 +30,7 @@ Vcs-Browser: https://salsa.debian.org/apparmor-team/apparmor/tree/debian/master
 Vcs-Git: https://salsa.debian.org/apparmor-team/apparmor.git -b debian/master
 Homepage: https://apparmor.net/
 Rules-Requires-Root: no
-XS-Pexip-Upstream: http://deb.debian.org/debian/ bullseye
+XS-Pexip-Upstream: http://deb.debian.org/debian/ bookworm
 
 Package: apparmor
 Architecture: linux-any
