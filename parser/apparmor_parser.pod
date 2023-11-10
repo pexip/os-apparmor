@@ -179,10 +179,24 @@ defined as relative paths.
 Add element n to the search path when resolving #include directives
 defined as an absolute paths.
 
-=item -f n, --subdomainfs n
+=item -f n, --apparmorfs n
 
 Set the location of the apparmor security filesystem (default is
 "/sys/kernel/security/apparmor").
+
+=item --policy-features n
+
+Specify the feature set that the policy was developed under. This does
+not override feature ABI rules.
+
+=item --override-policy-abi n
+
+Specify the feature set that the policy was developed under and
+override any feature ABI rules that the policy may be using.
+
+=item --kernel-features n
+
+Specify the feature set of the kernel that the policy is being compiled for. If not specified this will be determined by the system's kernel.
 
 =item -M n, --features-file n
 
@@ -190,9 +204,15 @@ Use the features file located at path "n" (default is
 /etc/apparmor.d/cache/.features). If the --cache-loc option is present, the
 ".features" file in the specified cache directory is used.
 
+Note: this sets both the --kernel-features and --policy-features to be the
+same.
+
 =item -m n, --match-string n
 
 Only use match features "n".
+
+Note: this sets both the --kernel-features and --policy-features to be the
+same.
 
 =item -n n, --namespace-string n
 
@@ -275,13 +295,30 @@ Report on the profiles as they are loaded, and show warnings.
 
 =item --warn=n
 
-Enable various warnings during policy compilation. A single dump flag
+Enable various warnings during policy compilation. A single warn flag
 can be specified per --warn option, but the --warn flag can be passed
 multiple times.
 
   apparmor_parser --warn=rules-not-enforced ...
 
+A specific warning can be disabled by prepending I<no>- to the flag
+
+  apparmor_parser --warn=no-rules-not-enforced ...
+
 Use --help=warn to see a full list of which warn flags are supported.
+
+=item --Werror[=n]
+
+Convert warnings into errors during policy compilation. If the
+optional flag is not specified all warnings become errors. If the
+optional flag is specified only the class of warnings specified will
+become errors. A single flag can be specified per --Werror option, but
+the --Werror flag can be passed multiple times.
+
+  apparmor_parser --Werror=deprecated ...
+
+Use --help=warn or --help=Werror to see a full list of which warn flags
+are supported.
 
 =item -d, --debug
 
@@ -304,6 +341,7 @@ Use --help=dump to see a full list of which dump flags are supported
 Set the number of jobs used to compile the specified policy. Where n can
 be
 
+  0    - disable jobs and use the main process for all compilation
   #    - a specific number of jobs
   auto - the # of cpus in the in the system
   x#   - # * number of cpus
@@ -314,12 +352,15 @@ Eg.
   -jx4    OR --jobs=x4                  sets the jobs to # of cpus * 4
   -jx1   is equivalent to   -jauto
 
-The default value is the number of cpus in the system.
+The default value is the number of cpus in the system. Note that if jobs
+is a positive integer number the --jobs-max parameter is automatically
+set to the same value.
 
 =item --max-jobs n
 
-Set a hard cap on the value that can be specified by the --jobs flag.
-It takes the same set of options available to the --jobs option, and
+When --jobs is set to a scaling value (ie. auto or xN) the specify a
+hard cap on the value that can be specified by the --jobs flag.  It
+takes the same set of options available to the --jobs option, and
 defaults to 8*cpus
 
 =item -O n, --optimize=n
@@ -403,11 +444,11 @@ All other options override previously set values.
 =head1 BUGS
 
 If you find any bugs, please report them at
-L<https://bugs.launchpad.net/apparmor/+filebug>.
+L<https://gitlab.com/apparmor/apparmor/-/issues>.
 
 =head1 SEE ALSO
 
-apparmor(7), apparmor.d(5), subdomain.conf(5), aa_change_hat(2), and
+apparmor(7), apparmor.d(5), aa_change_hat(2), and
 L<https://wiki.apparmor.net>.
 
 =cut

@@ -10,11 +10,13 @@
 # vim:syntax=apparmor
 # Last Modified: Mon Mar 13 15:55:30 2006
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 profile resmgrd /{usr/,}sbin/resmgrd {
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
+  include <abstractions/base>
+  include <abstractions/nameservice>
 
   capability fowner,
   capability chown,

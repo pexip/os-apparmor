@@ -19,6 +19,7 @@
  *   Ltd.
  */
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,7 +41,7 @@
 
 #include <sys/apparmor.h>
 
-
+#include "capability.h"
 #include "lib.h"
 #include "features.h"
 #include "parser.h"
@@ -49,6 +50,7 @@
 #include "common_optarg.h"
 #include "policy_cache.h"
 #include "libapparmor_re/apparmor_re.h"
+#include "file_cache.h"
 
 #define OLD_MODULE_NAME "subdomain"
 #define PROC_MODULES "/proc/modules"
@@ -59,7 +61,6 @@
 #define PRIVILEGED_OPS (kernel_load)
 #define UNPRIVILEGED_OPS (!(PRIVILEGED_OPS))
 
-#define EARLY_ARG_CONFIG_FILE 141
 
 const char *parser_title	= "AppArmor parser";
 const char *parser_copyright	= "Copyright (C) 1999-2008 Novell Inc.\nCopyright 2009-2018 Canonical Ltd.";
@@ -80,14 +81,13 @@ int skip_mode_force = 0;
 int abort_on_error = 0;			/* stop processing profiles if error */
 int skip_bad_cache_rebuild = 0;
 int mru_skip_cache = 1;
-int debug_cache = 0;
 
 /* for jobs_max and jobs
  * LONG_MAX : no limit
- * 0  : auto  = detect system processing cores
+ * LONG_MIN  : auto  = detect system processing cores
  * n  : use that number of processes/threads to compile policy
  */
-#define JOBS_AUTO 0
+#define JOBS_AUTO LONG_MIN
 long jobs_max = -8;			/* 8 * cpus */
 long jobs = JOBS_AUTO;			/* default: number of processor cores */
 long njobs = 0;
@@ -108,11 +108,28 @@ static const char *cacheloc[MAX_CACHE_LOCS];
 static int cacheloc_n = 0;
 static bool print_cache_dir = false;
 
-static aa_features *compile_features = NULL;
-static aa_features *kernel_features = NULL;
+aa_features *pinned_features = NULL;
+aa_features *policy_features = NULL;
+aa_features *override_features = NULL;
+aa_features *kernel_features = NULL;
 
 static const char *config_file = "/etc/apparmor/parser.conf";
 
+#define ARG_SKIP_BAD_CACHE		129
+#define ARG_PURGE_CACHE			130
+#define ARG_CREATE_CACHE_DIR		131
+#define ARG_SKIP_BAD_CACHE_REBUILD	132
+#define ARG_DEBUG_CACHE			133
+#define ARG_PRINT_CACHE_DIR		134
+#define ARG_ABORT_ON_ERROR		135
+#define ARG_WARN			136
+#define ARG_MAX_JOBS			137
+#define ARG_KERNEL_FEATURES		138
+#define ARG_POLICY_FEATURES		139
+#define ARG_PRINT_CONFIG_FILE		140
+#define ARG_OVERRIDE_POLICY_ABI		141
+#define EARLY_ARG_CONFIG_FILE		142
+#define ARG_WERROR			143
 
 /* Make sure to update BOTH the short and long_options */
 static const char *short_options = "ad::f:h::rRVvI:b:BCD:NSm:M:qQn:XKTWkL:O:po:j:";
@@ -151,18 +168,21 @@ struct option long_options[] = {
 	{"Optimize",		1, 0, 'O'},
 	{"preprocess",		0, 0, 'p'},
 	{"jobs",		1, 0, 'j'},
-	{"skip-bad-cache",	0, 0, 129},	/* no short option */
-	{"purge-cache",		0, 0, 130},	/* no short option */
-	{"create-cache-dir",	0, 0, 131},	/* no short option */
-	{"abort-on-error",	0, 0, 132},	/* no short option */
-	{"skip-bad-cache-rebuild",	0, 0, 133},	/* no short option */
-	{"warn",		1, 0, 134},	/* no short option */
-	{"debug-cache",		0, 0, 135},	/* no short option */
-	{"max-jobs",		1, 0, 136},	/* no short option */
-	{"print-cache-dir",	0, 0, 137},	/* no short option */
-	{"kernel-features",	1, 0, 138},	/* no short option */
-	{"compile-features",	1, 0, 139},	/* no short option */
-	{"print-config-file",	0, 0, 140},	/* no short option */
+	{"skip-bad-cache",	0, 0, ARG_SKIP_BAD_CACHE},/* no short option */
+	{"purge-cache",		0, 0, ARG_PURGE_CACHE},	/* no short option */
+	{"create-cache-dir",	0, 0, ARG_CREATE_CACHE_DIR},/* no short option */
+	{"abort-on-error",	0, 0, ARG_ABORT_ON_ERROR},	/* no short option */
+	{"skip-bad-cache-rebuild",	0, 0, ARG_SKIP_BAD_CACHE_REBUILD},/* no short option */
+	{"warn",		1, 0, ARG_WARN},	/* no short option */
+	{"Werror",		2, 0, ARG_WERROR},
+	{"debug-cache",		0, 0, ARG_DEBUG_CACHE},	/* no short option */
+	{"max-jobs",		1, 0, ARG_MAX_JOBS},	/* no short option */
+	{"print-cache-dir",	0, 0, ARG_PRINT_CACHE_DIR},	/* no short option */
+	{"kernel-features",	1, 0, ARG_KERNEL_FEATURES},	/* no short option */
+	{"policy-features",	1, 0, ARG_POLICY_FEATURES},	/* no short option */
+	{"compile-features",	1, 0, ARG_POLICY_FEATURES},	/* original name of policy-features */
+	{"print-config-file",	0, 0, ARG_PRINT_CONFIG_FILE},	/* no short option */
+	{"override-policy-abi",	1, 0, ARG_OVERRIDE_POLICY_ABI},	/* no short option */
 	{"config-file",		1, 0, EARLY_ARG_CONFIG_FILE},	/* early option, no short option */
 
 	{NULL, 0, 0, 0},
@@ -195,7 +215,8 @@ static void display_usage(const char *command)
 	       "-f n, --subdomainfs n	Set location of apparmor filesystem\n"
 	       "-m n, --match-string n  Use only features n\n"
 	       "-M n, --features-file n Set compile & kernel features to file n\n"
-	       "--compile-features n    Compile features set in file n\n"
+	       "--policy-features n     Policy features set in file n\n"
+	       "--override-policy-abi n     As policy-features but override ABI rules\n"
 	       "--kernel-features n     Kernel features set in file n\n"
 	       "-n n, --namespace n	Set Namespace for the profile\n"
 	       "-X, --readimpliesX	Map profile read permissions to mr\n"
@@ -224,24 +245,28 @@ static void display_usage(const char *command)
 	       "--config-file n		Specify the parser config file location, processed early before other options.\n"
 	       "--print-config		Print config file location\n"
 	       "--warn n		Enable warnings (see --help=warn)\n"
+	       "--Werror [n]		Convert warnings to errors. If n is specified turn warn n into an error\n"
 	       ,command);
 }
 
 optflag_table_t warnflag_table[] = {
-	{ 0, "rule-not-enforced", "warn if a rule is not enforced", WARN_RULE_NOT_ENFORCED },
-	{ 0, "rule-downgraded", "warn if a rule is downgraded to a lesser but still enforcing rule", WARN_RULE_DOWNGRADED },
+	{ 1, "rule-not-enforced", "warn if a rule is not enforced", WARN_RULE_NOT_ENFORCED },
+	{ 1, "rule-downgraded", "warn if a rule is downgraded to a lesser but still enforcing rule", WARN_RULE_DOWNGRADED },
+	{ 1, "abi", "warn if there are abi issues in the profile", WARN_ABI },
+	{ 1, "deprecated", "warn if something in the profile is deprecated", WARN_DEPRECATED },
+	{ 1, "config", "enable configuration warnings", WARN_CONFIG },
+	{ 1, "cache", "enable regular cache warnings", WARN_CACHE },
+	{ 1, "debug-cache", "enable warnings for debug cache file checks", WARN_DEBUG_CACHE },
+	{ 1, "jobs", "enable job control warnings", WARN_JOBS },
+	{ 1, "dangerous", "warn on dangerous policy", WARN_DANGEROUS },
+	{ 1, "unexpected", "warn when an unexpected condition is found", WARN_UNEXPECTED },
+	{ 1, "format", "warn on unnecessary or confusing formatting", WARN_FORMAT },
+	{ 1, "missing", "warn when missing qualifier and a default is used", WARN_MISSING },
+	{ 1, "override", "warn when overriding", WARN_OVERRIDE },
+	{ 1, "dev", "turn on warnings that are useful for profile development", WARN_DEV },
+	{ 1, "all", "turn on all warnings", WARN_ALL},
 	{ 0, NULL, NULL, 0 },
 };
-
-void display_warn(const char *command)
-{
-	display_version();
-	printf("\n%s: --warn [Option]\n\n"
-	       "Options:\n"
-	       "--------\n"
-	       ,command);
-	print_flag_table(warnflag_table);
-}
 
 /* Parse comma separated cachelocations. Commas can be escaped by \, */
 static int parse_cacheloc(const char *arg, const char **cacheloc, int max_size)
@@ -389,21 +414,35 @@ static long process_jobs_arg(const char *arg, const char *val) {
 	return n;
 }
 
+#define	EARLY_ARG   1
+#define	LATE_ARG    2
+#define	TWOPASS_ARG (EARLY_ARG | LATE_ARG)
 
-bool early_arg(int c) {
+int arg_pass(int c) {
 	switch(c) {
 	case EARLY_ARG_CONFIG_FILE:
-		return true;
+		return EARLY_ARG;
+		break;
+	case ARG_WARN:
+		return TWOPASS_ARG;
+		break;
+	case ARG_WERROR:
+		return TWOPASS_ARG;
+		break;
 	}
 
-	return false;
+	return LATE_ARG;
 }
 
 /* process a single argment from getopt_long
  * Returns: 1 if an action arg, else 0
  */
+#define DUMP_HEADER "     variables      \tDump variables\n" \
+	            "     expanded-variables\t Dump variables after expansion\n"
+
 static int process_arg(int c, char *optarg)
 {
+	struct aa_features *tmp_features = NULL;
 	int count = 0;
 
 	switch (c) {
@@ -434,13 +473,16 @@ static int process_arg(int c, char *optarg)
 		} else if (strcmp(optarg, "Dump") == 0 ||
 			   strcmp(optarg, "dump") == 0 ||
 			   strcmp(optarg, "D") == 0) {
-			display_dump(progname);
+			flagtable_help("--dump=", DUMP_HEADER, progname,
+				       dumpflag_table);
 		} else if (strcmp(optarg, "Optimize") == 0 ||
 			   strcmp(optarg, "optimize") == 0 ||
 			   strcmp(optarg, "O") == 0) {
-			display_optimize(progname);
+			flagtable_help("-O ", "", progname, optflag_table);
 		} else if (strcmp(optarg, "warn") == 0) {
-			display_warn(progname);
+			flagtable_help("--warn=", "", progname, warnflag_table);
+		} else if (strcmp(optarg, "Werror") == 0) {
+			flagtable_help("--Werror=", "", progname, warnflag_table);
 		} else {
 			PERROR("%s: Invalid --help option %s\n",
 			       progname, optarg);
@@ -506,6 +548,8 @@ static int process_arg(int c, char *optarg)
 		skip_read_cache = 1;
 		if (!optarg) {
 			dump_vars = 1;
+		} else if (strcmp(optarg, "show") == 0) {
+			print_flags("dump", dumpflag_table, dfaflags);
 		} else if (strcmp(optarg, "variables") == 0) {
 			dump_vars = 1;
 		} else if (strcmp(optarg, "expanded-variables") == 0) {
@@ -518,7 +562,9 @@ static int process_arg(int c, char *optarg)
 		}
 		break;
 	case 'O':
-		if (!handle_flag_table(optflag_table, optarg,
+		if (strcmp(optarg, "show") == 0) {
+			print_flags("Optimize", optflag_table, dfaflags);
+		} else if (!handle_flag_table(optflag_table, optarg,
 				       &dfaflags)) {
 			PERROR("%s: Invalid --Optimize option %s\n",
 			       progname, optarg);
@@ -526,27 +572,34 @@ static int process_arg(int c, char *optarg)
 		}
 		break;
 	case 'm':
-		if (aa_features_new_from_string(&compile_features,
+		if (pinned_features)
+			aa_features_unref(pinned_features);
+		if (kernel_features)
+			aa_features_unref(kernel_features);
+		if (aa_features_new_from_string(&tmp_features,
 						optarg, strlen(optarg))) {
 			fprintf(stderr,
 				"Failed to parse features string: %m\n");
 			exit(1);
 		}
+		kernel_features = aa_features_ref(tmp_features);
+		pinned_features = tmp_features;
 		break;
 	case 'M':
-		if (compile_features)
-			aa_features_unref(compile_features);
+		if (pinned_features)
+			aa_features_unref(pinned_features);
 		if (kernel_features)
 			aa_features_unref(kernel_features);
-		if (aa_features_new(&compile_features, AT_FDCWD, optarg)) {
+		if (aa_features_new(&tmp_features, AT_FDCWD, optarg)) {
 			fprintf(stderr,
 				"Failed to load features from '%s': %m\n",
 				optarg);
 			exit(1);
 		}
-		kernel_features = aa_features_ref(compile_features);
+		kernel_features = aa_features_ref(tmp_features);
+		pinned_features = tmp_features;
 		break;
-	case 138:
+	case ARG_KERNEL_FEATURES:
 		if (kernel_features)
 			aa_features_unref(kernel_features);
 		if (aa_features_new(&kernel_features, AT_FDCWD, optarg)) {
@@ -556,15 +609,39 @@ static int process_arg(int c, char *optarg)
 			exit(1);
 		}
 		break;
-	case 139:
-		if (compile_features)
-			aa_features_unref(compile_features);
-		if (aa_features_new(&compile_features, AT_FDCWD, optarg)) {
+	case ARG_POLICY_FEATURES:
+		if (pinned_features)
+			aa_features_unref(pinned_features);
+		if (strcmp(optarg, "<kernel>") == 0) {
+			if (aa_features_new_from_kernel(&tmp_features)) {
+				fprintf(stderr,
+					"Failed to load kernel features into the policy-features abi: %m\n");
+				exit(1);
+			}
+		} else if (aa_features_new(&tmp_features, AT_FDCWD, optarg)) {
 			fprintf(stderr,
-				"Failed to load compile features from '%s': %m\n",
+				"Failed to load policy-features from '%s': %m\n",
 				optarg);
 			exit(1);
 		}
+		pinned_features = tmp_features;
+		break;
+	case ARG_OVERRIDE_POLICY_ABI:
+		if (override_features)
+			aa_features_unref(override_features);
+		if (strcmp(optarg, "<kernel>") == 0) {
+			if (aa_features_new_from_kernel(&tmp_features)) {
+				fprintf(stderr,
+					"Failed to load kernel features into the policy-features abi: %m\n");
+				exit(1);
+			}
+		} else if (aa_features_new(&tmp_features, AT_FDCWD, optarg)) {
+			fprintf(stderr,
+				"Failed to load policy-features from '%s': %m\n",
+				optarg);
+			exit(1);
+		}
+		override_features = tmp_features;
 		break;
 	case 'q':
 		conf_verbose = 0;
@@ -593,19 +670,19 @@ static int process_arg(int c, char *optarg)
 	case 'T':
 		skip_read_cache = 1;
 		break;
-	case 129:
+	case ARG_SKIP_BAD_CACHE:
 		cond_clear_cache = 0;
 		break;
-	case 130:
+	case ARG_PURGE_CACHE:
 		force_clear_cache = 1;
 		break;
-	case 131:
+	case ARG_CREATE_CACHE_DIR:
 		create_cache_dir = 1;
 		break;
-	case 132:
+	case ARG_ABORT_ON_ERROR:
 		abort_on_error = 1;
 		break;
-	case 133:
+	case ARG_SKIP_BAD_CACHE_REBUILD:
 		skip_bad_cache_rebuild = 1;
 		break;
 	case 'L':
@@ -625,24 +702,42 @@ static int process_arg(int c, char *optarg)
 		preprocess_only = 1;
 		skip_mode_force = 1;
 		break;
-	case 134:
-		if (!handle_flag_table(warnflag_table, optarg,
+	case ARG_WARN:
+		if (strcmp(optarg, "show") == 0) {
+			print_flags("warn", warnflag_table, warnflags);
+		} else if (!handle_flag_table(warnflag_table, optarg,
 				       &warnflags)) {
 			PERROR("%s: Invalid --warn option %s\n",
 			       progname, optarg);
 			exit(1);
 		}
 		break;
-	case 135:
-		debug_cache = 1;
+	case ARG_WERROR:
+		if (!optarg) {
+			werrflags = -1;
+		} else if (strcmp(optarg, "show") == 0) {
+			print_flags("Werror", warnflag_table, werrflags);
+		} else if (optarg && !handle_flag_table(warnflag_table, optarg,
+					      &werrflags)) {
+			PERROR("%s: Invalid --Werror option %s\n",
+			       progname, optarg);
+			exit(1);
+		}
+		break;
+	case ARG_DEBUG_CACHE:
+		warnflags |= WARN_DEBUG_CACHE;
 		break;
 	case 'j':
 		jobs = process_jobs_arg("-j", optarg);
+		if (jobs == 0)
+			jobs_max = 0;
+		else if (jobs != JOBS_AUTO && jobs < LONG_MAX)
+			jobs_max = jobs;
 		break;
-	case 136:
+	case ARG_MAX_JOBS:
 		jobs_max = process_jobs_arg("max-jobs", optarg);
 		break;
-	case 137:
+	case ARG_PRINT_CACHE_DIR:
 		kernel_load = 0;
 		print_cache_dir = true;
 		break;
@@ -653,7 +748,7 @@ static int process_arg(int c, char *optarg)
 			exit(1);
 		}
 		break;
-	case 140:
+	case ARG_PRINT_CONFIG_FILE:
 		printf("%s\n", config_file);
 		break;
 	default:
@@ -671,7 +766,7 @@ static void process_early_args(int argc, char *argv[])
 
 	while ((c = getopt_long(argc, argv, short_options, long_options, &o)) != -1)
 	{
-		if (early_arg(c))
+		if (arg_pass(c) & EARLY_ARG)
 			process_arg(c, optarg);
 	}
 
@@ -688,7 +783,7 @@ static int process_args(int argc, char *argv[])
 	opterr = 1;
 	while ((c = getopt_long(argc, argv, short_options, long_options, &o)) != -1)
 	{
-		if (!early_arg(c))
+		if (arg_pass(c) & LATE_ARG)
 			count += process_arg(c, optarg);
 	}
 
@@ -710,7 +805,7 @@ static int process_config_file(const char *name)
 
 	f = fopen(name, "r");
 	if (!f) {
-		pwarn("config file '%s' not found\n", name);
+		pwarn(WARN_CONFIG, "config file '%s' not found\n", name);
 		return 0;
 	}
 
@@ -741,7 +836,12 @@ int have_enough_privilege(void)
 	return 0;
 }
 
-static void set_features_by_match_file(void)
+int features_intersect(aa_features *a, aa_features *b, const char *str)
+{
+	return aa_features_supports(a, str) && aa_features_supports(b, str);
+}
+
+static bool set_features_by_match_file(struct aa_features **features)
 {
 	autofclose FILE *ms = fopen(MATCH_FILE, "r");
 	if (ms) {
@@ -751,20 +851,29 @@ static void set_features_by_match_file(void)
 		if (!fgets(match_string, 1000, ms))
 			goto no_match;
 		if (strstr(match_string, " perms=c"))
-			perms_create = 1;
-		kernel_supports_network = 1;
-		return;
+			return aa_features_new_from_string(features,
+							   match_cn_abi,
+							   strlen(match_cn_abi)) == 0;
+
+		return aa_features_new_from_string(features, match_n_abi,
+						   strlen(match_n_abi)) == 0;
 	}
 no_match:
-	perms_create = 1;
+	/* either extremely old kernel or a container without the interfaces
+	 * mounted
+	 */
+	return aa_features_new_from_string(features, match_c_abi,
+					  strlen(match_c_abi)) == 0;
 }
 
-static void set_supported_features(aa_features *kernel_features unused)
+void set_supported_features()
 {
+	assert(kernel_features != NULL);
+
 	/* has process_args() already assigned a match string? */
-	if (!compile_features && aa_features_new_from_kernel(&compile_features) == -1) {
-		set_features_by_match_file();
-		return;
+	if (!policy_features) {
+		policy_features = aa_features_ref(kernel_features);
+
 	}
 
 	/*
@@ -772,29 +881,32 @@ static void set_supported_features(aa_features *kernel_features unused)
 	 * rule down grades for a give kernel
 	 */
 	perms_create = 1;
-	kernel_supports_policydb = aa_features_supports(compile_features, "file");
-	kernel_supports_network = aa_features_supports(compile_features, "network");
-	kernel_supports_unix = aa_features_supports(compile_features,
+	features_supports_network = features_intersect(kernel_features,
+						       policy_features,
+						       "network");
+	features_supports_networkv8 = features_intersect(kernel_features,
+							 policy_features,
+							 "network_v8");
+	features_supports_unix = features_intersect(kernel_features,
+						    policy_features,
 						    "network/af_unix");
-	kernel_supports_mount = aa_features_supports(compile_features, "mount");
-	kernel_supports_dbus = aa_features_supports(compile_features, "dbus");
-	kernel_supports_signal = aa_features_supports(compile_features, "signal");
-	kernel_supports_ptrace = aa_features_supports(compile_features, "ptrace");
-	kernel_supports_setload = aa_features_supports(compile_features,
-						       "policy/set_load");
-	kernel_supports_diff_encode = aa_features_supports(compile_features,
-							   "policy/diff_encode");
-	kernel_supports_stacking = aa_features_supports(compile_features,
+	features_supports_mount = features_intersect(kernel_features,
+						     policy_features,
+						     "mount");
+	features_supports_dbus = features_intersect(kernel_features,
+						    policy_features, "dbus");
+	features_supports_signal = features_intersect(kernel_features,
+						      policy_features,
+						      "signal");
+	features_supports_ptrace = features_intersect(kernel_features,
+						      policy_features,
+						      "ptrace");
+	features_supports_stacking = features_intersect(kernel_features,
+							policy_features,
 							"domain/stack");
-
-	if (aa_features_supports(compile_features, "policy/versions/v7"))
-		kernel_abi_version = 7;
-	else if (aa_features_supports(compile_features, "policy/versions/v6"))
-		kernel_abi_version = 6;
-
-	if (!kernel_supports_diff_encode)
-		/* clear diff_encode because it is not supported */
-		dfaflags &= ~DFA_CONTROL_DIFF_ENCODE;
+	features_supports_domain_xattr = features_intersect(kernel_features,
+							    policy_features,
+							    "domain/attach_conditions/xattr");
 }
 
 static bool do_print_cache_dir(aa_features *features, int dirfd, const char *path)
@@ -880,6 +992,7 @@ int process_binary(int option, aa_kernel_interface *kernel_interface,
 
 void reset_parser(const char *filename)
 {
+	PDEBUG("Resetting parser for profile %s\n", filename);
 	memset(&mru_policy_tstamp, 0, sizeof(mru_policy_tstamp));
 	memset(&cache_tstamp, 0, sizeof(cache_tstamp));
 	mru_skip_cache = 1;
@@ -887,6 +1000,11 @@ void reset_parser(const char *filename)
 	free_symtabs();
 	free_policies();
 	reset_include_stack(filename);
+	aa_features_unref(policy_features);
+	policy_features = NULL;
+	clear_cap_flag(CAPFLAG_POLICY_FEATURE);
+	delete g_includecache;
+	g_includecache = new IncludeCache_t();
 }
 
 int test_for_dir_mode(const char *basename, const char *linkdir)
@@ -928,7 +1046,7 @@ int process_profile(int option, aa_kernel_interface *kernel_interface,
 		}
 	} else {
 		if (write_cache)
-			pwarn("%s: cannot use or update cache, disable, or force-complain via stdin\n", progname);
+			pwarn(WARN_CACHE, "%s: cannot use or update cache, disable, or force-complain via stdin\n", progname);
 		skip_cache = write_cache = 0;
 	}
 
@@ -961,7 +1079,7 @@ int process_profile(int option, aa_kernel_interface *kernel_interface,
 								basename,
 								O_RDONLY);
 				if (fd != -1)
-					pwarn(_("Could not get cachename for '%s'\n"), basename);
+					pwarn(WARN_CACHE, _("Could not get cachename for '%s'\n"), basename);
 			} else {
 				valid_read_cache(cachename);
 			}
@@ -1034,21 +1152,23 @@ int process_profile(int option, aa_kernel_interface *kernel_interface,
 	if (pc && write_cache && !force_complain) {
 		writecachename = cache_filename(pc, 0, basename);
 		if (!writecachename) {
-			pwarn("Cache write disabled: Cannot create cache file name '%s': %m\n", basename);
+			pwarn(WARN_CACHE, "Cache write disabled: Cannot create cache file name '%s': %m\n", basename);
 			write_cache = 0;
 		}
 		cachetmp = setup_cache_tmp(&cachetmpname, writecachename);
 		if (cachetmp == -1) {
-			pwarn("Cache write disabled: Cannot create setup tmp cache file '%s': %m\n", writecachename);
+			pwarn(WARN_CACHE, "Cache write disabled: Cannot create setup tmp cache file '%s': %m\n", writecachename);
 			write_cache = 0;
 		}
 	}
 	/* cache file generated by load_policy */
 	retval = load_policy(option, kernel_interface, cachetmp);
 	if (retval == 0 && write_cache) {
-		if (cachetmp == -1) {
+		if (force_complain) {
+			pwarn(WARN_CACHE, "Caching disabled for: '%s' due to force complain\n", basename);
+		} else if (cachetmp == -1) {
 			unlink(cachetmpname);
-			pwarn("Warning failed to create cache: %s\n",
+			pwarn(WARN_CACHE, "Failed to create cache: %s\n",
 			       basename);
 		} else {
 			install_cache(cachetmpname, writecachename);
@@ -1091,50 +1211,49 @@ do {									\
 ({									\
 	int localrc = 0;						\
 	do {								\
-	/* what to do to avoid fork() overhead when single threaded	\
-	if (jobs == 1) {						\
-		// no parallel work so avoid fork() overhead		\
-		RESULT(WORK);						\
-		break;							\
-	}*/								\
-	if (jobs_scale) {						\
-		long n = sysconf(_SC_NPROCESSORS_ONLN);			\
-		if (n > jobs_max)					\
-			n = jobs_max;					\
-		if (n > jobs) {						\
-			/* reset sample chances - potentially reduce to 0 */ \
-			jobs_scale = jobs_max - n;			\
-			jobs = n;					\
-		} else							\
-			/* reduce scaling chance by 1 */		\
-			jobs_scale--;					\
-	}								\
-	if (njobs == jobs) {						\
-		/* wait for a child */					\
-		if (debug_jobs)						\
-			fprintf(stderr, "    JOBS SPAWN: waiting (jobs %ld == max %ld) ...\n", njobs, jobs);						\
-		work_sync_one(RESULT);					\
-	}								\
-									\
-	pid_t child = fork();						\
-	if (child == 0) {						\
-		/* child - exit work unit with returned value */	\
-		exit(WORK);						\
-	} else if (child > 0) {						\
-		/* parent */						\
-		njobs++;						\
-		if (debug_jobs)						\
-			fprintf(stderr, "    JOBS SPAWN: created %ld ...\n", njobs);									\
-	} else {							\
-		/* error */						\
-		if (debug_jobs)	{					\
-			int error = errno;				\
-			fprintf(stderr, "    JOBS SPAWN: failed error: %d) ...\n", errno);	\
-			errno = error;					\
+		if (jobs == 0) {					\
+			/* no parallel work so avoid fork() overhead */	\
+			RESULT(WORK);					\
+			break;						\
 		}							\
-		RESULT(errno);						\
-		localrc = -1;						\
-	}								\
+		if (jobs_scale) {					\
+			long n = sysconf(_SC_NPROCESSORS_ONLN);		\
+			if (n > jobs_max)				\
+				n = jobs_max;				\
+			if (n > jobs) {					\
+				/* reset sample chances - potentially reduce to 0 */ \
+				jobs_scale = jobs_max - n;		\
+				jobs = n;				\
+			} else						\
+				/* reduce scaling chance by 1 */	\
+				jobs_scale--;				\
+		}							\
+		if (njobs == jobs) {					\
+			/* wait for a child */				\
+			if (debug_jobs)					\
+				fprintf(stderr, "    JOBS SPAWN: waiting (jobs %ld == max %ld) ...\n", njobs, jobs);					\
+			work_sync_one(RESULT);				\
+		}							\
+									\
+		pid_t child = fork();					\
+		if (child == 0) {					\
+			/* child - exit work unit with returned value */\
+			exit(WORK);					\
+		} else if (child > 0) {					\
+			/* parent */					\
+			njobs++;					\
+			if (debug_jobs)					\
+				fprintf(stderr, "    JOBS SPAWN: created %ld ...\n", njobs);								\
+		} else {						\
+			/* error */					\
+			if (debug_jobs)	{				\
+				int error = errno;			\
+				fprintf(stderr, "    JOBS SPAWN: failed error: %d) ...\n", errno);	\
+				errno = error;				\
+			}						\
+			RESULT(errno);					\
+			localrc = -1;					\
+		}							\
 	} while (0);							\
 	localrc;							\
 })
@@ -1183,14 +1302,16 @@ static void setup_parallel_compile(void)
 	if (maxn == -1)
 		/* unable to determine number of processors, default to 1 */
 		maxn = 1;
+	if (jobs < 0 || jobs == JOBS_AUTO)
+		jobs_scale = 1;
 	jobs = compute_jobs(n, jobs);
 	jobs_max = compute_jobs(maxn, jobs_max);
 
 	if (jobs > jobs_max) {
-		pwarn("%s: Warning capping number of jobs to %ld * # of cpus == '%ld'",
+		pwarn(WARN_JOBS, "%s: Warning capping number of jobs to %ld * # of cpus == '%ld'",
 		      progname, jobs_max, jobs);
 		jobs = jobs_max;
-	} else if (jobs < jobs_max)
+	} else if (jobs_scale && jobs < jobs_max)
 		/* the bigger the difference the more sample chances given */
 		jobs_scale = jobs_max + 1 - n;
 
@@ -1210,6 +1331,8 @@ static int profile_dir_cb(int dirfd unused, const char *name, struct stat *st,
 			  void *data)
 {
 	int rc = 0;
+
+	/* Handle symlink here. See _aa_dirat_for_each in private.c */
 
 	if (!S_ISDIR(st->st_mode) && !is_blacklisted(name, NULL)) {
 		struct dir_cb_data *cb_data = (struct dir_cb_data *)data;
@@ -1233,6 +1356,8 @@ static int binary_dir_cb(int dirfd unused, const char *name, struct stat *st,
 {
 	int rc = 0;
 
+	/* Handle symlink here. See _aa_dirat_for_each in private.c */
+
 	if (!S_ISDIR(st->st_mode) && !is_blacklisted(name, NULL)) {
 		struct dir_cb_data *cb_data = (struct dir_cb_data *)data;
 		autofree char *path = NULL;
@@ -1249,19 +1374,39 @@ static int binary_dir_cb(int dirfd unused, const char *name, struct stat *st,
 	return rc;
 }
 
-static void setup_flags(void)
+static bool get_kernel_features(struct aa_features **features)
 {
 	/* Gracefully handle AppArmor kernel without compatibility patch */
-	if (!kernel_features && aa_features_new_from_kernel(&kernel_features) == -1) {
+	if (!kernel_features && aa_features_new_from_kernel(features) == -1) {
 		PERROR("Cache read/write disabled: interface file missing. "
 			"(Kernel needs AppArmor 2.4 compatibility patch.)\n");
 		write_cache = 0;
 		skip_read_cache = 1;
-		return;
+
+		/* Fall back to older match file */
+		if (!set_features_by_match_file(features))
+			return false;
 	}
 
-	/* Get the match string to determine type of regex support needed */
-	set_supported_features(kernel_features);
+	/* At this point we have features, extra commonly used values  */
+	kernel_supports_policydb = aa_features_supports(*features, "file");
+	kernel_supports_setload = aa_features_supports(*features,
+						       "policy/set_load");
+	kernel_supports_diff_encode = aa_features_supports(*features,
+							   "policy/diff_encode");
+	kernel_supports_oob = aa_features_supports(*features,
+						   "policy/outofband");
+
+	if (aa_features_supports(*features, "policy/versions/v7"))
+		kernel_abi_version = 7;
+	else if (aa_features_supports(*features, "policy/versions/v6"))
+		kernel_abi_version = 6;
+
+	if (!kernel_supports_diff_encode)
+		/* clear diff_encode because it is not supported */
+		dfaflags &= ~DFA_CONTROL_DIFF_ENCODE;
+
+	return true;
 }
 
 int main(int argc, char *argv[])
@@ -1276,6 +1421,7 @@ int main(int argc, char *argv[])
 	progname = argv[0];
 
 	init_base_dir();
+	capabilities_init();
 
 	process_early_args(argc, argv);
 	process_config_file(config_file);
@@ -1295,7 +1441,14 @@ int main(int argc, char *argv[])
 
 	if (!binary_input) parse_default_paths();
 
-	setup_flags();
+	if (!get_kernel_features(&kernel_features)) {
+		PERROR(_("Kernel features abi not found"));
+		return 1;
+	}
+	if (!add_cap_feature_mask(kernel_features, CAPFLAG_KERNEL_FEATURE)) {
+		PERROR(_("Failed to add kernel capabilities to known capabilities set"));
+		return 1;
+	}
 
 	if (!(UNPRIVILEGED_OPS) &&
 	    aa_kernel_interface_new(&kernel_interface, kernel_features, apparmorfs) == -1) {
@@ -1329,7 +1482,7 @@ int main(int argc, char *argv[])
 		}
 
 		if (create_cache_dir)
-			pwarn(_("The --create-cache-dir option is deprecated. Please use --write-cache.\n"));
+			pwarn(WARN_DEPRECATED, _("The --create-cache-dir option is deprecated. Please use --write-cache.\n"));
 		retval = aa_policy_cache_new(&policy_cache, kernel_features,
 					     AT_FDCWD, cacheloc[0], max_caches);
 		if (retval) {
@@ -1354,9 +1507,9 @@ int main(int argc, char *argv[])
 			for (i = 1; i < cacheloc_n; i++) {
 				if (aa_policy_cache_add_ro_dir(policy_cache, AT_FDCWD,
 							       cacheloc[i])) {
-					pwarn("Cache: failed to add read only location '%s', does not contain valid cache directory for the specified feature set\n", cacheloc[i]);
+					pwarn(WARN_CACHE, "Cache: failed to add read only location '%s', does not contain valid cache directory for the specified feature set\n", cacheloc[i]);
 				} else if (show_cache)
-					pwarn("Cache: added readonly location '%s'\n", cacheloc[i]);
+					pwarn(WARN_CACHE, "Cache: added readonly location '%s'\n", cacheloc[i]);
 			}
 		}
 	}
@@ -1397,7 +1550,7 @@ int main(int argc, char *argv[])
 			if ((retval = dirat_for_each(AT_FDCWD, profilename,
 						     &cb_data, cb))) {
 				last_error = errno;
-				PDEBUG("Failed loading profiles from %s\n",
+				PERROR("There was an error while loading profiles from %s\n",
 				       profilename);
 				if (abort_on_error)
 					break;

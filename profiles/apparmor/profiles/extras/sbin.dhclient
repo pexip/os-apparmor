@@ -19,17 +19,22 @@
 # /usr/bin/vmstat             mrix,
 # /usr/bin/w                  mrix,
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 profile dhclient /{usr/,}sbin/dhclient {
-  #include <abstractions/base>
-  #include <abstractions/bash>
-  #include <abstractions/nameservice>
+  include <abstractions/base>
+  include <abstractions/bash>
+  include <abstractions/openssl>
+  include <abstractions/nameservice>
 
   capability net_raw,
 
   network packet packet,
   network packet raw,
+
+  signal (send,receive) set=(term) peer=NetworkManager,
 
   /{usr/,}sbin/dhclient       mrix,
 
@@ -43,24 +48,29 @@ profile dhclient /{usr/,}sbin/dhclient {
   @{PROC}/interrupts          r,
   @{PROC}/@{pid}/net/dev      r,
   @{PROC}/rtc                 r,
+
+  # dhcliet wants to update its threads with functional names
+  # see lp1918410
+  owner @{PROC}/@{pid}/task/[0-9]*/comm rw,
+
   # following rule shouldn't work, self is a symlink
   @{PROC}/self/status         r,
   /{usr/,}sbin/arp            mrix,
-  /usr/bin/dig                mrix,
-  /usr/bin/uptime             mrix,
-  /usr/bin/vmstat             mrix,
-  /usr/bin/w                  mrix,
-  /usr/lib/nm-dhcp-helper     rix,
-  /var/lib/dhcp/dhclient.leases     rw,
-  /var/lib/dhcp/dhclient-*.leases   rw,
-  /var/lib/dhcp6/dhclient.leases    rw,
-  /var/lib/NetworkManager/dhclient-*.conf  r,
-  /var/lib/NetworkManager/dhclient-*.lease rw,
+  /{usr/,}bin/dig             mrix,
+  /{usr/,}bin/uptime          mrix,
+  /{usr/,}bin/vmstat          mrix,
+  /{usr/,}bin/w               mrix,
+  /usr/lib/{NetworkManager/,}nm-dhcp-helper rix,
+  /var/lib/dhclient/dhclient{6,}.leases*	rw,
+  /var/lib/dhcp/dhclient*.leases   rw,
+  /var/lib/dhcp{6,}/dhclient.leases    rw,
+  /var/lib/NetworkManager/dhclient{6,}-*.conf r,
+  /var/lib/NetworkManager/dhclient{6,}-*.lease rw,
   /var/log/lastlog            r,
   /var/log/messages           r,
   /var/log/wtmp               r,
-  /{,var/}run/dhclient.pid    rw,
-  /{,var/}run/dhclient-*.pid  rw,
+  /{,var/}run/dhclient{6,}.pid    rw,
+  /{,var/}run/dhclient{6,}{-,.}*.pid  rw,
   /var/spool                  r,
   /var/spool/mail             r,
 
@@ -77,4 +87,5 @@ profile dhclient /{usr/,}sbin/dhclient {
   /var/lib/dhcp/* rw,
   /{,var/}run/nm-dhclient-*.conf r,
 
+  include if exists <local/sbin.dhclient>
 }

@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/apparmor.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -281,6 +282,15 @@ static void handle_transition(int transition, const char *target)
 	}
 }
 
+static void set_no_new_privs(void)
+{
+	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
+		int err = errno;
+		perror("FAIL - prctl (PR_SET_NO_NEW_PRIVS)");
+		exit(err);
+	}
+}
+
 static void exec(const char *prog, char **argv)
 {
 	int err;
@@ -299,6 +309,8 @@ static void usage(const char *prog)
 		"  -P <LABEL>\tCall aa_change_profile(LABEL)\n"
 		"  -o <LABEL>\tCall aa_stack_onexec(LABEL)\n"
 		"  -p <LABEL>\tCall aa_stack_profile(LABEL)\n"
+		"  -i <LABEL>\tCall aa_change_profile(LABEL) before nnp\n"
+		"  -n\t\tSet NO_NEW_PRIVS\n"
 		"  -L <LABEL>\tVerify that /proc/self/attr/exec contains LABEL\n"
 		"  -M <MODE>\tVerify that /proc/self/attr/exec contains MODE. Set to \"%s\" if a NULL mode is expected.\n"
 		"  -l <LABEL>\tVerify that /proc/self/attr/current contains LABEL\n"
@@ -320,6 +332,8 @@ struct options {
 	int transition;		/* CHANGE_PROFILE, STACK_ONEXEC, etc. */
 	const char *target;	/* The target label of the transition */
 
+	bool no_new_privs;
+
 	const char *exec;
 	char **exec_argv;
 };
@@ -338,10 +352,10 @@ static void set_transition(const char *prog, struct options *opts,
 static void parse_opts(int argc, char **argv, struct options *opts)
 {
 	const char *prog = argv[0];
-	int o;
+	int o, rc;
 
 	memset(opts, 0, sizeof(*opts));
-	while ((o = getopt(argc, argv, "f:L:M:l:m:O:P:o:p:")) != -1) {
+	while ((o = getopt(argc, argv, "f:L:M:l:m:nO:P:o:p:i:")) != -1) {
 		switch (o) {
 		case 'f': /* file */
 			opts->file = optarg;
@@ -358,6 +372,9 @@ static void parse_opts(int argc, char **argv, struct options *opts)
 		case 'm': /* expected current mode */
 			opts->expected_current_mode = optarg;
 			break;
+		case 'n': /* NO_NEW_PRIVS */
+			opts->no_new_privs = true;
+			break;
 		case 'O': /* aa_change_profile */
 			set_transition(prog, opts, CHANGE_ONEXEC, optarg);
 			break;
@@ -369,6 +386,14 @@ static void parse_opts(int argc, char **argv, struct options *opts)
 			break;
 		case 'p': /* aa_stack_profile */
 			set_transition(prog, opts, STACK_PROFILE, optarg);
+			break;
+		case 'i': /* aa_change_profile - immediate before nnp */
+			rc = aa_change_profile(optarg);
+			if (rc < 0) {
+				int err = errno;
+				perror("FAIL: immediate change_profile");
+				exit(err);
+			}
 			break;
 		default: /* '?' */
 			usage(prog);
@@ -390,6 +415,9 @@ int main(int argc, char **argv)
 	struct options opts;
 
 	parse_opts(argc, argv, &opts);
+
+	if (opts.no_new_privs)
+		set_no_new_privs();
 
 	if (opts.transition)
 		handle_transition(opts.transition, opts.target);

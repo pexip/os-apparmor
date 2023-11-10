@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------
 #
-#    Copyright (C) 2013-2016 Christian Boltz
+#    Copyright (C) 2013-2020 Christian Boltz
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -9,13 +9,15 @@
 # ------------------------------------------------------------------
 # vim: ft=apparmor
 
-#include <tunables/global>
-#include <tunables/dovecot>
+abi <abi/3.0>,
 
-/usr/lib/dovecot/dovecot-lda flags=(attach_disconnected) {
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
-  #include <abstractions/dovecot-common>
+include <tunables/global>
+include <tunables/dovecot>
+
+profile dovecot-dovecot-lda /usr/lib/dovecot/dovecot-lda flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/dovecot-common>
 
   capability setuid,
 
@@ -23,10 +25,10 @@
   @{DOVECOT_MAILSTORE}/** rwkl,
 
   /etc/dovecot/** r,
-  /proc/*/mounts r,
+  @{PROC}/*/mounts r,
   owner /tmp/dovecot.lda.* rw,
-  /{var/,}run/dovecot/mounts r,
-  /run/dovecot/auth-userdb rw,
+  @{run}/dovecot/mounts r,
+  @{run}/dovecot/auth-userdb rw,
   /usr/bin/doveconf mrix,
   /usr/lib/dovecot/dovecot-lda mrix,
   /usr/{bin,sbin}/sendmail Cx -> sendmail,
@@ -34,26 +36,25 @@
   /usr/share/dovecot/protocols.d/** r,
 
   # Site-specific additions and overrides. See local/README for details.
-  #include <local/usr.lib.dovecot.dovecot-lda>
+  include if exists <local/usr.lib.dovecot.dovecot-lda>
 
 
   profile sendmail /usr/{bin,sbin}/sendmail flags=(attach_disconnected) {
     # this profile is based on the usr.sbin.sendmail profile in extras
     # and should support both postfix' and sendmail's sendmail binary
 
-    #include <abstractions/base>
-    #include <abstractions/consoles>
-    #include <abstractions/nameservice>
-    #include <abstractions/user-tmp>
-    #include <abstractions/postfix-common>
+    include <abstractions/base>
+    include <abstractions/consoles>
+    include <abstractions/nameservice>
+    include <abstractions/user-tmp>
+    include <abstractions/postfix-common>
+    include <abstractions/hosts_access>
 
     capability sys_ptrace,
 
     /etc/aliases rw,     # newaliases is a symlink to sendmail, so it's
     /etc/aliases.db rw,  # actually the same binary
     /etc/fstab r,
-    /etc/hosts.allow r,
-    /etc/hosts.deny r,
     /etc/mail/* r,
     /etc/mail/statistics rw,
     /etc/mtab r,
@@ -62,8 +63,8 @@
     /etc/sendmail.cf r,
     /etc/sendmail.cw r,
     /etc/shells r,
-    /proc/loadavg r,
-    /proc/net/if_inet6 r,
+    @{PROC}/loadavg r,
+    @{PROC}/net/if_inet6 r,
     /root/.forward r,
     /root/dead.letter w,
     /usr/bin/procmail Px,
@@ -77,9 +78,9 @@
     /usr/{bin,sbin}/sendmail mrix,
     /usr/{bin,sbin}/sendmail.postfix mrix,
     /usr/{bin,sbin}/sendmail.sendmail mrix,
-    /{var/,}run/sendmail.pid rwl,
-    /{var/,}run/sm-client.pid rwl,
-    /{var/,}run/utmp rw,
+    @{run}/sendmail.pid rwl,
+    @{run}/sm-client.pid rwl,
+    @{run}/utmp rw,
     /var/spool/clientmqueue/* rwl,
     /var/spool/mail/* rwl,
     /var/spool/mqueue/* rwl,

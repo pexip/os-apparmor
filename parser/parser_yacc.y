@@ -32,6 +32,8 @@
 
 /* #define DEBUG */
 
+#include "capability.h"
+#include "lib.h"
 #include "parser.h"
 #include "profile.h"
 #include "mount.h"
@@ -42,20 +44,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <linux/capability.h>
-
-#ifndef CAP_AUDIT_WRITE
-#define CAP_AUDIT_WRITE 29
-#endif
-#ifndef CAP_AUDIT_CONTROL
-#define CAP_AUDIT_CONTROL 30
-#endif
-#ifndef CAP_SETFCAP
-#define CAP_SETFCAP	     31
-#endif
-#ifndef CAP_MAC_OVERRIDE
-#define CAP_MAC_OVERRIDE     32
-#endif
 
 #define CIDR_32 htonl(0xffffffff)
 #define CIDR_24 htonl(0xffffff00)
@@ -81,6 +69,7 @@ mnt_rule *do_mnt_rule(struct cond_entry *src_conds, char *src,
 		      int mode);
 mnt_rule *do_pivot_rule(struct cond_entry *old, char *root,
 			char *transition);
+static void abi_features(char *filename, bool search);
 void add_local_entry(Profile *prof);
 
 %}
@@ -217,6 +206,7 @@ void add_local_entry(Profile *prof);
 	struct cond_entry_list cond_entry_list;
 	int boolean;
 	struct prefixes prefix;
+	IncludeCache_t *includecache;
 }
 
 %type <id> 	TOK_ID
@@ -285,8 +275,33 @@ void add_local_entry(Profile *prof);
 %%
 
 
-list:	 preamble profilelist
-	{ /* nothing */ };
+list:	 preamble
+	{
+		/* make sure abi is setup */
+		if (override_features) {
+			if (policy_features)
+				aa_features_unref(policy_features);
+			policy_features = aa_features_ref(override_features);
+		} else if (policy_features == NULL) {
+			if (pinned_features) {
+				policy_features = aa_features_ref(pinned_features);
+			/* use default feature abi */
+			} else {
+				if (aa_features_new_from_string(&policy_features,
+								default_features_abi,
+								strlen(default_features_abi))) {
+					yyerror(_("Failed to setup default policy feature abi"));
+				}
+				pwarn(WARN_ABI, _("%s: File '%s' missing feature abi, falling back to default policy feature abi\n"), progname, current_filename);
+			}
+		}
+		if (!add_cap_feature_mask(policy_features,
+					  CAPFLAG_POLICY_FEATURE))
+			yyerror(_("Failed to add policy capabilities to known capabilities set"));
+		set_supported_features();
+
+	}
+	profilelist;
 
 profilelist:	{ /* nothing */ };
 
@@ -306,9 +321,17 @@ opt_id: { /* nothing */ $$ = NULL; }
 opt_id_or_var: { /* nothing */ $$ = NULL; }
 	| id_or_var { $$ = $1; }
 
-profile_base: TOK_ID opt_id_or_var flags TOK_OPEN rules TOK_CLOSE
+profile_base: TOK_ID opt_id_or_var opt_cond_list flags TOK_OPEN
 	{
-		Profile *prof = $5;
+		/* mid rule action
+		 * save current cache, restore at end of block
+		 */
+		$<includecache>$ = g_includecache;
+		g_includecache = new IncludeCache_t();
+	}
+    rules TOK_CLOSE
+	{
+		Profile *prof = $7;
 		bool self_stack = false;
 
 		if (!prof) {
@@ -330,7 +353,7 @@ profile_base: TOK_ID opt_id_or_var flags TOK_OPEN rules TOK_CLOSE
 			 * --namespace-string command line option
 			 */
 			if (prof->ns && strcmp(prof->ns, profile_ns))
-				pwarn("%s: -n %s overriding policy specified namespace :%s:\n",
+				pwarn(WARN_OVERRIDE, "%s: -n %s overriding policy specified namespace :%s:\n",
 				      progname, profile_ns, prof->ns);
 
 			free(prof->ns);
@@ -342,20 +365,27 @@ profile_base: TOK_ID opt_id_or_var flags TOK_OPEN rules TOK_CLOSE
 		prof->attachment = $2;
 		if ($2 && !($2[0] == '/' || strncmp($2, "@{", 2) == 0))
 			yyerror(_("Profile attachment must begin with a '/' or variable."));
-		prof->flags = $3;
+		if ($3.name) {
+			if (strcmp($3.name, "xattrs") != 0)
+				yyerror(_("profile id: invalid conditional group %s=()"), $3.name);
+			free ($3.name);
+			$3.name = NULL;
+			prof->xattrs = $3;
+		}
+		prof->flags = $4;
 		if (force_complain && kernel_abi_version == 5)
 			/* newer abis encode force complain as part of the
 			 * header
 			 */
-			prof->flags.complain = 1;
+			prof->flags.mode = MODE_COMPLAIN;
 
 		post_process_file_entries(prof);
 		post_process_rule_entries(prof);
-		PDEBUG("%s: flags='%s%s'\n",
-		       $2,
-		       prof->flags.complain ? "complain, " : "",
-		       prof->flags.audit ? "audit" : "");
+		prof->flags.debug(cerr);
 
+		/* restore previous blocks include cache */
+		delete g_includecache;
+		g_includecache = $<includecache>6;
 		$$ = prof;
 
 	};
@@ -368,6 +398,9 @@ profile:  opt_profile_flag profile_base
 			PDEBUG("Matched: :%s://%s { ... }\n", $2->ns, $2->name);
 		else
 			PDEBUG("Matched: %s { ... }\n", $2->name);
+
+		if ($2->name[0] == '/')
+			pwarn(WARN_DEPRECATED, _("The use of file paths as profile names is deprecated. See man apparmor.d for more information\n"));
 
 		if ($2->name[0] != '/' && !($1 || $2->ns))
 			yyerror(_("Profile names must begin with a '/', namespace or keyword 'profile' or 'hat'."));
@@ -393,6 +426,12 @@ hat: hat_start profile_base
 		Profile *prof = $2;
 		if ($2)
 			PDEBUG("Matched: hat %s { ... }\n", prof->name);
+		/*
+		 * It isn't clear what a xattrs match on a hat profile
+		 * should do, disallow it for now.
+		 */
+		if ($2->xattrs.list)
+			yyerror("hat profiles can't use xattrs matches");
 
 		prof->flags.hat = 1;
 		$$ = prof;
@@ -508,7 +547,7 @@ valuelist:	valuelist TOK_VALUE
 	}
 
 flags:	{ /* nothing */
-	flagvals fv = { 0, 0, 0, 0 };
+	flagvals fv = { 0, MODE_UNSPECIFIED, 0, 0 };
 
 		$$ = fv;
 	};
@@ -529,7 +568,11 @@ flags:	opt_flags TOK_OPENPAREN flagvals TOK_CLOSEPAREN
 
 flagvals:	flagvals flagval
 	{
-		$1.complain = $1.complain || $2.complain;
+		if (merge_profile_mode($1.mode, $2.mode) == MODE_CONFLICT)
+			yyerror(_("Profile flag '%s' conflicts with '%s'"),
+				profile_mode_table[$1.mode],
+				profile_mode_table[$2.mode]);
+		$1.mode = merge_profile_mode($1.mode, $2.mode);
 		$1.audit = $1.audit || $2.audit;
 		$1.path = $1.path | $2.path;
 		if (($1.path & (PATH_CHROOT_REL | PATH_NS_REL)) ==
@@ -556,11 +599,13 @@ flagvals:	flagval
 
 flagval:	TOK_VALUE
 	{
-		flagvals fv = { 0, 0, 0, 0 };
+		flagvals fv = { 0, MODE_UNSPECIFIED, 0, 0 };
+		enum profile_mode mode;
+
 		if (strcmp($1, "debug") == 0) {
 			yyerror(_("Profile flag 'debug' is no longer valid."));
-		} else if (strcmp($1, "complain") == 0) {
-			fv.complain = 1;
+		} if ((mode = str_to_mode($1))) {
+			fv.mode = mode;
 		} else if (strcmp($1, "audit") == 0) {
 			fv.audit = 1;
 		} else if (strcmp($1, "chroot_relative") == 0) {
@@ -695,8 +740,10 @@ rules: rules opt_prefix network_rule
 			yyerror(_("Memory allocation error."));
 		list_for_each_safe($3, entry, tmp) {
 
-			/* map to extended mediation if available */
-			if (entry->family == AF_UNIX && kernel_supports_unix) {
+			/* map to extended mediation, let rule backend do
+			 * downgrade if needed
+			 */
+			if (entry->family == AF_UNIX) {
 				unix_rule *rule = new unix_rule(entry->type, $2.audit, $2.deny);
 				if (!rule)
 					yyerror(_("Memory allocation error."));
@@ -903,7 +950,7 @@ rules: rules TOK_SET TOK_RLIMIT TOK_ID TOK_LE TOK_VALUE opt_id TOK_END_OF_RULE
 				else if (tmp < 0LL)
 					yyerror("RLIMIT '%s' invalid value %s\n", $4, $6);
 				if (!$7)
-					pwarn(_("RLIMIT 'cpu' no units specified using default units of seconds\n"));
+					pwarn(WARN_MISSING, _("RLIMIT 'cpu' no units specified using default units of seconds\n"));
 				value = tmp;
 				break;
 #ifdef RLIMIT_RTTIME
@@ -915,7 +962,7 @@ rules: rules TOK_SET TOK_RLIMIT TOK_ID TOK_LE TOK_VALUE opt_id TOK_END_OF_RULE
 				if (tmp < 0LL)
 					yyerror("RLIMIT '%s' invalid value %s %s\n", $4, $6, $7 ? $7 : "");
 				if (!$7)
-					pwarn(_("RLIMIT 'rttime' no units specified using default units of microseconds\n"));
+					pwarn(WARN_MISSING, _("RLIMIT 'rttime' no units specified using default units of microseconds\n"));
 				value = tmp;
 				break;
 #endif
@@ -1071,9 +1118,16 @@ rule: file_rule { $$ = $1; }
 
 abi_rule: TOK_ABI TOK_ID TOK_END_OF_RULE
 	{
-		pwarn(_("%s: Profile abi not supported, falling back to system abi.\n"), progname);
+		abi_features($2, true);
 		free($2);
-	};
+		/* $$ = nothing, not used */
+	}
+	| TOK_ABI TOK_VALUE TOK_END_OF_RULE
+	{
+		abi_features($2, false);
+		free($2);
+		/* $$ = nothing, not used */
+	}
 
 opt_exec_mode: { /* nothing */ $$ = EXEC_MODE_EMPTY; }
 	| TOK_UNSAFE { $$ = EXEC_MODE_UNSAFE; };
@@ -1190,6 +1244,15 @@ network_rule: TOK_NETWORK TOK_ID TOK_ID TOK_END_OF_RULE
 		free($2);
 		free($3);
 		$$ = entry;
+	}
+
+cond: TOK_CONDID
+	{
+		struct cond_entry *ent;
+		ent = new_cond_entry($1, 0, NULL);
+		if (!ent)
+			yyerror(_("Memory allocation error."));
+		$$ = ent;
 	}
 
 cond: TOK_CONDID TOK_EQUALS TOK_VALUE
@@ -1506,9 +1569,8 @@ change_profile: TOK_CHANGE_PROFILE opt_exec_mode opt_id opt_named_transition TOK
 			if (exec_mode == EXEC_MODE_UNSAFE)
 				mode |= ALL_AA_EXEC_UNSAFE;
 			else if (exec_mode == EXEC_MODE_SAFE &&
-				 !kernel_supports_stacking &&
-				 warnflags & WARN_RULE_DOWNGRADED) {
-				pwarn("downgrading change_profile safe rule to unsafe due to lack of necessary kernel support\n");
+				 !features_supports_stacking) {
+				pwarn(WARN_RULE_DOWNGRADED, "downgrading change_profile safe rule to unsafe due to lack of necessary kernel support\n");
 				/**
 				 * No need to do anything because 'unsafe' exec
 				 * mode is the only supported mode of
@@ -1549,10 +1611,15 @@ capability:	TOK_CAPABILITY caps TOK_END_OF_RULE
 caps: { /* nothing */ $$ = 0; }
 	| caps TOK_ID
 	{
-		int cap = name_to_capability($2);
+		int backmap, cap = name_to_capability($2);
 		if (cap == -1)
 			yyerror(_("Invalid capability %s."), $2);
 		free($2);
+		backmap = capability_backmap(cap);
+		if (backmap != NO_BACKMAP_CAP && !capability_in_kernel(cap)) {
+			/* TODO: special backmap warning */
+			cap = backmap;
+		}
 		$$ = $1 | CAP_TO_MASK(cap);
 	}
 
@@ -1568,13 +1635,11 @@ void vprintyyerror(const char *msg, va_list argptr)
 	if (profilename) {
 		PERROR(_("AppArmor parser error for %s%s%s at line %d: %s\n"),
 		       profilename,
-		       current_filename ? " in " : "",
+		       current_filename ? " in profile " : "",
 		       current_filename ? current_filename : "",
 		       current_lineno, buf);
 	} else {
-		PERROR(_("AppArmor parser error,%s%s line %d: %s\n"),
-		       current_filename ? " in " : "",
-		       current_filename ? current_filename : "",
+		PERROR(_("AppArmor parser error at line %d: %s\n"),
 		       current_lineno, buf);
 	}
 }
@@ -1703,3 +1768,63 @@ mnt_rule *do_pivot_rule(struct cond_entry *old, char *root, char *transition)
 
 	return ent;
 }
+
+static int abi_features_base(struct aa_features **features, char *filename, bool search)
+{
+	autofclose FILE *f = NULL;
+	struct stat my_stat;
+	char *fullpath = NULL;
+	bool cached;
+
+	if (search) {
+		if (strcmp(filename, "kernel") == 0)
+			return aa_features_new_from_kernel(features);
+		f = search_path(filename, &fullpath, &cached);
+		PDEBUG("abi lookup '%s' -> '%s' f %p cached %d\n", filename, fullpath, f, cached);
+		if (!f && cached) {
+			*features = NULL;
+			return 0;
+		}
+	} else {
+		f = fopen(filename, "r");
+		PDEBUG("abi relpath '%s' f %p\n", filename, f);
+	}
+
+	if (!f) {
+		yyerror(_("Could not open '%s': %m"),
+                        fullpath ? fullpath: filename);
+	}
+
+	if (fstat(fileno(f), &my_stat))
+		yyerror(_("fstat failed for '%s': %m"), fullpath ? fullpath : filename);
+
+        if (S_ISREG(my_stat.st_mode)) {
+		return aa_features_new_from_file(features, fileno(f));
+	}
+
+	return -1;
+}
+
+static void abi_features(char *filename, bool search)
+{
+	struct aa_features *tmp_features;
+
+	if (abi_features_base(&tmp_features, filename, search) == -1) {
+			yyerror(_("failed to find features abi '%s': %m"), filename);
+	}
+	if (policy_features) {
+		if (tmp_features) {
+			if (!aa_features_is_equal(tmp_features, policy_features)) {
+				pwarn(WARN_ABI, _("%s: %s features abi '%s' differs from policy declared feature abi, using the features abi declared in policy\n"), progname, current_filename, filename);
+			}
+			aa_features_unref(tmp_features);
+		}
+	} else if (!tmp_features) {
+		/* skipped reinclude, but features not set */
+		yyerror(_("failed features abi not set but include cache skipped\n"));
+	} else {
+		/* first features abi declaration */
+		policy_features = tmp_features;
+	}
+
+};

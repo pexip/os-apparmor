@@ -1,0 +1,99 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>apparmor_xattrs - AppArmor profile xattr(7) matching</title>
+<link rel="stylesheet" href="apparmor.css" type="text/css" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body>
+<table border="0" width="100%" cellspacing="0" cellpadding="3">
+<tr><td class="_podblock_" valign="middle">
+<big><strong><span class="_podblock_">&nbsp;apparmor_xattrs - AppArmor profile xattr(7) matching</span></strong></big>
+</td></tr>
+</table>
+
+
+
+<ul id="index">
+  <li><a href="#NAME">NAME</a></li>
+  <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+  <li><a href="#KNOWN-ISSUES">KNOWN ISSUES</a></li>
+  <li><a href="#SEE-ALSO">SEE ALSO</a></li>
+</ul>
+
+<h1 id="NAME">NAME</h1>
+
+<p>apparmor_xattrs - AppArmor profile xattr(7) matching</p>
+
+<h1 id="DESCRIPTION">DESCRIPTION</h1>
+
+<p>AppArmor profiles can conditionally match files based on the presence and value of extended attributes in addition to file path. The following profile applies to any file under &quot;/usr/bin&quot; where the &quot;security.apparmor&quot; extended attribute has the value &quot;trusted&quot;:</p>
+
+<pre><code>profile trusted /usr/bin/* xattrs=(security.apparmor=&quot;trusted&quot;) {
+        # ...
+}</code></pre>
+
+<p>Note that &quot;security.apparmor&quot; and &quot;trusted&quot; are arbitrary, and profiles can match based on the value of any attribute.</p>
+
+<p>The xattrs value may also contain a path regex:</p>
+
+<pre><code>profile trusted /usr/bin/* xattrs=(user.trust=&quot;tier/*&quot;) {
+
+        # ...
+}</code></pre>
+
+<p>The getfattr(1) and setfattr(1) tools can be used to view and manage xattr values:</p>
+
+<pre><code>$ setfattr -n &#39;security.apparmor&#39; -v &#39;trusted&#39; /usr/bin/example-tool
+$ getfattr --absolute-names -d -m - /usr/bin/example-tool
+# file: usr/bin/example-tool
+security.apparmor=&quot;trusted&quot;</code></pre>
+
+<p>The priority of each profile is determined by the length of the path, then the number of xattrs specified. A more specific path is preferred over xattr matches:</p>
+
+<pre><code># Highest priority, longest path.
+profile example1 /usr/bin/example-tool {
+        # ...
+}
+
+# Lower priority than the longer path, but higher priority than a rule
+# with fewer xattr matches.
+profile example2 /usr/** xattrs=(
+        security.apparmor=&quot;trusted&quot;
+        user.domain=&quot;**&quot;
+) {
+        # ...
+}
+
+# Lowest priority. Same path length as the second profile, but has 
+# fewer xattr matches.
+profile example2 /usr/** {
+        # ...
+}</code></pre>
+
+<p>xattr matching requires the following kernel feature:</p>
+
+<pre><code>/sys/kernel/security/apparmor/features/domain/attach_conditions/xattr</code></pre>
+
+<h1 id="KNOWN-ISSUES">KNOWN ISSUES</h1>
+
+<p>AppArmor profiles currently can&#39;t reliably match extended attributes with binary values such as security.evm and security.ima. In the future AppArmor may gain the ability to match based on the presence of certain attributes while ignoring their values.</p>
+
+<h1 id="SEE-ALSO">SEE ALSO</h1>
+
+<p>apparmor(8), apparmor_parser(8), apparmor.d(5), xattr(7), aa-autodep(1), clean(1), auditd(8), getfattr(1), setfattr(1), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
+
+<table border="0" width="100%" cellspacing="0" cellpadding="3">
+<tr><td class="_podblock_" valign="middle">
+<big><strong><span class="_podblock_">&nbsp;apparmor_xattrs - AppArmor profile xattr(7) matching</span></strong></big>
+</td></tr>
+</table>
+
+</body>
+
+</html>
+
+

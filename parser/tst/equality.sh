@@ -31,7 +31,7 @@ verbose="${VERBOSE:-}"
 
 hash_binary_policy()
 {
-	printf %s "$1" | ${APPARMOR_PARSER} --features-file ${_SCRIPTDIR}/features_files/features.all -qS 2>/dev/null| md5sum | cut -d ' ' -f 1
+	printf %s "$1" | ${APPARMOR_PARSER} --features-file "${_SCRIPTDIR}/features_files/features.all" -qS 2>/dev/null| md5sum | cut -d ' ' -f 1
 	return $?
 }
 
@@ -63,8 +63,7 @@ verify_binary()
 	fi
 
 	if [ -n "$verbose" ] ; then printf "Binary %s %s" "$t" "$desc" ; fi
-	good_hash=$(hash_binary_policy "$good_profile")
-	if [ $? -ne 0 ]
+	if ! good_hash=$(hash_binary_policy "$good_profile")
 	then
 		if [ -z "$verbose" ] ; then printf "Binary %s %s" "$t" "$desc" ; fi
 		printf "\nERROR: Error hashing the following \"known-good\" profile:\n%s\n\n" \
@@ -75,8 +74,7 @@ verify_binary()
 
 	for profile in "$@"
 	do
-		hash=$(hash_binary_policy "$profile")
-		if [ $? -ne 0 ]
+		if ! hash=$(hash_binary_policy "$profile")
 		then
 			if [ -z "$verbose" ] ; then printf "Binary %s %s" "$t" "$desc" ; fi
 			printf "\nERROR: Error hashing the following profile:\n%s\n\n" \
@@ -264,6 +262,24 @@ verify_binary_equality "dbus minimization found in dbus abstractions" \
                    member={Hello,AddMatch,RemoveMatch,GetNameOwner,NameHasOwner,StartServiceByName}
                    peer=(name=org.freedesktop.DBus),
 	      dbus send bus=session, }"
+
+# verify slash filtering for dbus paths.
+verify_binary_equality "dbus slash filtering for paths" \
+	"/t { dbus (send, receive) path=/com/foo, dbus (send, receive) path=/com/bar, }" \
+	"/t { dbus (send, receive) path=/com///foo, dbus (send, receive) path=///com/bar, }" \
+	"/t { dbus (send, receive) path=/com//{foo,bar}, }" \
+	"/t { dbus (send, receive) path={//com/foo,/com//bar}, }" \
+	"@{FOO}=/foo
+	    /t { dbus (send, receive) path=/com/@{FOO}, dbus (send, receive) path=/com/bar, }" \
+	"@{FOO}=/foo /bar
+	    /t { dbus (send, receive) path=/com/@{FOO}, }" \
+	"@{FOO}=/bar //foo
+	    /t { dbus (send, receive) path=/com/@{FOO}, }" \
+	"@{FOO}=//{bar,foo}
+	    /t { dbus (send, receive) path=/com/@{FOO}, }" \
+	"@{FOO}=/foo
+	 @{BAR}=bar
+	    /t { dbus (send, receive) path=/com/@{FOO}, dbus (send, receive) path=/com//@{BAR}, }"
 
 # Rules compatible with audit, deny, and audit deny
 # note: change_profile does not support audit/allow/deny atm
@@ -547,12 +563,90 @@ verify_binary_equality "set rlimit memlock <= 2GB" \
                        "/t { set rlimit memlock <= 2GB, }" \
                        "/t { set rlimit memlock <= $((2 * 1024)) MB, }" \
                        "/t { set rlimit memlock <= $((2 * 1024 * 1024)) KB, }" \
-                       "/t { set rlimit memlock <= $((2 * 1024 * 1024 * 1024)) , }" \
+                       "/t { set rlimit memlock <= $((2 * 1024 * 1024 * 1024)) , }"
 
-if [ $fails -ne 0 -o $errors -ne 0 ]
+# Unfortunately we can not just compare an empty profile and hat to a
+# ie. "/t { ^test { /f r, }}"
+# to the second profile with the equivalent rule inserted manually
+# because policy write permission "w" actually expands to mutiple permissions
+# under the hood, and the parser is not adding those permissions
+# to the rules it auto generates
+# So we insert the rule with "append" permissions, and rely on the parser
+# merging permissions of rules.
+# If the parser isn't adding the rules "append" is not equivalent to
+# the "write" permission in the second profile and the test will fail.
+# If the parser is adding the change_hat proc attr rules then the
+# rules should merge and be equivalent.
+verify_binary_equality "change_hat rules automatically inserted"\
+		       "/t { owner /proc/[0-9]*/attr/{apparmor/,}current a, ^test { owner /proc/[0-9]*/attr/{apparmor/,}current a, /f r, }}" \
+		       "/t { owner /proc/[0-9]*/attr/{apparmor/,}current w, ^test { owner /proc/[0-9]*/attr/{apparmor/,}current w, /f r, }}"
+
+# verify slash filtering for unix socket address paths.
+# see https://bugs.launchpad.net/apparmor/+bug/1856738
+verify_binary_equality "unix rules addr conditional" \
+                       "/t { unix bind addr=@/a/bar, }" \
+                       "/t { unix bind addr=@/a//bar, }" \
+                       "/t { unix bind addr=@//a/bar, }" \
+                       "/t { unix bind addr=@/a///bar, }" \
+                       "@{HOME}=/a/
+                           /t { unix bind addr=@@{HOME}/bar, }" \
+                       "@{HOME}=/a/
+                           /t { unix bind addr=@//@{HOME}bar, }" \
+                       "@{HOME}=/a/
+                           /t { unix bind addr=@/@{HOME}/bar, }"
+
+verify_binary_equality "unix rules peer addr conditional" \
+                       "/t { unix peer=(addr=@/a/bar), }" \
+                       "/t { unix peer=(addr=@/a//bar), }" \
+                       "/t { unix peer=(addr=@//a/bar), }" \
+                       "/t { unix peer=(addr=@/a///bar), }" \
+                       "@{HOME}=/a/
+                           /t { unix peer=(addr=@@{HOME}/bar), }" \
+                       "@{HOME}=/a/
+                           /t { unix peer=(addr=@//@{HOME}bar), }" \
+                       "@{HOME}=/a/
+                           /t { unix peer=(addr=@/@{HOME}/bar), }"
+
+# verify slash filtering for mount rules
+verify_binary_equality "mount rules slash filtering" \
+                       "/t { mount /dev/foo -> /mnt/bar, }" \
+                       "/t { mount ///dev/foo -> /mnt/bar, }" \
+                       "/t { mount /dev/foo -> /mnt//bar, }" \
+                       "/t { mount /dev///foo -> ////mnt/bar, }" \
+                       "@{MNT}=/mnt/
+                           /t { mount /dev///foo -> @{MNT}/bar, }" \
+                       "@{FOO}=/foo
+                           /t { mount /dev//@{FOO} -> /mnt/bar, }"
+
+# verify slash filtering for link rules
+verify_binary_equality "link rules slash filtering" \
+                       "/t { link /dev/foo -> /mnt/bar, }" \
+                       "/t { link ///dev/foo -> /mnt/bar, }" \
+                       "/t { link /dev/foo -> /mnt//bar, }" \
+                       "/t { link /dev///foo -> ////mnt/bar, }" \
+                       "@{BAR}=/mnt/
+                           /t { link /dev///foo -> @{BAR}/bar, }" \
+                       "@{FOO}=/dev/
+                           /t { link @{FOO}//foo -> /mnt/bar, }" \
+                       "@{FOO}=/dev/
+                        @{BAR}=/mnt/
+                           /t { link @{FOO}/foo -> @{BAR}/bar, }"
+
+verify_binary_equality "attachment slash filtering" \
+                       "/t /bin/foo { }" \
+                       "/t /bin//foo { }" \
+                       "@{BAR}=/bin/
+			   /t @{BAR}/foo { }" \
+                       "@{FOO}=/foo
+			   /t /bin/@{FOO} { }" \
+                       "@{BAR}=/bin/
+                        @{FOO}=/foo
+			   /t @{BAR}/@{FOO} { }"
+
+if [ $fails -ne 0 ] || [ $errors -ne 0 ]
 then
 	printf "ERRORS: %d\nFAILS: %d\n" $errors $fails 2>&1
-	exit $(($fails + $errors))
+	exit $((fails + errors))
 fi
 
 [ -z "${verbose}" ] && printf "\n"

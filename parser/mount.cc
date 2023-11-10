@@ -216,7 +216,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <linux/limits.h>
-#include <iostream>
 
 #include "parser.h"
 #include "policydb.h"
@@ -579,20 +578,9 @@ static int build_mnt_opts(std::string& buffer, struct value_list *opts)
 	return TRUE;
 }
 
-/* do we want to warn once/profile or just once per compile?? */
-static void warn_once(const char *name)
+void mnt_rule::warn_once(const char *name)
 {
-	static const char *warned_name = NULL;
-
-	if ((warnflags & WARN_RULE_NOT_ENFORCED) && warned_name != name) {
-		cerr << "Warning from profile " << name << " (";
-		if (current_filename)
-			cerr << current_filename;
-		else
-			cerr << "stdin";
-		cerr << ") mount rules not enforced\n";
-		warned_name = name;
-	}
+	rule_t::warn_once(name, "mount rules not enforce");
 }
 
 int mnt_rule::gen_policy_re(Profile &prof)
@@ -607,7 +595,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 	int count = 0;
 	unsigned int tmpflags, tmpinv_flags;
 
-	if (!kernel_supports_mount) {
+	if (!features_supports_mount) {
 		warn_once(prof.name);
 		return RULE_NOT_SUPPORTED;
 	}
@@ -657,7 +645,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 		/* rule for match without required data || data MATCH_CONT */
 		if (!prof.policy.rules->add_rule_vec(deny, tmpallow,
 					      audit | AA_AUDIT_MNT_DATA, 4,
-					      vec, dfaflags))
+					      vec, dfaflags, false))
 			goto fail;
 		count++;
 
@@ -669,7 +657,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 			vec[4] = optsbuf.c_str();
 			if (!prof.policy.rules->add_rule_vec(deny, allow,
 						      audit | AA_AUDIT_MNT_DATA,
-						      5, vec, dfaflags))
+						      5, vec, dfaflags, false))
 				goto fail;
 			count++;
 		}
@@ -698,7 +686,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 			goto fail;
 		vec[3] = flagsbuf;
 		if (!prof.policy.rules->add_rule_vec(deny, allow, audit, 4, vec,
-						    dfaflags))
+						     dfaflags, false))
 			goto fail;
 		count++;
 	}
@@ -727,7 +715,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 			goto fail;
 		vec[3] = flagsbuf;
 		if (!prof.policy.rules->add_rule_vec(deny, allow, audit, 4, vec,
-						    dfaflags))
+						     dfaflags, false))
 			goto fail;
 		count++;
 	}
@@ -757,7 +745,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 			goto fail;
 		vec[3] = flagsbuf;
 		if (!prof.policy.rules->add_rule_vec(deny, allow, audit, 4, vec,
-						    dfaflags))
+						     dfaflags, false))
 			goto fail;
 		count++;
 	}
@@ -798,7 +786,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 		/* rule for match without required data || data MATCH_CONT */
 		if (!prof.policy.rules->add_rule_vec(deny, tmpallow,
 					      audit | AA_AUDIT_MNT_DATA, 4,
-					      vec, dfaflags))
+					      vec, dfaflags, false))
 			goto fail;
 		count++;
 
@@ -810,7 +798,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 			vec[4] = optsbuf.c_str();
 			if (!prof.policy.rules->add_rule_vec(deny, allow,
 						      audit | AA_AUDIT_MNT_DATA,
-						      5, vec, dfaflags))
+						      5, vec, dfaflags, false))
 				goto fail;
 			count++;
 		}
@@ -822,7 +810,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 			goto fail;
 		vec[0] = mntbuf.c_str();
 		if (!prof.policy.rules->add_rule_vec(deny, allow, audit, 1, vec,
-						    dfaflags))
+						     dfaflags, false))
 			goto fail;
 		count++;
 	}
@@ -836,7 +824,7 @@ int mnt_rule::gen_policy_re(Profile &prof)
 			goto fail;
 		vec[1] = devbuf.c_str();
 		if (!prof.policy.rules->add_rule_vec(deny, allow, audit, 2, vec,
-						    dfaflags))
+						     dfaflags, false))
 			goto fail;
 		count++;
 	}

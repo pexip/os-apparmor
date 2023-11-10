@@ -82,18 +82,6 @@ def cmd(command):
     return [sp.returncode, out]
 
 
-def cmd_pipe(command1, command2):
-    '''Try to pipe command1 into command2.'''
-    try:
-        sp1 = subprocess.Popen(command1, stdout=subprocess.PIPE)
-        sp2 = subprocess.Popen(command2, stdin=sp1.stdout)
-    except OSError as ex:
-        return [127, str(ex)]
-
-    out = sp2.communicate()[0]
-    return [sp2.returncode, out]
-
-
 def debug(out):
     '''Print debug message'''
     if DEBUGGING:
@@ -822,8 +810,8 @@ def check_for_manifest_arg(option, opt_str, value, parser):
 def check_for_manifest_arg_append(option, opt_str, value, parser):
     '''Check for -m/--manifest with conflicting args (with append)'''
     if parser.values.manifest:
-         raise optparse.OptionValueError("can't use --%s with --manifest " \
-                                         "argument" % opt_str.lstrip('-'))
+        raise optparse.OptionValueError("can't use --%s with --manifest " \
+                                        "argument" % opt_str.lstrip('-'))
     parser.values.ensure_value(option.dest, []).append(value)
 
 def add_parser_policy_args(parser):
@@ -1216,7 +1204,7 @@ def verify_manifest(params, args=None):
                 tv_val = tv.split('=')[1]
                 debug("Examining %s" % tv_val)
                 if '..' in tv_val or pat.search(tv_val):
-                     err_str += "\n%s" % tv
+                    err_str += "\n%s" % tv
 
     if err_str:
         warn("Manifest definition is potentially unsafe%s" % err_str)

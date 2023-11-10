@@ -2,7 +2,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title></title>
+<title>apparmor_parser - loads AppArmor profiles into the kernel</title>
 <link rel="stylesheet" href="apparmor.css" type="text/css" />
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <link rev="made" href="mailto:root@localhost" />
@@ -11,7 +11,7 @@
 <body>
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;apparmor_parser - loads AppArmor profiles into the kernel</span></strong></big>
 </td></tr>
 </table>
 
@@ -198,10 +198,28 @@
 <p>Add element n to the search path when resolving #include directives defined as an absolute paths.</p>
 
 </dd>
-<dt id="f-n---subdomainfs-n">-f n, --subdomainfs n</dt>
+<dt id="f-n---apparmorfs-n">-f n, --apparmorfs n</dt>
 <dd>
 
 <p>Set the location of the apparmor security filesystem (default is &quot;/sys/kernel/security/apparmor&quot;).</p>
+
+</dd>
+<dt id="policy-features-n">--policy-features n</dt>
+<dd>
+
+<p>Specify the feature set that the policy was developed under. This does not override feature ABI rules.</p>
+
+</dd>
+<dt id="override-policy-abi-n">--override-policy-abi n</dt>
+<dd>
+
+<p>Specify the feature set that the policy was developed under and override any feature ABI rules that the policy may be using.</p>
+
+</dd>
+<dt id="kernel-features-n">--kernel-features n</dt>
+<dd>
+
+<p>Specify the feature set of the kernel that the policy is being compiled for. If not specified this will be determined by the system&#39;s kernel.</p>
 
 </dd>
 <dt id="M-n---features-file-n">-M n, --features-file n</dt>
@@ -209,11 +227,15 @@
 
 <p>Use the features file located at path &quot;n&quot; (default is /etc/apparmor.d/cache/.features). If the --cache-loc option is present, the &quot;.features&quot; file in the specified cache directory is used.</p>
 
+<p>Note: this sets both the --kernel-features and --policy-features to be the same.</p>
+
 </dd>
 <dt id="m-n---match-string-n">-m n, --match-string n</dt>
 <dd>
 
 <p>Only use match features &quot;n&quot;.</p>
+
+<p>Note: this sets both the --kernel-features and --policy-features to be the same.</p>
 
 </dd>
 <dt id="n-n---namespace-string-n">-n n, --namespace-string n</dt>
@@ -299,11 +321,25 @@
 <dt id="warn-n">--warn=n</dt>
 <dd>
 
-<p>Enable various warnings during policy compilation. A single dump flag can be specified per --warn option, but the --warn flag can be passed multiple times.</p>
+<p>Enable various warnings during policy compilation. A single warn flag can be specified per --warn option, but the --warn flag can be passed multiple times.</p>
 
-<pre><code>  apparmor_parser --warn=rules-not-enforced ...</code></pre>
+<pre><code>apparmor_parser --warn=rules-not-enforced ...</code></pre>
+
+<p>A specific warning can be disabled by prepending <i>no</i>- to the flag</p>
+
+<pre><code>apparmor_parser --warn=no-rules-not-enforced ...</code></pre>
 
 <p>Use --help=warn to see a full list of which warn flags are supported.</p>
+
+</dd>
+<dt id="Werror-n">--Werror[=n]</dt>
+<dd>
+
+<p>Convert warnings into errors during policy compilation. If the optional flag is not specified all warnings become errors. If the optional flag is specified only the class of warnings specified will become errors. A single flag can be specified per --Werror option, but the --Werror flag can be passed multiple times.</p>
+
+<pre><code>apparmor_parser --Werror=deprecated ...</code></pre>
+
+<p>Use --help=warn or --help=Werror to see a full list of which warn flags are supported.</p>
 
 </dd>
 <dt id="d---debug">-d, --debug</dt>
@@ -317,7 +353,7 @@
 
 <p>Debug flag for dumping various structures and passes of policy compilation. A single dump flag can be specified per --dump option, but the dump flag can be passed multiple times. Note progress flags tend to also imply the matching stats flag.</p>
 
-<pre><code>  apparmor_parser --dump=dfa-stats --dump=trans-stats &lt;file&gt;</code></pre>
+<pre><code>apparmor_parser --dump=dfa-stats --dump=trans-stats &lt;file&gt;</code></pre>
 
 <p>Use --help=dump to see a full list of which dump flags are supported</p>
 
@@ -327,19 +363,20 @@
 
 <p>Set the number of jobs used to compile the specified policy. Where n can be</p>
 
-<pre><code>  #    - a specific number of jobs
-  auto - the # of cpus in the in the system
-  x#   - # * number of cpus</code></pre>
+<pre><code>0    - disable jobs and use the main process for all compilation
+#    - a specific number of jobs
+auto - the # of cpus in the in the system
+x#   - # * number of cpus</code></pre>
 
 <p>Eg. -j8 OR --jobs=8 allows for 8 parallel jobs -jauto OR --jobs=auto sets the jobs to the # of cpus -jx4 OR --jobs=x4 sets the jobs to # of cpus * 4 -jx1 is equivalent to -jauto</p>
 
-<p>The default value is the number of cpus in the system.</p>
+<p>The default value is the number of cpus in the system. Note that if jobs is a positive integer number the --jobs-max parameter is automatically set to the same value.</p>
 
 </dd>
 <dt id="max-jobs-n">--max-jobs n</dt>
 <dd>
 
-<p>Set a hard cap on the value that can be specified by the --jobs flag. It takes the same set of options available to the --jobs option, and defaults to 8*cpus</p>
+<p>When --jobs is set to a scaling value (ie. auto or xN) the specify a hard cap on the value that can be specified by the --jobs flag. It takes the same set of options available to the --jobs option, and defaults to 8*cpus</p>
 
 </dd>
 <dt id="O-n---optimize-n">-O n, --optimize=n</dt>
@@ -386,8 +423,8 @@
 
 <p>Eg. #comment</p>
 
-<pre><code>    optimize=no-expr-tree
-    optimize=compress-fast</code></pre>
+<pre><code>optimize=no-expr-tree
+optimize=compress-fast</code></pre>
 
 <p>As with the command line some options accumulate and others override, ie. when there are conflicting versions of switch the last option is the one chosen.</p>
 
@@ -401,15 +438,15 @@
 
 <h1 id="BUGS">BUGS</h1>
 
-<p>If you find any bugs, please report them at <a href="https://bugs.launchpad.net/apparmor/+filebug">https://bugs.launchpad.net/apparmor/+filebug</a>.</p>
+<p>If you find any bugs, please report them at <a href="https://gitlab.com/apparmor/apparmor/-/issues">https://gitlab.com/apparmor/apparmor/-/issues</a>.</p>
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
-<p>apparmor(7), apparmor.d(5), subdomain.conf(5), aa_change_hat(2), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
+<p>apparmor(7), apparmor.d(5), aa_change_hat(2), and <a href="https://wiki.apparmor.net">https://wiki.apparmor.net</a>.</p>
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;apparmor_parser - loads AppArmor profiles into the kernel</span></strong></big>
 </td></tr>
 </table>
 

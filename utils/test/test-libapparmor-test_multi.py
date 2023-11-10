@@ -13,7 +13,8 @@ import unittest
 from common_test import AATest, setup_all_loops, setup_aa, read_file
 
 import os
-from apparmor.common import open_file_read
+import sys
+from apparmor.common import open_file_read, split_name
 
 import apparmor.aa
 from apparmor.logparser import ReadLog
@@ -42,7 +43,7 @@ class TestLibapparmorTestMulti(AATest):
 
         self.assertEqual(len(loglines2), 1, '%s.in should only contain one line!' % params)
 
-        parser = ReadLog('', '', '', '')
+        parser = ReadLog('', '', '')
         parsed_event = parser.parse_event(loglines2[0])
 
         if parsed_event and expected:
@@ -150,9 +151,6 @@ log_to_skip = [
 
 # tests that do not produce the expected profile (checked with assertNotEqual)
 log_to_profile_known_failures = [
-    'testcase_dmesg_changeprofile_01',  # change_profile not yet supported in logparser
-    'testcase_changeprofile_01',        # change_profile not yet supported in logparser
-
     'testcase_mount_01',  # mount rules not yet supported in logparser
 
     'testcase_pivotroot_01',  # pivot_rot not yet supported in logparser
@@ -161,27 +159,6 @@ log_to_profile_known_failures = [
     'testcase01',
     'testcase12',
     'testcase13',
-
-    # null-* hats get ignored by handle_children() if it didn't see an exec event for that null-* hat
-    'syslog_datetime_01',
-    'syslog_datetime_02',
-    'syslog_datetime_03',
-    'syslog_datetime_04',
-    'syslog_datetime_05',
-    'syslog_datetime_06',
-    'syslog_datetime_07',
-    'syslog_datetime_08',
-    'syslog_datetime_09',
-    'syslog_datetime_10',
-    'syslog_datetime_11',
-    'syslog_datetime_12',
-    'syslog_datetime_13',
-    'syslog_datetime_14',
-    'syslog_datetime_15',
-    'syslog_datetime_16',
-    'syslog_datetime_17',
-    'syslog_datetime_18',
-    'testcase_network_send_receive',
 ]
 
 # tests that cause crashes or need user interaction (will be skipped)
@@ -195,6 +172,16 @@ log_to_profile_skip = [
     'testcase_dbus_09',  # multiline log not currently supported
 ]
 
+# tests that cause an empty log
+log_to_profile_known_empty_log = [
+    'change_onexec_lp1648143',  # change_onexec not supported in logparser.py yet (and the log is about "no new privs" error)
+    'testcase_mount_01',  # mount rules not supported in logparser
+    'testcase_pivotroot_01',  # pivotroot not yet supported in logparser
+    'ptrace_garbage_lp1689667_1',  # no denied= in log
+    'ptrace_no_denied_mask',  # no denied= in log
+    'unconfined-change_hat',  # unconfined trying to change_hat, which isn't allowed
+]
+
 class TestLogToProfile(AATest):
     '''Check if the libraries/libapparmor/testsuite/test_multi tests result in the expected profile'''
 
@@ -202,56 +189,13 @@ class TestLogToProfile(AATest):
 
     def _run_test(self, params, expected):
         logfile = '%s.in' % params
-        profile_dummy_file = 'AATest_does_exist'
-
-        # we need to find out the profile name and aamode (complain vs. enforce mode) so that the test can access the correct place in storage
-        parser = ReadLog('', '', '', '')
-        parsed_event = parser.parse_event(read_file(logfile))
-
-        if not parsed_event:  # AA_RECORD_INVALID
-            return
 
         if params.split('/')[-1] in log_to_profile_skip:
             return
 
-        aamode = parsed_event['aamode']
-
-        if aamode in['AUDIT', 'STATUS', 'HINT']: # ignore some event types  # XXX maybe we shouldn't ignore AUDIT events?
+        profile, new_profile = logfile_to_profile(logfile)
+        if profile is None:
             return
-
-        if aamode not in ['PERMITTING', 'REJECTING']:
-            raise Exception('Unexpected aamode %s' % parsed_event['aamode'])
-
-        # cleanup apparmor.aa storage
-        apparmor.aa.log = dict()
-        apparmor.aa.aa = apparmor.aa.hasher()
-        apparmor.aa.prelog = apparmor.aa.hasher()
-
-        profile = parsed_event['profile']
-        hat = profile
-        if '//' in profile:
-            profile, hat = profile.split('//')
-
-        apparmor.aa.active_profiles = ProfileList()
-
-        # optional for now, might be needed one day
-        # if profile.startswith('/'):
-        #     apparmor.aa.active_profiles.add(profile_dummy_file, profile, profile)
-        # else:
-        apparmor.aa.active_profiles.add(profile_dummy_file, profile, '')
-
-        log_reader = ReadLog(dict(), logfile, apparmor.aa.active_profiles, '')
-        log = log_reader.read_log('')
-
-        for root in log:
-            apparmor.aa.handle_children('', '', root)  # interactive for exec events!
-
-        log_dict = apparmor.aa.collapse_log()
-
-        apparmor.aa.filelist = apparmor.aa.hasher()
-        apparmor.aa.filelist[profile_dummy_file]['profiles'][profile] = True
-
-        new_profile = apparmor.aa.serialize_profile(log_dict[aamode][profile], profile, None)
 
         expected_profile = read_file('%s.profile' % params)
 
@@ -260,6 +204,78 @@ class TestLogToProfile(AATest):
         else:
             self.assertEqual(new_profile, expected_profile)
 
+
+def logfile_to_profile(logfile):
+    profile_dummy_file = 'AATest_does_exist'
+
+    # we need to find out the profile name and aamode (complain vs. enforce mode) so that the test can access the correct place in storage
+    parser = ReadLog('', '', '')
+    parsed_event = parser.parse_event(read_file(logfile))
+
+    if not parsed_event:  # AA_RECORD_INVALID
+        return None, 'INVALID'
+
+    aamode = parsed_event['aamode']
+
+    if aamode in['AUDIT', 'STATUS', 'HINT']: # ignore some event types  # XXX maybe we shouldn't ignore AUDIT events?
+        return None, aamode
+
+    if aamode not in ['PERMITTING', 'REJECTING']:
+        raise Exception('Unexpected aamode %s' % parsed_event['aamode'])
+
+    # cleanup apparmor.aa storage
+    apparmor.aa.log = dict()
+    apparmor.aa.aa = apparmor.aa.hasher()
+
+    profile, hat = split_name(parsed_event['profile'])
+
+    apparmor.aa.active_profiles = ProfileList()
+
+    # optional for now, might be needed one day
+    # if profile.startswith('/'):
+    #     apparmor.aa.active_profiles.add_profile(profile_dummy_file, profile, profile)
+    # else:
+    apparmor.aa.active_profiles.add_profile(profile_dummy_file, profile, '')
+
+    log_reader = ReadLog(logfile, apparmor.aa.active_profiles, '')
+    hashlog = log_reader.read_log('')
+
+    apparmor.aa.ask_exec(hashlog)
+    apparmor.aa.ask_addhat(hashlog)
+
+    log_dict = apparmor.aa.collapse_log(hashlog, ignore_null_profiles=False)
+
+    if profile != hat:
+        # log event for a child profile means log_dict only contains the child profile
+        # initialize parent profile in log_dict as ProfileStorage to ensure writing the profile doesn't fail
+        # (in "normal" usage outside of this test, log_dict will not be handed over to serialize_profile())
+
+        if log_dict[aamode][profile][profile] != {}:
+            raise Exception('event for child profile, but parent profile was initialized nevertheless. Logfile: %s' % logfile)
+
+        log_dict[aamode][profile][profile] = apparmor.aa.ProfileStorage('TEST DUMMY for empty parent profile', profile_dummy_file, 'logfile_to_profile()')
+
+    log_is_empty = True
+
+    for tmpaamode in hashlog:
+        for tmpprofile in hashlog[tmpaamode]:
+            for tmpruletype in hashlog[tmpaamode][tmpprofile]:
+                if tmpruletype == 'final_name' and hashlog[tmpaamode][tmpprofile]['final_name'] == tmpprofile:
+                    continue  # final_name is a copy of the profile name (may be changed by ask_exec(), but that won't happen in this test)
+                if hashlog[tmpaamode][tmpprofile][tmpruletype]:
+                    log_is_empty = False
+
+    if logfile.split('/')[-1][:-3] in log_to_profile_known_empty_log:
+        # unfortunately this function might be called outside Unittest.TestCase, therefore we can't use assertEqual / assertNotEqual
+        if log_is_empty == False:
+            raise Exception('got non-empty log for logfile in log_to_profile_known_empty_log: %s %s' % (logfile, hashlog))
+    else:
+        if log_is_empty == True:
+            raise Exception('got empty log for logfile not in log_to_profile_known_empty_log: %s %s' % (logfile, hashlog))
+
+    new_profile = apparmor.aa.serialize_profile(log_dict[aamode][profile], profile, {})
+
+    return profile, new_profile
 
 def find_test_multi(log_dir):
     '''find all log sniplets in the given log_dir'''
@@ -280,7 +296,12 @@ def find_test_multi(log_dir):
 
     return tests
 
+# if a logfile is given as parameter, print the resulting profile and exit (with $? = 42 to make sure tests break if the caller accidently hands over a parameter)
+if __name__ == '__main__' and len(sys.argv) == 2:
+    print(logfile_to_profile(sys.argv[1])[1])
+    exit(42)
 
+# still here? That means a normal test run
 print('Testing libapparmor test_multi tests...')
 TestLibapparmorTestMulti.tests = find_test_multi('../../libraries/libapparmor/testsuite/test_multi/')
 TestLogToProfile.tests = find_test_multi('../../libraries/libapparmor/testsuite/test_multi/')

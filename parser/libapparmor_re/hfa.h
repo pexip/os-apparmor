@@ -37,14 +37,17 @@
 
 class State;
 
-typedef map<uchar, State *> StateTrans;
+typedef map<transchar, State *> StateTrans;
 typedef list<State *> Partition;
 
 #include "../immunix.h"
 
+ostream &operator<<(ostream &os, const State &state);
+ostream &operator<<(ostream &os, State &state);
+
 class perms_t {
 public:
-	perms_t(void) throw(int): allow(0), deny(0), audit(0), quiet(0), exact(0) { };
+	perms_t(void): allow(0), deny(0), audit(0), quiet(0), exact(0) { };
 
 	bool is_accept(void) { return (allow | audit | quiet); }
 
@@ -56,11 +59,11 @@ public:
 	}
 
 	void clear(void) { allow = deny = audit = quiet = 0; }
-	void add(perms_t &rhs)
+	void add(perms_t &rhs, bool filedfa)
 	{
 		deny |= rhs.deny;
 
-		if (!is_merged_x_consistent(allow & ALL_USER_EXEC,
+		if (filedfa && !is_merged_x_consistent(allow & ALL_USER_EXEC,
 					    rhs.allow & ALL_USER_EXEC)) {
 			if ((exact & AA_USER_EXEC_TYPE) &&
 			    !(rhs.exact & AA_USER_EXEC_TYPE)) {
@@ -71,10 +74,10 @@ public:
 					(rhs.allow & AA_USER_EXEC_TYPE);
 			} else
 				throw 1;
-		} else
+		} else if (filedfa)
 			allow |= rhs.allow & AA_USER_EXEC_TYPE;
 
-		if (!is_merged_x_consistent(allow & ALL_OTHER_EXEC,
+		if (filedfa && !is_merged_x_consistent(allow & ALL_OTHER_EXEC,
 					    rhs.allow & ALL_OTHER_EXEC)) {
 			if ((exact & AA_OTHER_EXEC_TYPE) &&
 			    !(rhs.exact & AA_OTHER_EXEC_TYPE)) {
@@ -85,11 +88,13 @@ public:
 					(rhs.allow & AA_OTHER_EXEC_TYPE);
 			} else
 				throw 1;
-		} else
+		} else if (filedfa)
 			allow |= rhs.allow & AA_OTHER_EXEC_TYPE;
 
-
-		allow = (allow | (rhs.allow & ~ALL_AA_EXEC_TYPE));
+		if (filedfa)
+			allow = (allow | (rhs.allow & ~ALL_AA_EXEC_TYPE));
+		else
+			allow |= rhs.allow;
 		audit |= rhs.audit;
 		quiet = (quiet | rhs.quiet);
 
@@ -128,7 +133,7 @@ public:
 	uint32_t allow, deny, audit, quiet, exact;
 };
 
-int accept_perms(NodeSet *state, perms_t &perms);
+int accept_perms(NodeSet *state, perms_t &perms, bool filedfa);
 
 /*
  * ProtoState - NodeSet and ancillery information used to create a state
@@ -192,7 +197,7 @@ struct DiffDag {
  */
 class State {
 public:
-	State(int l, ProtoState &n, State *other) throw(int):
+	State(int l, ProtoState &n, State *other, bool filedfa):
 		label(l), flags(0), perms(), trans()
 	{
 		int error;
@@ -205,14 +210,14 @@ public:
 		proto = n;
 
 		/* Compute permissions associated with the State. */
-		error = accept_perms(n.anodes, perms);
+		error = accept_perms(n.anodes, perms, filedfa);
 		if (error) {
 			//cerr << "Failing on accept perms " << error << "\n";
 			throw error;
 		}
 	};
 
-	State *next(uchar c) {
+	State *next(transchar c) {
 		State *state = this;
 		do {
 			StateTrans::iterator i = state->trans.find(c);
@@ -229,9 +234,18 @@ public:
 		return NULL;
 	}
 
-	int diff_weight(State *rel);
-	int make_relative(State *rel);
-	void flatten_relative(void);
+	ostream &dump(ostream &os)
+	{
+		cerr << *this << "\n";
+		for (StateTrans::iterator i = trans.begin(); i != trans.end(); i++) {
+			os << "    " << i->first.c << " -> " << *i->second << "\n";
+		}
+		return os;
+	}
+
+	int diff_weight(State *rel, int max_range, int upper_bound);
+	int make_relative(State *rel, int upper_bound);
+	void flatten_relative(State *, int upper_bound);
 
 	int apply_and_clear_deny(void) { return perms.apply_and_clear_deny(); }
 
@@ -248,8 +262,6 @@ public:
 		DiffDag *diff;		/* used during diff encoding */
 	};
 };
-
-ostream &operator<<(ostream &os, const State &state);
 
 class NodeMap: public CacheStats
 {
@@ -306,7 +318,7 @@ class DFA {
 	list<State *> work_queue;
 
 public:
-	DFA(Node *root, dfaflags_t flags);
+	DFA(Node *root, dfaflags_t flags, bool filedfa);
 	virtual ~DFA();
 
 	State *match_len(State *state, const char *str, size_t len);
@@ -326,15 +338,20 @@ public:
 	void dump_dot_graph(ostream &os);
 	void dump_uniq_perms(const char *s);
 
-	map<uchar, uchar> equivalence_classes(dfaflags_t flags);
-	void apply_equivalence_classes(map<uchar, uchar> &eq);
+	map<transchar, transchar> equivalence_classes(dfaflags_t flags);
+	void apply_equivalence_classes(map<transchar, transchar> &eq);
 
 	unsigned int diffcount;
+	int oob_range;
+	int max_range;
+	int ord_range;
+	int upper_bound;
 	Node *root;
 	State *nonmatching, *start;
 	Partition states;
+	bool filedfa;
 };
 
-void dump_equivalence_classes(ostream &os, map<uchar, uchar> &eq);
+void dump_equivalence_classes(ostream &os, map<transchar, transchar> &eq);
 
 #endif /* __LIBAA_RE_HFA_H */

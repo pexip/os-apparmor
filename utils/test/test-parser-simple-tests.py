@@ -100,6 +100,10 @@ exception_not_raised = [
     'mount/bad_opt_7.sd',
     'mount/bad_opt_8.sd',
     'mount/bad_opt_9.sd',
+    'mount/bad_opt_25.sd',
+    'mount/bad_opt_26.sd',
+    'mount/bad_opt_27.sd',
+    'mount/bad_opt_28.sd',
     'profile/flags/flags_bad10.sd',
     'profile/flags/flags_bad11.sd',
     'profile/flags/flags_bad12.sd',
@@ -119,6 +123,24 @@ exception_not_raised = [
     'profile/flags/flags_bad_debug_2.sd',
     'profile/flags/flags_bad_debug_3.sd',
     'profile/flags/flags_bad_debug_4.sd',
+    # detection of conflicting flags not supported
+    'profile/flags/flags_bad30.sd',
+    'profile/flags/flags_bad31.sd',
+    'profile/flags/flags_bad32.sd',
+    'profile/flags/flags_bad33.sd',
+    'profile/flags/flags_bad34.sd',
+    'profile/flags/flags_bad35.sd',
+    'profile/flags/flags_bad36.sd',
+    'profile/flags/flags_bad37.sd',
+    'profile/flags/flags_bad38.sd',
+    'profile/flags/flags_bad39.sd',
+    'profile/flags/flags_bad40.sd',
+    'profile/flags/flags_bad41.sd',
+    'profile/flags/flags_bad42.sd',
+    'profile/flags/flags_bad43.sd',
+    'profile/flags/flags_bad44.sd',
+    'profile/flags/flags_bad45.sd',
+    'profile/flags/flags_bad46.sd',
     'profile/simple_bad_no_close_brace4.sd',
     'profile/profile_ns_bad8.sd',  # 'profile :ns/t' without terminating ':'
     'ptrace/bad_05.sd',  # actually contains a capability rule with invalid (ptrace-related) keyword
@@ -150,18 +172,16 @@ exception_not_raised = [
     'unix/bad_regex_04.sd',
     'unix/bad_shutdown_1.sd',
     'unix/bad_shutdown_2.sd',
+    'unix/bad_peer_2.sd',
+    'unix/bad_attr_5.sd',
+    'unix/bad_opt_5.sd',
+    'unix/bad_shutdown_3.sd',
     'vars/boolean/boolean_bad_2.sd',
     'vars/boolean/boolean_bad_3.sd',
     'vars/boolean/boolean_bad_4.sd',
     'vars/vars_bad_3.sd',
     'vars/vars_bad_4.sd',
     'vars/vars_bad_5.sd',
-    'vars/vars_bad_7.sd',
-    'vars/vars_bad_8.sd',
-    'vars/vars_bad_trailing_comma_1.sd',
-    'vars/vars_bad_trailing_comma_2.sd',
-    'vars/vars_bad_trailing_comma_3.sd',
-    'vars/vars_bad_trailing_comma_4.sd',
     'vars/vars_dbus_bad_01.sd',
     'vars/vars_dbus_bad_02.sd',
     'vars/vars_dbus_bad_03.sd',
@@ -169,7 +189,6 @@ exception_not_raised = [
     'vars/vars_dbus_bad_05.sd',
     'vars/vars_dbus_bad_06.sd',
     'vars/vars_dbus_bad_07.sd',
-    'vars/vars_file_evaluation_7.sd',
     'vars/vars_file_evaluation_8.sd',
 
     # profile name in var doesn't start with /
@@ -240,47 +259,54 @@ unknown_line = [
     'bare_include_tests/ok_64.sd',
     'bare_include_tests/ok_69.sd',
 
-    # "include if exists" and various exotic "include" variants are not supported yet
+    # include with quoted relative path
     'bare_include_tests/ok_11.sd',
     'bare_include_tests/ok_12.sd',
     'bare_include_tests/ok_13.sd',
     'bare_include_tests/ok_15.sd',
+    # include with unquoted relative path
     'bare_include_tests/ok_16.sd',
     'bare_include_tests/ok_17.sd',
     'bare_include_tests/ok_18.sd',
     'bare_include_tests/ok_20.sd',
+    # include with quoted relative path with spaces
     'bare_include_tests/ok_26.sd',
     'bare_include_tests/ok_27.sd',
+    # include with quoted magic path with spaces
     'bare_include_tests/ok_28.sd',
     'bare_include_tests/ok_29.sd',
+    # include with magic path with spaces
     'bare_include_tests/ok_30.sd',
     'bare_include_tests/ok_31.sd',
+    # include if exists with quoted relative path
     'bare_include_tests/ok_61.sd',
     'bare_include_tests/ok_62.sd',
     'bare_include_tests/ok_63.sd',
+    # include if exists with unquoted relative path
     'bare_include_tests/ok_65.sd',
     'bare_include_tests/ok_66.sd',
     'bare_include_tests/ok_67.sd',
     'bare_include_tests/ok_68.sd',
     'bare_include_tests/ok_70.sd',
+    # include if exists with quoted relative path with spaces
     'bare_include_tests/ok_76.sd',
     'bare_include_tests/ok_77.sd',
+    # include if exists with quoted magic path with spaces
     'bare_include_tests/ok_78.sd',
     'bare_include_tests/ok_79.sd',
+    # include if exists with unquoted magic path with spaces
     'bare_include_tests/ok_80.sd',
     'bare_include_tests/ok_81.sd',
+    # include if exists with quoted relative path, non-existing include file
     'bare_include_tests/ok_82.sd',
-    'bare_include_tests/ok_83.sd',
     'bare_include_tests/ok_84.sd',
     'bare_include_tests/ok_85.sd',
     'bare_include_tests/ok_86.sd',
-    'bare_include_tests/ok_87.sd',
-    'bare_include_tests/ok_88.sd',
 ]
 
 # testcases with various unexpected failures
 syntax_failure = [
-    # profile keyword?
+    # missing profile keywords
     'profile/re_named_ok2.sd',
 
     # Syntax Error: Unexpected hat definition found (external hat)
@@ -384,7 +410,6 @@ syntax_failure = [
     # misc
     'vars/vars_dbus_8.sd',  # Path doesn't start with / or variable: {/@{TLDS}/foo,/com/@{DOMAINS}}
     'vars/vars_simple_assignment_12.sd',  # Redefining existing variable @{BAR} ('\' not handled)
-    'rewrite/alias_good_5.sd',  # Values added to a non-existing variable @{FOO} (defined in include, lp:1331856)
     'bare_include_tests/ok_2.sd',  # two #include<...> in one line
 ]
 
@@ -404,11 +429,17 @@ class TestParseParserTests(AATest):
             # this makes sure we notice any behaviour change, especially not being wrong anymore
             expected = not expected
 
+        # make sure the profile is known in active_profiles.files
+        apparmor.active_profiles.init_file(params['file'])
+
         if expected:
             apparmor.parse_profile_data(data, params['file'], 0)
+            apparmor.active_profiles.get_all_merged_variables(params['file'], apparmor.include_list_recursive(apparmor.active_profiles.files[params['file']]))
+
         else:
             with self.assertRaises(AppArmorException):
                 apparmor.parse_profile_data(data, params['file'], 0)
+                apparmor.active_profiles.get_all_merged_variables(params['file'], apparmor.include_list_recursive(apparmor.active_profiles.files[params['file']]))
 
 def parse_test_profiles(file_with_path):
     '''parse the test-related headers of a profile (for example EXRESULT) and add the profile to the set of tests'''
@@ -427,7 +458,7 @@ def parse_test_profiles(file_with_path):
         if line.startswith('#=EXRESULT '):
             exresult = line.split()[1]
             if exresult == 'PASS':
-                exresult == True
+                exresult = True
                 exresult_found = True
             elif exresult == 'FAIL':
                 exresult = False
@@ -491,7 +522,7 @@ def find_and_setup_test_profiles(profile_dir):
 
     apparmor.profile_dir = profile_dir
 
-    print('Searching for parser simpe_tests... (this will take a while)')
+    print('Searching for parser simple_tests... (this will take a while)')
 
     for root, dirs, files in os.walk(profile_dir):
         relpath = os.path.relpath(root, profile_dir)
@@ -514,7 +545,8 @@ def find_and_setup_test_profiles(profile_dir):
 
 
 setup_aa(apparmor)
-find_and_setup_test_profiles('../../parser/tst/simple_tests/')
+profile_dir = os.path.abspath('../../parser/tst/simple_tests/')
+find_and_setup_test_profiles(profile_dir)
 
 setup_all_loops(__name__)
 if __name__ == '__main__':

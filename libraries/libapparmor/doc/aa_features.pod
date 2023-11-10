@@ -34,6 +34,8 @@ aa_features_ref - increments the ref count of an aa_features object
 
 aa_features_unref - decrements the ref count and frees the aa_features object when 0
 
+aa_features_write_to_fd - write a string representation of an aa_features object to a file descriptor
+
 aa_features_write_to_file - write a string representation of an aa_features object to a file
 
 aa_features_is_equal - equality test for two aa_features objects
@@ -41,6 +43,8 @@ aa_features_is_equal - equality test for two aa_features objects
 aa_features_supports - provides aa_features object support status
 
 aa_features_id - provides unique identifier for an aa_features object
+
+aa_features_value - the value associated with a given feature.
 
 =head1 SYNOPSIS
 
@@ -50,6 +54,8 @@ B<typedef struct aa_features aa_features;>
 
 B<int aa_features_new(aa_features **features, int dirfd, const char *path);>
 
+B<int aa_features_new_from_file(aa_features **features, int fd);>
+
 B<int aa_features_new_from_string(aa_features **features, const char *string, size_t size);>
 
 B<int aa_features_new_from_kernel(aa_features **features);>
@@ -58,6 +64,8 @@ B<aa_features *aa_features_ref(aa_features *features);>
 
 B<void aa_features_unref(aa_features *features);>
 
+B<int aa_features_write_to_fd(aa_features *features, int fd);>
+
 B<int aa_features_write_to_file(aa_features *features, int dirfd, const char *path);>
 
 B<bool aa_features_is_equal(aa_features *features1, aa_features *features2);>
@@ -65,6 +73,8 @@ B<bool aa_features_is_equal(aa_features *features1, aa_features *features2);>
 B<bool aa_features_supports(aa_features *features, const char *str);>
 
 B<char *aa_features_id(aa_features *features);>
+
+B<char *aa_features_value(aa_features *features, const char *str, size_t *len);>
 
 Link with B<-lapparmor> when compiling.
 
@@ -82,6 +92,10 @@ directory file descriptor and path. The I<path> can point to a file or
 directory. See the openat(2) man page for examples of I<dirfd> and I<path>. The
 allocated I<features> object must be freed using aa_features_unref().
 
+The aa_features_new_from_file() function is similar except that it
+accepts an open file as the argument. The allocated I<features> object
+must be freed using aa_features_unref().
+
 The aa_features_new_from_string() function is similar except that it accepts a
 NUL-terminated string representation of the AppArmor features as the I<string>
 argument. The length of the features string, not counting the NUL-terminator,
@@ -96,6 +110,9 @@ aa_features_ref() increments the reference count on the I<features> object.
 
 aa_features_unref() decrements the reference count on the I<features> object
 and releases all corresponding resources when the reference count reaches zero.
+
+The aa_features_write_to_fd() function writes a string representation of the
+I<features> object to the file descriptor specified by the I<fd>.
 
 The aa_features_write_to_file() function writes a string representation of the
 I<features> object to the file specified by the I<dirfd> and I<path>
@@ -140,6 +157,11 @@ aa_features_id() returns a string identifying I<features> which must be
 freed by the caller. NULL is returned on error, with errno set
 appropriately.
 
+aa_features_value() returns a null terminated string with is
+associated length which must be freed by the caller. NULL is returned
+on error, with errno set to ENOENT if the feature was not found,
+ENODIR if the specified feature does not resolve to a leaf feature.
+
 =head1 ERRORS
 
 The errno value will be set according to the underlying error in the
@@ -157,10 +179,10 @@ before exiting in libapparmor version 2.12 and newer.
 =head1 BUGS
 
 None known. If you find any, please report them at
-L<https://bugs.launchpad.net/apparmor/+filebug>.
+L<https://gitlab.com/apparmor/apparmor/-/issues>.
 
 =head1 SEE ALSO
 
-openat(2) and L<https://wiki.apparmor.net>.
+openat(2), aa-features-abi(1) and L<https://wiki.apparmor.net>.
 
 =cut

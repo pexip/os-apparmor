@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: apparmor@lists.ubuntu.com\n"
-"POT-Creation-Date: 2020-10-14 03:36-0700\n"
+"POT-Creation-Date: 2020-10-14 03:58-0700\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22,46 +22,52 @@ msgstr ""
 msgid ""
 "%s: [options]\n"
 "  options:\n"
+"  -x | --exclusive    Shared interfaces must be availabe\n"
 "  -q | --quiet        Don't print out any messages\n"
 "  -h | --help         Print help\n"
 msgstr ""
 
-#: ../aa_enabled.c:38
+#: ../aa_enabled.c:37
 #, c-format
 msgid "No - not available on this system.\n"
 msgstr ""
 
-#: ../aa_enabled.c:42
+#: ../aa_enabled.c:41
 #, c-format
 msgid "No - disabled at boot.\n"
 msgstr ""
 
-#: ../aa_enabled.c:46
+#: ../aa_enabled.c:45
 #, c-format
 msgid "Maybe - policy interface not available.\n"
 msgstr ""
 
-#: ../aa_enabled.c:51
+#: ../aa_enabled.c:50
 #, c-format
 msgid "Maybe - insufficient permissions to determine availability.\n"
 msgstr ""
 
-#: ../aa_enabled.c:56
+#: ../aa_enabled.c:54
+#, c-format
+msgid "Partially - public shared interfaces are not available.\n"
+msgstr ""
+
+#: ../aa_enabled.c:58
 #, c-format
 msgid "Error - %s\n"
 msgstr ""
 
-#: ../aa_enabled.c:70
+#: ../aa_enabled.c:73
 #, c-format
 msgid "unknown or incompatible options\n"
 msgstr ""
 
-#: ../aa_enabled.c:80
+#: ../aa_enabled.c:87
 #, c-format
 msgid "unknown option '%s'\n"
 msgstr ""
 
-#: ../aa_enabled.c:90
+#: ../aa_enabled.c:98
 #, c-format
 msgid "Yes\n"
 msgstr ""

@@ -30,19 +30,34 @@ SYSTEMD_UNIT_DIR=${DESTDIR}/usr/lib/systemd/system
 CONFDIR=/etc/apparmor
 INSTALL_CONFDIR=${DESTDIR}${CONFDIR}
 LOCALEDIR=/usr/share/locale
-MANPAGES=apparmor.d.5 apparmor.7 apparmor_parser.8 subdomain.conf.5 aa-teardown.8
+MANPAGES=apparmor.d.5 apparmor.7 apparmor_parser.8 aa-teardown.8 apparmor_xattrs.7
+
+# Test for bison version
+# parse.error added in version 3.0
+# default behavior changed in version 3.6
+# parse.error=verbose supported from 3.0 so just test on that
+# TODO move to autoconf
+BISON_MAJOR:=$(shell bison --version |  awk '/^bison/ { print ($$NF) }'  | awk -F. '{print $$1 }')
+USE_PARSE_ERROR:=$(shell test ${BISON_MAJOR} -ge 3 && echo true)
 
 YACC	:= bison
 YFLAGS	:= -d
+ifeq ($(USE_PARSE_ERROR),true)
+YFLAGS+=--define=parse.error=verbose
+endif
 LEX	:= flex
 LEXFLAGS = -B -v
+ifndef DEBUG
+LEXFLAGS += --noyy_top_state
+endif
+
+CPPFLAGS += -D_GNU_SOURCE
+
+STDLIB_INCLUDE:="\#include <stdlib.h>"
+HAVE_REALLOCARRAY:=$(shell echo $(STDLIB_INCLUDE) | ${CPP} ${CPPFLAGS} - - | grep -q reallocarray && echo true)
+
 WARNINGS = -Wall
-EXTRA_WARNINGS = -Wsign-compare -Wmissing-field-initializers -Wformat-security -Wunused-parameter
-CXX_WARNINGS = ${WARNINGS} $(shell for warning in ${EXTRA_WARNINGS} ; do \
-			if ${CXX} $${warning} -S -o /dev/null -xc /dev/null >/dev/null 2>&1; then \
-				echo "$${warning}"; \
-			fi ; \
-		done)
+CXX_WARNINGS = ${WARNINGS} ${EXTRA_WARNINGS}
 CPP_WARNINGS =
 ifndef CFLAGS
 CFLAGS	= -g -O2 -pipe
@@ -55,10 +70,19 @@ CFLAGS = -g -pg -fprofile-arcs -ftest-coverage
 endif
 endif #CFLAGS
 
-EXTRA_CXXFLAGS = ${CFLAGS} ${CPPFLAGS} ${CXX_WARNINGS} -std=gnu++0x -D_GNU_SOURCE
+CFLAGS	+= -flto-partition=none
+
+EXTRA_CXXFLAGS = ${CFLAGS} ${CPPFLAGS} ${CXX_WARNINGS} -std=gnu++0x
 EXTRA_CFLAGS = ${EXTRA_CXXFLAGS} ${CPP_WARNINGS}
 
-#LEXLIB	:= -lfl
+ifeq ($(HAVE_REALLOCARRAY),true)
+EXTRA_CXXCFLAGS+=-DHAVE_REALLOCARRAY=1
+EXTRA_CFLAGS+=-DHAVE_REALLOCARRAY=1
+endif
+
+ifdef DEBUG
+LEXLIB	:= -lfl
+endif
 
 # override this on the make command to point to where the immunix.h file is
 # (yeah this is lame, but since we are tied to the kernel so tightly...)
@@ -72,18 +96,15 @@ endif
 # Internationalization support. Define a package and a LOCALEDIR
 EXTRA_CFLAGS+=-DPACKAGE=\"${NAME}\" -DLOCALEDIR=\"${LOCALEDIR}\"
 
-# Compile-time configuration of the location of the config file
-EXTRA_CFLAGS+=-DSUBDOMAIN_CONFDIR=\"${CONFDIR}\"
-
 SRCS = parser_common.c parser_include.c parser_interface.c parser_lex.c \
        parser_main.c parser_misc.c parser_merge.c parser_symtab.c \
        parser_yacc.c parser_regex.c parser_variable.c parser_policy.c \
        parser_alias.c common_optarg.c lib.c network.c \
        mount.cc dbus.cc profile.cc rule.cc signal.cc ptrace.cc \
-       af_rule.cc af_unix.cc policy_cache.c
+       af_rule.cc af_unix.cc policy_cache.c default_features.c
 HDRS = parser.h parser_include.h immunix.h mount.h dbus.h lib.h profile.h \
        rule.h common_optarg.h signal.h ptrace.h network.h af_rule.h af_unix.h \
-       policy_cache.h
+       policy_cache.h file_cache.h
 TOOLS = apparmor_parser
 
 OBJECTS = $(patsubst %.cc, %.o, $(SRCS:.c=.o))
@@ -196,10 +217,10 @@ apparmor_parser: $(OBJECTS) $(AAREOBJECTS) $(LIBAPPARMOR_A)
 	$(CXX) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ $(OBJECTS) $(LIBS) \
 	      ${LEXLIB}  $(AAREOBJECTS) $(AARE_LDFLAGS) $(AALIB)
 
-parser_yacc.c parser_yacc.h: parser_yacc.y parser.h profile.h
+parser_yacc.c parser_yacc.h: parser_yacc.y parser.h profile.h file_cache.h
 	$(YACC) $(YFLAGS) -o parser_yacc.c parser_yacc.y
 
-parser_lex.c: parser_lex.l parser_yacc.h parser.h profile.h mount.h dbus.h policy_cache.h
+parser_lex.c: parser_lex.l parser_yacc.h parser.h profile.h mount.h dbus.h policy_cache.h file_cache.h
 	$(LEX) ${LEXFLAGS} -o$@ $<
 
 parser_lex.o: parser_lex.c parser.h parser_yacc.h
@@ -211,13 +232,13 @@ parser_misc.o: parser_misc.c parser.h parser_yacc.h profile.h cap_names.h $(APPA
 parser_yacc.o: parser_yacc.c parser_yacc.h $(APPARMOR_H)
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
-parser_main.o: parser_main.c parser.h parser_version.h policy_cache.h libapparmor_re/apparmor_re.h $(APPARMOR_H)
+parser_main.o: parser_main.c parser.h parser_version.h policy_cache.h file_cache.h libapparmor_re/apparmor_re.h $(APPARMOR_H)
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
 parser_interface.o: parser_interface.c parser.h profile.h libapparmor_re/apparmor_re.h
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
-parser_include.o: parser_include.c parser.h parser_include.h
+parser_include.o: parser_include.c parser.h parser_include.h file_cache.h
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
 parser_merge.o: parser_merge.c parser.h profile.h
@@ -238,7 +259,7 @@ parser_policy.o: parser_policy.c parser.h parser_yacc.h profile.h
 parser_alias.o: parser_alias.c parser.h profile.h
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
-parser_common.o: parser_common.c parser.h
+parser_common.o: parser_common.c parser.h file_cache.h
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
 mount.o: mount.cc mount.h parser.h immunix.h rule.h
@@ -265,6 +286,9 @@ ptrace.o: ptrace.cc ptrace.h parser.h immunix.h parser_yacc.h rule.h $(APPARMOR_
 network.o: network.c network.h parser.h immunix.h parser_yacc.h rule.h af_names.h $(APPARMOR_H)
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
+default_features.o: default_features.c parser.h
+	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
+
 af_rule.o: af_rule.cc af_rule.h network.h parser.h profile.h immunix.h parser_yacc.h rule.h $(APPARMOR_H)
 	$(CXX) $(EXTRA_CFLAGS) -c -o $@ $<
 
@@ -285,13 +309,21 @@ parser_version.h: Makefile
 # as well as the filtering that occurs for network protocols that
 # apparmor should not mediate.
 
-af_names.h: ../common/list_af_names.sh
-	../common/list_af_names.sh | LC_ALL=C sed -n -e 's/[ \t]\?AF_MAX[ \t]\+[0-9]\+,//g'  -e 's/[ \t]\+\?AF_\([A-Z0-9_]\+\)[ \t]\+\([0-9]\+\),/#ifndef AF_\1\n#  define AF_\1 \2\n#endif\nAA_GEN_NET_ENT("\L\1", \UAF_\1)\n/pg' > $@
-	../common/list_af_names.sh | LC_ALL=C sed -n -e 's/AF_MAX[ \t]\+\([0-9]\+\),\?.*/\n#define AA_AF_MAX \1\n/p' >> $@
-	# cat $@
+generated_af_names.h: ../common/list_af_names.sh
+	../common/list_af_names.sh > $@
+
+af_names.h: generated_af_names.h base_af_names.h
+	cat base_af_names.h | diff -u - generated_af_names.h | grep -v '^.AF_MAX' | grep '^\+[^+]' ; \
+	if [ $$? -eq 1 ] ; then \
+		cat base_af_names.h | LC_ALL=C sed -n -e 's/[ \t]\?AF_MAX[ \t]\+[0-9]\+,//g'  -e 's/[ \t]\+\?AF_\([A-Z0-9_]\+\)[ \t]\+\([0-9]\+\),/#ifndef AF_\1\n#  define AF_\1 \2\n#endif\nAA_GEN_NET_ENT("\L\1", \UAF_\1)\n/pg' > $@ ; \
+		cat base_af_names.h | LC_ALL=C sed -n -e 's/AF_MAX[ \t]\+\([0-9]\+\),\?.*/\n#define AA_AF_MAX \1\n/p' >> $@ ; \
+	else \
+		echo "Error: new AF names detected; please update base_af_names.h with values from generated_af_names.h" ; \
+		exit 1 ; \
+	fi
 
 generated_cap_names.h: /usr/include/linux/capability.h
-	../common/list_capabilities.sh | LC_ALL=C sed -n -e "s/[ \\t]\\?CAP_\\([A-Z0-9_]\\+\\)/\{\"\\L\\1\", \\UCAP_\\1\},\\n/pg" > $@
+	../common/list_capabilities.sh | LC_ALL=C sed -n -e "s/[ \\t]\\?CAP_\\([A-Z0-9_]\\+\\)/\{\"\\L\\1\", \\UCAP_\\1, NO_BACKMAP_CAP, CAPFLAG_BASE_FEATURE\},\\n/pg" > $@
 
 cap_names.h: generated_cap_names.h base_cap_names.h
 	@LC_ALL=C sed -e 's/\([^,]*,[^,]*,\) CAP_[A-Z0-9_]\+,/\1 NO_BACKMAP_CAP,/g' base_cap_names.h | diff -u - generated_cap_names.h | grep '^\+[^+]' ; \
@@ -354,11 +386,11 @@ DISTRO=$(shell if [ -f /etc/slackware-version ] ; then \
 	       elif [ -f /etc/debian_version ] ; then \
 	         echo debian ;\
 	       elif which rpm > /dev/null ; then \
-	         if [ "$(rpm --eval '0%{?suse_version}')" != "0" ] ; then \
+	         if [ "$$(rpm --eval '0%{?suse_version}')" != "0" ] ; then \
 	             echo suse ;\
-	         elif [ "$(rpm --eval '%{_host_vendor}')" = redhat ] ; then \
+	         elif [ "$$(rpm --eval '%{_host_vendor}')" = redhat ] ; then \
 	            echo rhel4 ;\
-	         elif [ "$(rpm --eval '0%{?fedora}')" != "0" ] ; then \
+	         elif [ "$$(rpm --eval '0%{?fedora}')" != "0" ] ; then \
 	            echo rhel4 ;\
 	         else \
 	            echo unknown ;\
@@ -385,11 +417,11 @@ install-arch: $(INSTALLDEPS)
 .PHONY: install-indep
 install-indep: indep
 	install -m 755 -d $(INSTALL_CONFDIR)
-	install -m 644 subdomain.conf $(INSTALL_CONFDIR)
 	install -m 644 parser.conf $(INSTALL_CONFDIR)
 	install -m 755 -d ${DESTDIR}/var/lib/apparmor
 	install -m 755 -d $(APPARMOR_BIN_PREFIX)
 	install -m 755 rc.apparmor.functions $(APPARMOR_BIN_PREFIX)
+	install -m 755 profile-load $(APPARMOR_BIN_PREFIX)
 	$(MAKE) -C po install NAME=${NAME} DESTDIR=${DESTDIR}
 	$(MAKE) install_manpages DESTDIR=${DESTDIR}
 
@@ -413,7 +445,7 @@ clean: pod_clean
 	rm -f $(YACC_C_FILES)
 	rm -f parser_version.h
 	rm -f $(NAME)*.tar.gz $(NAME)*.tgz
-	rm -f af_names.h
+	rm -f af_names.h generated_af_names.h
 	rm -f cap_names.h generated_cap_names.h
 	rm -rf techdoc.aux techdoc.out techdoc.log techdoc.pdf techdoc.toc techdoc.txt techdoc/
 	$(MAKE) -s -C $(AAREDIR) clean

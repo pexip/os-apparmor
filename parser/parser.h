@@ -32,6 +32,7 @@
 
 #include <sys/apparmor.h>
 
+#include "file_cache.h"
 #include "immunix.h"
 #include "libapparmor_re/apparmor_re.h"
 #include "libapparmor_re/aare_rules.h"
@@ -52,10 +53,34 @@ class rule_t;
 extern int parser_token;
 
 
-#define WARN_RULE_NOT_ENFORCED	1
-#define WARN_RULE_DOWNGRADED	2
+#define WARN_RULE_NOT_ENFORCED	0x1
+#define WARN_RULE_DOWNGRADED	0x2
+#define WARN_ABI		0x4
+#define WARN_DEPRECATED		0x8
+#define WARN_CONFIG		0x10
+#define WARN_CACHE		0x20
+#define WARN_DEBUG_CACHE	0x40
+#define WARN_JOBS		0x80
+#define WARN_DANGEROUS		0x100
+#define WARN_UNEXPECTED		0x200
+#define WARN_FORMAT		0x400
+#define WARN_MISSING		0x800
+#define WARN_OVERRIDE		0x1000
+
+#define WARN_DEV (WARN_RULE_NOT_ENFORCED | WARN_RULE_DOWNGRADED | WARN_ABI | \
+		  WARN_DEPRECATED | WARN_DANGEROUS | WARN_UNEXPECTED | \
+		  WARN_FORMAT | WARN_MISSING | WARN_OVERRIDE | WARN_DEBUG_CACHE)
+
+#define DEFAULT_WARNINGS (WARN_CONFIG | WARN_CACHE | WARN_JOBS | \
+			  WARN_UNEXPECTED | WARN_OVERRIDE)
+
+#define WARN_ALL (WARN_RULE_NOT_ENFORCED | WARN_RULE_DOWNGRADED | WARN_ABI | \
+		  WARN_DEPRECATED | WARN_CONFIG | WARN_CACHE | \
+		  WARN_DEBUG_CACHE | WARN_JOBS | WARN_DANGEROUS | \
+		  WARN_UNEXPECTED | WARN_FORMAT | WARN_MISSING | WARN_OVERRIDE)
 
 extern dfaflags_t warnflags;
+extern dfaflags_t werrflags;
 
 
 typedef enum pattern_t pattern_t;
@@ -295,20 +320,28 @@ extern uint32_t policy_version;
 extern uint32_t parser_abi_version;
 extern uint32_t kernel_abi_version;
 
+extern aa_features *pinned_features;
+extern aa_features *policy_features;
+extern aa_features *override_features;
+extern aa_features *kernel_features;
+
 extern int force_complain;
 extern int perms_create;
 extern int net_af_max_override;
 extern int kernel_load;
 extern int kernel_supports_setload;
-extern int kernel_supports_network;
+extern int features_supports_network;
+extern int features_supports_networkv8;
 extern int kernel_supports_policydb;
 extern int kernel_supports_diff_encode;
-extern int kernel_supports_mount;
-extern int kernel_supports_dbus;
-extern int kernel_supports_signal;
-extern int kernel_supports_ptrace;
-extern int kernel_supports_unix;
-extern int kernel_supports_stacking;
+extern int features_supports_mount;
+extern int features_supports_dbus;
+extern int features_supports_signal;
+extern int features_supports_ptrace;
+extern int features_supports_unix;
+extern int features_supports_stacking;
+extern int features_supports_domain_xattr;
+extern int kernel_supports_oob;
 extern int conf_verbose;
 extern int conf_quiet;
 extern int names_only;
@@ -321,7 +354,12 @@ extern char *profile_ns;
 extern char *current_filename;
 extern FILE *ofile;
 extern int read_implies_exec;
-extern void pwarn(const char *fmt, ...) __attribute__((__format__(__printf__, 1, 2)));
+extern IncludeCache_t *g_includecache;
+
+extern void pwarnf(bool werr, const char *fmt, ...) __attribute__((__format__(__printf__, 2, 3)));
+extern void common_warn_once(const char *name, const char *msg, const char **warned_name);
+
+#define pwarn(F, args...) do { if (warnflags & (F)) pwarnf((werrflags & (F)), ## args); } while (0)
 
 /* from parser_main (cannot be used in tst builds) */
 extern int force_complain;
@@ -387,12 +425,12 @@ extern void move_conditional_value(const char *rulename, char **dst_ptr,
 				   struct cond_entry *cond_ent);
 extern void free_cond_entry(struct cond_entry *ent);
 extern void free_cond_list(struct cond_entry *ents);
+extern void free_cond_entry_list(struct cond_entry_list &cond);
 extern void print_cond_entry(struct cond_entry *ent);
 extern char *processid(const char *string, int len);
 extern char *processquoted(const char *string, int len);
 extern char *processunquoted(const char *string, int len);
 extern int get_keyword_token(const char *keyword);
-extern int name_to_capability(const char *keyword);
 extern int get_rlimit(const char *name);
 extern char *process_var(const char *var);
 extern int parse_mode(const char *mode);
@@ -406,7 +444,6 @@ extern struct cod_entry *new_entry(char *id, int mode, char *link_id);
 extern int str_to_boolean(const char* str);
 extern struct cod_entry *copy_cod_entry(struct cod_entry *cod);
 extern void free_cod_entries(struct cod_entry *list);
-extern void __debug_capabilities(uint64_t capset, const char *name);
 void debug_cod_entries(struct cod_entry *list);
 
 #define SECONDS_P_MS (1000LL * 1000LL)
@@ -471,5 +508,14 @@ extern void dump_policy_names(void);
 void dump_policy(void);
 
 void free_policies(void);
+
+/* parser_main.c */
+extern void set_supported_features();
+
+/* default_features.c */
+extern const char *match_n_abi;
+extern const char *match_c_abi;
+extern const char *match_cn_abi;
+extern const char *default_features_abi;
 
 #endif /** __AA_PARSER_H */

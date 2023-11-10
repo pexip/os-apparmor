@@ -98,9 +98,9 @@ class DbusRule(BaseRule):
 
         # not all combinations are allowed
         if self.access and 'bind' in self.access and (self.path or self.interface or self.member or self.peername or self.peerlabel):
-                raise AppArmorException(_('dbus bind rules must not contain a path, interface, member or peer conditional'))
+            raise AppArmorException(_('dbus bind rules must not contain a path, interface, member or peer conditional'))
         elif self.access and 'eavesdrop' in self.access and (self.name or self.path or self.interface or self.member or self.peername or self.peerlabel):
-                raise AppArmorException(_('dbus eavesdrop rules must not contain a name, path, interface, member or peer conditional'))
+            raise AppArmorException(_('dbus eavesdrop rules must not contain a name, path, interface, member or peer conditional'))
         elif self.access and self.name:
             for msg in message_keywords:
                 if msg in self.access:
@@ -240,25 +240,25 @@ class DbusRule(BaseRule):
         if not self._is_covered_list(self.access,       self.all_access,        other_rule.access,      other_rule.all_access,      'access'):
             return False
 
-        if not self._is_covered_aare_compat(self.bus,   self.all_buses,         other_rule.bus,         other_rule.all_buses,       'bus'):
+        if not self._is_covered_aare(self.bus,          self.all_buses,         other_rule.bus,         other_rule.all_buses,       'bus'):
             return False
 
-        if not self._is_covered_aare_compat(self.path,  self.all_paths,         other_rule.path,        other_rule.all_paths,       'path'):
+        if not self._is_covered_aare(self.path,         self.all_paths,         other_rule.path,        other_rule.all_paths,       'path'):
             return False
 
-        if not self._is_covered_aare_compat(self.name,  self.all_names,         other_rule.name,        other_rule.all_names,       'name'):
+        if not self._is_covered_aare(self.name,         self.all_names,         other_rule.name,        other_rule.all_names,       'name'):
             return False
 
-        if not self._is_covered_aare_compat(self.interface, self.all_interfaces, other_rule.interface,  other_rule.all_interfaces,  'interface'):
+        if not self._is_covered_aare(self.interface,    self.all_interfaces,    other_rule.interface,   other_rule.all_interfaces,  'interface'):
             return False
 
-        if not self._is_covered_aare_compat(self.member, self.all_members,      other_rule.member,      other_rule.all_members,     'member'):
+        if not self._is_covered_aare(self.member,       self.all_members,       other_rule.member,      other_rule.all_members,     'member'):
             return False
 
-        if not self._is_covered_aare_compat(self.peername, self.all_peernames,  other_rule.peername,    other_rule.all_peernames,   'peername'):
+        if not self._is_covered_aare(self.peername,     self.all_peernames,     other_rule.peername,    other_rule.all_peernames,   'peername'):
             return False
 
-        if not self._is_covered_aare_compat(self.peerlabel, self.all_peerlabels, other_rule.peerlabel,  other_rule.all_peerlabels,  'peerlabel'):
+        if not self._is_covered_aare(self.peerlabel,    self.all_peerlabels,    other_rule.peerlabel,   other_rule.all_peerlabels,  'peerlabel'):
             return False
 
         # still here? -> then it is covered

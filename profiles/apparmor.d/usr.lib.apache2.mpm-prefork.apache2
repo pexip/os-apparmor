@@ -1,6 +1,8 @@
 # Author: Marc Deslauriers <marc.deslauriers@ubuntu.com>
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 /usr/lib/apache2/mpm-prefork/apache2 {
 
   # This profile is completely permissive.
@@ -39,8 +41,8 @@
   #    </Directory>
   #
 
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
+  include <abstractions/base>
+  include <abstractions/nameservice>
 
   capability chown,
   capability kill,
@@ -54,8 +56,8 @@
 
 
   ^DEFAULT_URI {
-    #include <abstractions/base>
-    #include <abstractions/nameservice>
+    include <abstractions/base>
+    include <abstractions/nameservice>
 
     / rw,
     /** mrwlkix,
@@ -63,7 +65,7 @@
   }
 
   ^HANDLING_UNTRUSTED_INPUT {
-    #include <abstractions/nameservice>
+    include <abstractions/nameservice>
 
     / rw,
     /** mrwlkix,
@@ -73,8 +75,8 @@
   # This directory contains web application
   # package-specific apparmor files.
 
-  #include <apache2.d>
+  include <apache2.d>
 
   # Site-specific additions and overrides. See local/README for details.
-  #include <local/usr.lib.apache2.mpm-prefork.apache2>
+  include if exists <local/usr.lib.apache2.mpm-prefork.apache2>
 }

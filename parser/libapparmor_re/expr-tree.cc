@@ -41,19 +41,38 @@
 /* Use a single static EpsNode as it carries no node specific information */
 EpsNode epsnode;
 
-ostream &operator<<(ostream &os, uchar c)
+ostream &transchar::dump(ostream &os) const
+{
+	const char *search = "\a\033\f\n\r\t|*+[](). ",
+		   *replace = "aefnrt|*+[](). ", *s;
+
+	if (this->c < 0)
+		os << "-0x" << hex << -this->c << dec;
+	else if (this->c > 255)
+		os << "0x" << hex << this->c << dec;
+	else if ((s = strchr(search, this->c)) && *s != '\0')
+		os << '\\' << replace[s - search] << " 0x" << hex << this->c << dec;
+	else if (!isprint(this->c))
+		os << "0x" << hex << this->c << dec;
+	else
+		os << (char)this->c << " 0x" << hex << this->c << dec;
+	return os;
+}
+
+ostream &operator<<(ostream &os, transchar tc)
 {
 	const char *search = "\a\033\f\n\r\t|*+[](). ",
 	    *replace = "aefnrt|*+[](). ", *s;
+	short c = tc.c;
 
-	if ((s = strchr(search, c)) && *s != '\0') {
+	if (c < 0)
+		os << "\\d" << "" << tc.c;
+	else if ((s = strchr(search, c)) && *s != '\0')
 		os << '\\' << replace[s - search];
-	} else if (c < 32 || c >= 127) {
-		os << '\\' << '0' << char ('0' + (c >> 6))
-		   << char ('0' + ((c >> 3) & 7)) << char ('0' + (c & 7));
-	} else {
+	else if (!isprint(c))
+		os << "\\x" << hex << c << dec;
+	else
 		os << (char)c;
-	}
 	return os;
 }
 
@@ -534,6 +553,9 @@ static void count_tree_nodes(Node *t, struct node_counts *counts)
 	} else if (dynamic_cast<StarNode *>(t)) {
 		counts->star++;
 		count_tree_nodes(t->child[0], counts);
+	} else if (dynamic_cast<OptionalNode *>(t)) {
+		counts->optional++;
+		count_tree_nodes(t->child[0], counts);
 	} else if (dynamic_cast<CharNode *>(t)) {
 		counts->charnode++;
 	} else if (dynamic_cast<AnyCharNode *>(t)) {
@@ -549,12 +571,17 @@ static void count_tree_nodes(Node *t, struct node_counts *counts)
 #include "stdint.h"
 #include "apparmor_re.h"
 
+// maximum number of passes to iterate on the expression tree doing
+// simplification passes. Simplification may exit sooner if no changes
+// are made.
+#define MAX_PASSES 1
 Node *simplify_tree(Node *t, dfaflags_t flags)
 {
-	bool update;
+	bool update = true;
+	int i;
 
 	if (flags & DFA_DUMP_TREE_STATS) {
-		struct node_counts counts = { 0, 0, 0, 0, 0, 0, 0, 0 };
+		struct node_counts counts = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 		count_tree_nodes(t, &counts);
 		fprintf(stderr,
 			"expr tree: c %d, [] %d, [^] %d, | %d, + %d, * %d, . %d, cat %d\n",
@@ -562,7 +589,7 @@ Node *simplify_tree(Node *t, dfaflags_t flags)
 			counts.alt, counts.plus, counts.star, counts.any,
 			counts.cat);
 	}
-	do {
+	for (i = 0; update && i < MAX_PASSES; i++) {
 		update = false;
 		//default to right normalize first as this reduces the number
 		//of trailing nodes which might follow an internal *
@@ -588,9 +615,9 @@ Node *simplify_tree(Node *t, dfaflags_t flags)
 			else
 				dir--;
 		}
-	} while (update);
+	}
 	if (flags & DFA_DUMP_TREE_STATS) {
-		struct node_counts counts = { 0, 0, 0, 0, 0, 0, 0, 0 };
+		struct node_counts counts = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 		count_tree_nodes(t, &counts);
 		fprintf(stderr,
 			"simplified expr tree: c %d, [] %d, [^] %d, | %d, + %d, * %d, . %d, cat %d\n",

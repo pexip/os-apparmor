@@ -20,6 +20,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
@@ -94,7 +95,7 @@ extern int aa_getprocattr(pid_t tid, const char *attr, char **label,
 			  char **mode);
 extern int aa_gettaskcon(pid_t target, char **label, char **mode);
 extern int aa_getcon(char **label, char **mode);
-extern int aa_getpeercon_raw(int fd, char *buf, int *len, char **mode);
+extern int aa_getpeercon_raw(int fd, char *buf, socklen_t *len, char **mode);
 extern int aa_getpeercon(int fd, char **label, char **mode);
 
 /* A NUL character is used to separate the query command prefix string from the
@@ -144,18 +145,21 @@ extern int aa_query_link_path(const char *label, const char *target,
 
 typedef struct aa_features aa_features;
 extern int aa_features_new(aa_features **features, int dirfd, const char *path);
+extern int aa_features_new_from_file(aa_features **features, int file);
 extern int aa_features_new_from_string(aa_features **features,
 				       const char *string, size_t size);
 extern int aa_features_new_from_kernel(aa_features **features);
 extern aa_features *aa_features_ref(aa_features *features);
 extern void aa_features_unref(aa_features *features);
 
+extern int aa_features_write_to_fd(aa_features *features, int fd);
 extern int aa_features_write_to_file(aa_features *features,
 				     int dirfd, const char *path);
 extern bool aa_features_is_equal(aa_features *features1,
 				 aa_features *features2);
 extern bool aa_features_supports(aa_features *features, const char *str);
 extern char *aa_features_id(aa_features *features);
+extern char *aa_features_value(aa_features *features, const char *str, size_t *len);
 
 typedef struct aa_kernel_interface aa_kernel_interface;
 extern int aa_kernel_interface_new(aa_kernel_interface **kernel_interface,

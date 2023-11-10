@@ -13,12 +13,14 @@
 # give evolution access to significant chunks of /proc
 #
 
-#include <tunables/global>
+  abi <abi/3.0>,
+
+include <tunables/global>
 
 profile netstat /{usr/,}bin/netstat {
-  #include <abstractions/base>
-  #include <abstractions/consoles>
-  #include <abstractions/nameservice>
+  include <abstractions/base>
+  include <abstractions/consoles>
+  include <abstractions/nameservice>
 
   capability dac_override,
   capability dac_read_search,

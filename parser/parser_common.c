@@ -15,10 +15,12 @@
  *   along with this program; if not, contact Novell, Inc. or Canonical,
  *   Ltd.
  */
+#include <iostream>
 #include <stdlib.h>
 #include <stdarg.h>
 
 #include "parser.h"
+#include "file_cache.h"
 
 /* Policy versioning is determined by a combination of 3 values:
  * policy_version:     version of txt policy
@@ -65,15 +67,18 @@ int perms_create = 0;                   /* perms contain create flag */
 int net_af_max_override = -1;           /* use kernel to determine af_max */
 int kernel_load = 1;
 int kernel_supports_setload = 0;	/* kernel supports atomic set loads */
-int kernel_supports_network = 0;        /* kernel supports network rules */
-int kernel_supports_unix = 0;		/* kernel supports unix socket rules */
+int features_supports_network = 0;	/* kernel supports network rules */
+int features_supports_networkv8 = 0;	/* kernel supports 4.17 network rules */
+int features_supports_unix = 0;		/* kernel supports unix socket rules */
 int kernel_supports_policydb = 0;	/* kernel supports new policydb */
-int kernel_supports_mount = 0;	        /* kernel supports mount rules */
-int kernel_supports_dbus = 0;		/* kernel supports dbus rules */
+int features_supports_mount = 0;	/* kernel supports mount rules */
+int features_supports_dbus = 0;		/* kernel supports dbus rules */
 int kernel_supports_diff_encode = 0;	/* kernel supports diff_encode */
-int kernel_supports_signal = 0;		/* kernel supports signal rules */
-int kernel_supports_ptrace = 0;		/* kernel supports ptrace rules */
-int kernel_supports_stacking = 0;	/* kernel supports stacking */
+int features_supports_signal = 0;	/* kernel supports signal rules */
+int features_supports_ptrace = 0;	/* kernel supports ptrace rules */
+int features_supports_stacking = 0;	/* kernel supports stacking */
+int features_supports_domain_xattr = 0;	/* x attachment cond */
+int kernel_supports_oob = 0;		/* out of band transitions */
 int conf_verbose = 0;
 int conf_quiet = 0;
 int names_only = 0;
@@ -81,7 +86,8 @@ int current_lineno = 1;
 int option = OPTION_ADD;
 
 dfaflags_t dfaflags = (dfaflags_t)(DFA_CONTROL_TREE_NORMAL | DFA_CONTROL_TREE_SIMPLE | DFA_CONTROL_MINIMIZE | DFA_CONTROL_DIFF_ENCODE);
-dfaflags_t warnflags = 0;
+dfaflags_t warnflags = DEFAULT_WARNINGS;
+dfaflags_t werrflags = 0;
 
 const char *progname = __FILE__;
 char *profile_ns = NULL;
@@ -90,13 +96,15 @@ char *current_filename = NULL;
 
 FILE *ofile = NULL;
 
+IncludeCache_t *g_includecache;
+
 #ifdef FORCE_READ_IMPLIES_EXEC
 int read_implies_exec = 1;
 #else
 int read_implies_exec = 0;
 #endif
 
-void pwarn(const char *fmt, ...)
+void pwarnf(bool werr, const char *fmt, ...)
 {
         va_list arg;
         char *newfmt;
@@ -104,7 +112,8 @@ void pwarn(const char *fmt, ...)
         if (conf_quiet || names_only || option == OPTION_REMOVE)
                 return;
 
-        if (asprintf(&newfmt, _("Warning from %s (%s%sline %d): %s"),
+        if (asprintf(&newfmt, _("%s from %s (%s%sline %d): %s"),
+		     werr ? _("Warning converted to Error") : _("Warning"),
 		     profilename ? profilename : "stdin",
 		     current_filename ? current_filename : "",
 		     current_filename ? " " : "",
@@ -117,4 +126,30 @@ void pwarn(const char *fmt, ...)
         va_end(arg);
 
         free(newfmt);
+
+	if (werr) {
+		fflush(stderr);
+		exit(1);
+	}
+}
+
+/* do we want to warn once/profile or just once per compile?? */
+void common_warn_once(const char *name, const char *msg, const char **warned_name)
+{
+	if ((warnflags & WARN_RULE_NOT_ENFORCED) && *warned_name != name) {
+		if (werrflags & WARN_RULE_NOT_ENFORCED)
+			cerr << "Warning converted to Error";
+		else
+			cerr << "Warning";
+		cerr << " from profile " << name << " (";
+		if (current_filename)
+			cerr << current_filename;
+		else
+			cerr << "stdin";
+		cerr << "): " << msg << "\n";
+		*warned_name = name;
+	}
+
+	if (werrflags & WARN_RULE_NOT_ENFORCED)
+		exit(1);
 }

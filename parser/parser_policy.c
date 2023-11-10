@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <sys/apparmor.h>
 
+#include "lib.h"
 #include "parser.h"
 #include "profile.h"
 #include "parser_yacc.h"
@@ -145,6 +146,56 @@ void add_entry_to_policy(Profile *prof, struct cod_entry *entry)
 	prof->entries = entry;
 }
 
+static bool add_proc_access(Profile *prof, const char *rule)
+{
+		/* FIXME: should use @{PROC}/@{PID}/attr/{apparmor/,}{current,exec} */
+		struct cod_entry *new_ent;
+		/* allow probe for new interfaces */
+		char *buffer = strdup("/proc/*/attr/apparmor/");
+		if (!buffer) {
+			PERROR("Memory allocation error\n");
+			return FALSE;
+		}
+		new_ent = new_entry(buffer, AA_MAY_READ, NULL);
+		if (!new_ent) {
+			free(buffer);
+			PERROR("Memory allocation error\n");
+			return FALSE;
+		}
+		add_entry_to_policy(prof, new_ent);
+
+		/* allow probe if apparmor is enabled for the old interface */
+		buffer = strdup("/sys/module/apparmor/parameters/enabled");
+		if (!buffer) {
+			PERROR("Memory allocation error\n");
+			return FALSE;
+		}
+		new_ent = new_entry(buffer, AA_MAY_READ, NULL);
+		if (!new_ent) {
+			free(buffer);
+			PERROR("Memory allocation error\n");
+			return FALSE;
+		}
+		add_entry_to_policy(prof, new_ent);
+
+		/* allow setting on new and old interfaces */
+		buffer = strdup(rule);
+		if (!buffer) {
+			PERROR("Memory allocation error\n");
+			return FALSE;
+		}
+		new_ent = new_entry(buffer, AA_MAY_WRITE, NULL);
+		if (!new_ent) {
+			free(buffer);
+			PERROR("Memory allocation error\n");
+			return FALSE;
+		}
+		add_entry_to_policy(prof, new_ent);
+
+		return TRUE;
+}
+
+#define CHANGEPROFILE_PATH "/proc/*/attr/{apparmor/,}{current,exec}"
 void post_process_file_entries(Profile *prof)
 {
 	struct cod_entry *entry;
@@ -170,22 +221,11 @@ void post_process_file_entries(Profile *prof)
 	}
 
 	/* if there are change_profile rules, this implies that we need
-	 * access to /proc/self/attr/current
+	 * access to some /proc/ interfaces
 	 */
 	if (cp_mode & AA_CHANGE_PROFILE) {
-		/* FIXME: should use @{PROC}/@{PID}/attr/{current,exec} */
-		struct cod_entry *new_ent;
-		char *buffer = strdup("/proc/*/attr/{current,exec}");
-		if (!buffer) {
-			PERROR("Memory allocation error\n");
+		if (!add_proc_access(prof, CHANGEPROFILE_PATH))
 			exit(1);
-		}
-		new_ent = new_entry(buffer, AA_MAY_WRITE, NULL);
-		if (!new_ent) {
-			PERROR("Memory allocation error\n");
-			exit(1);
-		}
-		add_entry_to_policy(prof, new_ent);
 	}
 }
 
@@ -196,24 +236,18 @@ void post_process_rule_entries(Profile *prof)
 }
 
 
-#define CHANGEHAT_PATH "/proc/[0-9]*/attr/current"
+#define CHANGEHAT_PATH "/proc/[0-9]*/attr/{apparmor/,}current"
 
 /* add file rules to access /proc files to call change_hat()
  */
 static int profile_add_hat_rules(Profile *prof)
 {
-	struct cod_entry *entry;
-
 	/* don't add hat rules if not hat or profile doesn't have hats */
-	if (!prof->flags.hat || !prof->hat_table.empty())
+	if (!prof->flags.hat && prof->hat_table.empty())
 		return 0;
 
-	/* add entry to hat */
-	entry = new_entry(strdup(CHANGEHAT_PATH), AA_MAY_WRITE, NULL);
-	if (!entry)
+	if (!add_proc_access(prof, CHANGEHAT_PATH))
 		return ENOMEM;
-
-	add_entry_to_policy(prof, entry);
 
 	return 0;
 }
@@ -302,7 +336,12 @@ Profile *merge_policy(Profile *a, Profile *b)
 	}
 	b->entries = NULL;
 
-	a->flags.complain = a->flags.complain || b->flags.complain;
+	if (merge_profile_mode(a->flags.mode, b->flags.mode) == MODE_CONFLICT) {
+		PERROR("ASSERT: policy merge with different modes 0x%x != 0x%x\n",
+		       a->flags.mode, b->flags.mode);
+		exit(1);
+	}
+
 	a->flags.audit = a->flags.audit || b->flags.audit;
 
 	a->caps.allow |= b->caps.allow;

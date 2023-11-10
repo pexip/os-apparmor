@@ -11,23 +11,24 @@
 # support /etc/alternatives/ -- SuSE has no such mechanism. So, this
 # file supports _BOTH_ sendmail's sendmail and postfix's sendmail.
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/sendmail {
-  #include <abstractions/base>
-  #include <abstractions/consoles>
-  #include <abstractions/kerberosclient>
-  #include <abstractions/nameservice>
-  #include <abstractions/user-tmp>
-  #include <abstractions/postfix-common>
+  include <abstractions/base>
+  include <abstractions/consoles>
+  include <abstractions/kerberosclient>
+  include <abstractions/nameservice>
+  include <abstractions/user-tmp>
+  include <abstractions/postfix-common>
+  include <abstractions/hosts_access>
 
   /usr/bin/procmail           Px,
 
   /etc/aliases.db             rw,
   /etc/aliases                rw,
   /etc/fstab                  r,
-  /etc/hosts.allow            r,
-  /etc/hosts.deny             r,
   /etc/ldap.conf              r,
   /etc/mail/*                 r,
   /etc/mail/statistics        rw,

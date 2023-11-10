@@ -9,12 +9,15 @@
 # ------------------------------------------------------------------
 # vim:syntax=apparmor
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/lighttpd {
-  #include <abstractions/base>
-  #include <abstractions/nameservice>
-  #include <abstractions/web-data>
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/perl>
+  include <abstractions/web-data>
 
   # needed to change max file descriptors
   capability sys_resource,
@@ -25,6 +28,8 @@
   # changing the uid/gid on startup
   capability setgid,
   capability setuid,
+
+  @{PROC}/loadavg r,
 
   /etc/lighttpd r,
   /etc/lighttpd/*.conf r,
@@ -50,7 +55,17 @@
   /var/log/lighttpd/*.log rw,
   # include_shell
   /{usr/,}bin/bash mix,
+  /{usr/,}bin/dash mix,
   /{usr/,}bin/zsh mix,
   /{usr/,}bin/cat mix,
+
+  # Debian/Ubuntu integration in default installation
+  /etc/mime.types r,
+  /usr/share/lighttpd/ r,
+  /usr/share/lighttpd/*.pl mrix,
+  /etc/lighttpd/conf-available/ r,
+  /etc/lighttpd/conf-available/*.conf r,
+  /etc/lighttpd/conf-enabled/ r,
+  /etc/lighttpd/conf-enabled/*.conf r,
 }
 
