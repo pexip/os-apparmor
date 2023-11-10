@@ -14,15 +14,18 @@
 #
 # vim:syntax=apparmor
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/sbin/sshd {
-  #include <abstractions/authentication>
-  #include <abstractions/base>
-  #include <abstractions/consoles>
-  #include <abstractions/libpam-systemd>
-  #include <abstractions/nameservice>
-  #include <abstractions/wutmp>
+  include <abstractions/authentication>
+  include <abstractions/base>
+  include <abstractions/consoles>
+  include <abstractions/libpam-systemd>
+  include <abstractions/nameservice>
+  include <abstractions/wutmp>
+  include <abstractions/hosts_access>
 
   capability sys_chroot,
   capability sys_resource,
@@ -52,8 +55,6 @@
   /dev/urandom r,
   /etc/default/locale r,
   /etc/environment r,
-  /etc/hosts.allow r,
-  /etc/hosts.deny r,
   /etc/modules.conf r,
   /etc/security/** r,
   /etc/ssh/** r,
@@ -99,9 +100,9 @@
   # to set memory protection for passwd
   @{PROC}/@{pid}/task/@{pid}/attr/exec w,
   profile passwd {
-    #include <abstractions/authentication>
-    #include <abstractions/base>
-    #include <abstractions/nameservice>
+    include <abstractions/authentication>
+    include <abstractions/base>
+    include <abstractions/nameservice>
 
     capability audit_write,
     capability chown,
@@ -129,6 +130,7 @@
   /etc.legal r,
   /etc/motd r,
   /{,var/}run/motd{,.dynamic}{,.new} rw,
+  /tmp/krb5cc* wk,
   /tmp/ssh-[a-zA-Z0-9]*/ w,
   /tmp/ssh-[a-zA-Z0-9]*/agent.[0-9]* wl,
 
@@ -140,5 +142,5 @@
   /usr/lib/openssh/sftp-server PUx,
 
   # Site-specific additions and overrides. See local/README for details.
-  ## include <local/usr.sbin.sshd>
+  include if exists <local/usr.sbin.sshd>
 }

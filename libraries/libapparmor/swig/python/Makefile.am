@@ -1,5 +1,8 @@
 if HAVE_PYTHON
 
+COMMONDIR = $(top_srcdir)/../../common/
+include $(COMMONDIR)/Make.rules
+
 EXTRA_DIST      = libapparmor_wrap.c
 
 SUBDIRS = test
@@ -11,14 +14,14 @@ MOSTLYCLEANFILES=libapparmor_wrap.c LibAppArmor.py
 
 all-local: libapparmor_wrap.c setup.py
 	if test ! -f libapparmor_wrap.c; then cp $(srcdir)/libapparmor_wrap.c . ; fi
-	$(PYTHON) setup.py build
+	CC="$(CC)" CFLAGS="$(PYTHON_CPPFLAGS) $(EXTRA_WARNINGS)" LDSHARED="$(CC) -shared" LDFLAGS="$(PYTHON_LDFLAGS) $(LDFLAGS)" $(PYTHON) setup.py build
 
 install-exec-local:
 	$(PYTHON) setup.py install --root="/$(DESTDIR)" --prefix="$(prefix)"
 
 clean-local:
 	if test -x "$(PYTHON)"; then $(PYTHON) setup.py clean; fi
-	rm -rf build
+	rm -rf build LibAppArmor.egg-info
 	if test $(top_srcdir) != $(top_builddir) ; then rm -f libapparmor_wrap.c ; fi
 
 endif

@@ -10,7 +10,6 @@
 # ------------------------------------------------------------------
 
 from __future__ import print_function
-import codecs
 import collections
 import glob
 import logging
@@ -172,6 +171,22 @@ def get_directory_contents(path):
     files.sort()
     return files
 
+def is_skippable_file(path):
+    """Returns True if filename matches something to be skipped (rpm or dpkg backup files, hidden files etc.)
+        The list of skippable files needs to be synced with apparmor initscript and libapparmor _aa_is_blacklisted()
+        path: filename (with or without directory)"""
+
+    basename = os.path.basename(path)
+
+    if not basename or basename[0] == '.' or basename == 'README':
+        return True
+
+    skippable_suffix = ('.dpkg-new', '.dpkg-old', '.dpkg-dist', '.dpkg-bak', '.dpkg-remove', '.pacsave', '.pacnew', '.rpmnew', '.rpmsave', '.orig', '.rej', '~')
+    if basename.endswith(skippable_suffix):
+        return True
+
+    return False
+
 def open_file_read(path, encoding='UTF-8'):
     '''Open specified file read-only'''
     return open_file_anymode('r', path, encoding)
@@ -181,13 +196,17 @@ def open_file_write(path):
     return open_file_anymode('w', path, 'UTF-8')
 
 def open_file_anymode(mode, path, encoding='UTF-8'):
-    '''Open specified file in specified mode'''
+    '''Crash-resistant wrapper to open a specified file in specified mode'''
 
+    # This avoids a crash when reading a logfile with special characters that
+    # are not utf8-encoded (for example a latin1 "ö"), and also avoids crashes
+    # at several other places we don't know yet ;-)
     errorhandling = 'surrogateescape'
+
     if sys.version_info[0] < 3:
         errorhandling = 'replace'
 
-    orig = codecs.open(path, mode, encoding, errors=errorhandling)
+    orig = open(path, mode, encoding=encoding, errors=errorhandling)
 
     return orig
 
@@ -258,12 +277,30 @@ def type_is_str(var):
     else:
         return False
 
+def split_name(full_profile):
+    if '//' in full_profile:
+        profile, hat = full_profile.split('//')[:2]  # XXX limit to two levels to avoid an Exception on nested child profiles or nested null-*
+        # TODO: support nested child profiles
+    else:
+        profile = full_profile
+        hat = full_profile
+
+    return (profile, hat)
+
+
 class DebugLogger(object):
+    '''Unified debug facility. Logs to file or stderr.
+
+    Does not log anything by default. Will only log if environment variable
+    LOGPROF_DEBUG is set to a number between 1 and 3 or if method activateStderr
+    is run.
+    '''
     def __init__(self, module_name=__name__):
         self.debugging = False
-        self.logfile = '/var/log/apparmor/logprof.log'
         self.debug_level = logging.DEBUG
+
         if os.getenv('LOGPROF_DEBUG', False):
+            self.logfile = '/var/log/apparmor/logprof.log'
             self.debugging = os.getenv('LOGPROF_DEBUG')
             try:
                 self.debugging = int(self.debugging)
@@ -275,11 +312,11 @@ class DebugLogger(object):
             if self.debugging == 0:  # debugging disabled, don't need to setup logging
                 return
             if self.debugging == 1:
-                self.debug_level = logging.ERROR
+                self.debug_level = logging.ERROR  # 40
             elif self.debugging == 2:
-                self.debug_level = logging.INFO
+                self.debug_level = logging.INFO  # 20
             elif self.debugging == 3:
-                self.debug_level = logging.DEBUG
+                self.debug_level = logging.DEBUG  # 10
 
             try:
                 logging.basicConfig(filename=self.logfile, level=self.debug_level,
@@ -294,6 +331,15 @@ class DebugLogger(object):
                                     format='%(asctime)s - %(name)s - %(message)s\n')
 
             self.logger = logging.getLogger(module_name)
+
+    def activateStderr(self):
+        self.debugging = True
+        logging.basicConfig(
+            level=self.debug_level,
+            format='%(levelname)s: %(message)s',
+            stream=sys.stderr,
+        )
+        self.logger = logging.getLogger(__name__)
 
     def error(self, message):
         if self.debugging:

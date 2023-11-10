@@ -12,22 +12,22 @@ Bug-Ubuntu: https://launchpad.net/bugs/1227520
  3 files changed, 4 insertions(+)
 
 diff --git a/profiles/apparmor.d/abstractions/base b/profiles/apparmor.d/abstractions/base
-index fabb427..1dc77a3 100644
+index 4853bef..9100968 100644
 --- a/profiles/apparmor.d/abstractions/base
 +++ b/profiles/apparmor.d/abstractions/base
-@@ -30,6 +30,7 @@
-   /etc/locale/**                 r,
-   /etc/locale.alias              r,
-   /etc/localtime                 r,
+@@ -32,6 +32,7 @@
+   @{etc_ro}/locale/**          r,
+   @{etc_ro}/locale.alias       r,
+   @{etc_ro}/localtime          r,
 +  /etc/writable/localtime        r,
    /usr/share/locale-bundle/**    r,
    /usr/share/locale-langpack/**  r,
    /usr/share/locale/**           r,
 diff --git a/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java b/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java
-index 8193a5c..e0a67cf 100644
+index 507d62a..ae93c75 100644
 --- a/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java
 +++ b/profiles/apparmor.d/abstractions/ubuntu-browsers.d/java
-@@ -37,6 +37,7 @@
+@@ -39,6 +39,7 @@
      /etc/lsb-release r,
      /etc/ssl/certs/java/* r,
      /etc/timezone r,
@@ -35,7 +35,7 @@ index 8193a5c..e0a67cf 100644
  
      @{PROC}/@{pid}/ r,
      @{PROC}/@{pid}/fd/ r,
-@@ -84,6 +85,7 @@
+@@ -86,6 +87,7 @@
      /etc/lsb-release r,
      /etc/ssl/certs/java/* r,
      /etc/timezone r,
@@ -44,10 +44,10 @@ index 8193a5c..e0a67cf 100644
      @{PROC}/@{pid}/ r,
      @{PROC}/@{pid}/fd/ r,
 diff --git a/profiles/apparmor/profiles/extras/usr.lib.firefox.firefox b/profiles/apparmor/profiles/extras/usr.lib.firefox.firefox
-index 8f3bf56..68bf1ea 100644
+index 6d869d6..9678543 100644
 --- a/profiles/apparmor/profiles/extras/usr.lib.firefox.firefox
 +++ b/profiles/apparmor/profiles/extras/usr.lib.firefox.firefox
-@@ -38,6 +38,7 @@
+@@ -40,6 +40,7 @@ include <tunables/global>
    /tmp/.X[0-9]*-lock r,
  
    /etc/timezone r,

@@ -32,21 +32,40 @@ _ = init_translation()
 debug_logger = DebugLogger('UI')
 
 # If Python3, wrap input in raw_input so make check passes
-if not 'raw_input' in dir(__builtins__): raw_input = input
+if 'raw_input' not in dir(__builtins__):
+    raw_input = input
 
 ARROWS = {'A': 'UP', 'B': 'DOWN', 'C': 'RIGHT', 'D': 'LEFT'}
 
 UI_mode = 'text'
 
+
 def write_json(jsonout):
-   print(json.dumps(jsonout, sort_keys=False, separators=(',', ': ')))
-   sys.stdout.flush()
+    print(json.dumps(jsonout, sort_keys=False, separators=(',', ': ')))
+    sys.stdout.flush()
+
 
 def set_json_mode():
+    """
+    Currently this is only used by aa-genprof and aa-logprof, while e.g.
+    aa-status generates its own JSON output.
+
+    Remember to bump the JSON API version number if the output commands
+    in this file are modified.
+
+    Current known consumers of the JSON output:
+    - YaST
+    """
     global UI_mode
     UI_mode = 'json'
     jsonout = {'dialog': 'apparmor-json-version', 'data': '2.12'}
     write_json(jsonout)
+
+
+def set_text_mode():
+    """Output plaintext"""
+    global UI_mode
+    UI_mode = 'text'
 
 # reads the response on command line for json and verifies the response
 # for the dialog type
@@ -56,6 +75,7 @@ def json_response(dialog_type):
     if rh["dialog"] != dialog_type:
         raise AppArmorException('Expected response %s got %s.' % (dialog_type, string))
     return rh
+
 
 def getkey():
     key = readkey()
@@ -67,7 +87,9 @@ def getkey():
                 key = ARROWS[key]
     return key.strip()
 
+
 def UI_Info(text):
+    """Facility to output normal text"""
     debug_logger.info(text)
     if UI_mode == 'json':
         jsonout = {'dialog': 'info', 'data': text}
@@ -75,13 +97,16 @@ def UI_Info(text):
     else:  # text mode
         sys.stdout.write(text + '\n')
 
+
 def UI_Important(text):
+    """Facility to output important text"""
     debug_logger.debug(text)
     if UI_mode == 'json':
         jsonout = {'dialog': 'important', 'data': text}
         write_json(jsonout)
     else:  # text mode
         sys.stdout.write('\n' + text + '\n')
+
 
 def get_translated_hotkey(translated, cmsg=''):
     msg = 'PromptUser: ' + _('Invalid hotkey for')
@@ -94,6 +119,7 @@ def get_translated_hotkey(translated, cmsg=''):
             raise AppArmorException(cmsg)
         else:
             raise AppArmorException('%s %s' % (msg, translated))
+
 
 def UI_YesNo(text, default):
     debug_logger.debug('UI_YesNo: %s: %s %s' % (UI_mode, text, default))
@@ -133,6 +159,7 @@ def UI_YesNo(text, default):
             else:
                 ans = default
     return ans
+
 
 def UI_YesNoCancel(text, default):
     debug_logger.debug('UI_YesNoCancel: %s: %s %s' % (UI_mode, text, default))
@@ -184,6 +211,7 @@ def UI_YesNoCancel(text, default):
                 ans = default
     return ans
 
+
 def UI_GetString(text, default):
     debug_logger.debug('UI_GetString: %s: %s %s' % (UI_mode, text, default))
     string = default
@@ -201,6 +229,7 @@ def UI_GetString(text, default):
             readline.set_startup_hook()
     return string.strip()
 
+
 def UI_GetFile(file):
     debug_logger.debug('UI_GetFile: %s' % UI_mode)
     filename = None
@@ -213,23 +242,28 @@ def UI_GetFile(file):
         filename = sys.stdin.read()
     return filename
 
+
 def UI_BusyStart(message):
     debug_logger.debug('UI_BusyStart: %s' % UI_mode)
     UI_Info(message)
 
+
 def UI_BusyStop():
     debug_logger.debug('UI_BusyStop: %s' % UI_mode)
+
 
 def diff(oldprofile, newprofile):
     difftemp = tempfile.NamedTemporaryFile('w')
     subprocess.call('diff -u -p %s %s > %s' % (oldprofile, newprofile, difftemp.name), shell=True)
     return difftemp
 
+
 def write_profile_to_tempfile(profile):
     temp = tempfile.NamedTemporaryFile('w')
     temp.write(profile)
     temp.flush()
     return temp
+
 
 def generate_diff(oldprofile, newprofile):
     oldtemp = write_profile_to_tempfile(oldprofile)
@@ -239,6 +273,7 @@ def generate_diff(oldprofile, newprofile):
     newtemp.close()
     return difftemp
 
+
 def generate_diff_with_comments(oldprofile, newprofile):
     if not os.path.exists(oldprofile):
         raise AppArmorException(_("Can't find existing profile %s to compare changes.") % oldprofile)
@@ -247,13 +282,14 @@ def generate_diff_with_comments(oldprofile, newprofile):
     newtemp.close()
     return difftemp
 
+
 def UI_Changes(oldprofile, newprofile, comments=False):
-    if comments == False:
-      difftemp = generate_diff(oldprofile, newprofile)
-      header = 'View Changes'
+    if not comments:
+        difftemp = generate_diff(oldprofile, newprofile)
+        header = 'View Changes'
     else:
-      difftemp = generate_diff_with_comments(oldprofile, newprofile)
-      header = 'View Changes with comments'
+        difftemp = generate_diff_with_comments(oldprofile, newprofile)
+        header = 'View Changes with comments'
     UI_ShowFile(header, difftemp.name)
     difftemp.close()
 
@@ -264,6 +300,7 @@ def UI_ShowFile(header, filename):
         json_response('changes')["response"]  # wait for response to delay deletion of filename (and ignore response content)
     else:
         subprocess.call(['less', filename])
+
 
 CMDS = {'CMD_ALLOW': _('(A)llow'),
         'CMD_OTHER': _('(M)ore'),
@@ -309,14 +346,11 @@ CMDS = {'CMD_ALLOW': _('(A)llow'),
         'CMD_IGNORE_UPDATE': _('(I)gnore Update'),
         'CMD_SAVE_CHANGES': _('(S)ave Changes'),
         'CMD_SAVE_SELECTED': _('Save Selec(t)ed Profile'),
-        'CMD_UPLOAD_CHANGES': _('(U)pload Changes'),
         'CMD_VIEW_CHANGES': _('(V)iew Changes'),
         'CMD_VIEW_CHANGES_CLEAN': _('View Changes b/w (C)lean profiles'),
         'CMD_VIEW': _('(V)iew'),
         'CMD_ENABLE_REPO': _('(E)nable Repository'),
         'CMD_DISABLE_REPO': _('(D)isable Repository'),
-        'CMD_ASK_NEVER': _('(N)ever Ask Again'),
-        'CMD_ASK_LATER': _('Ask Me (L)ater'),
         'CMD_YES': _('(Y)es'),
         'CMD_NO': _('(N)o'),
         'CMD_CANCEL': _('(C)ancel'),
@@ -326,6 +360,7 @@ CMDS = {'CMD_ALLOW': _('(A)llow'),
         'CMD_KEEP': _('(K)eep Profile'),
         'CMD_IGNORE_ENTRY': _('(I)gnore')
         }
+
 
 class PromptQuestion(object):
     title = None
@@ -497,11 +532,13 @@ class PromptQuestion(object):
 
         return ans, selected
 
+
 def confirm_and_abort():
     ans = UI_YesNo(_('Are you sure you want to abandon this set of profile changes and exit?'), 'n')
     if ans == 'y':
         UI_Info(_('Abandoning all changes.'))
         sys.exit(0)
+
 
 def is_number(number):
     try:

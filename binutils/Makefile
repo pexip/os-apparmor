@@ -19,11 +19,11 @@ include $(COMMONDIR)/Make.rules
 
 DESTDIR=/
 BINDIR=${DESTDIR}/usr/bin
+SBINDIR=${DESTDIR}/usr/sbin
 LOCALEDIR=/usr/share/locale
-MANPAGES=aa-enabled.1 aa-exec.1
+MANPAGES=aa-enabled.1 aa-exec.1 aa-features-abi.1 aa-status.8
 
 WARNINGS = -Wall
-EXTRA_WARNINGS = -Wsign-compare -Wmissing-field-initializers -Wformat-security -Wunused-parameter
 CPP_WARNINGS =
 ifndef CFLAGS
 CFLAGS	= -g -O2 -pipe
@@ -36,7 +36,7 @@ CFLAGS = -g -pg -fprofile-arcs -ftest-coverage
 endif
 endif #CFLAGS
 
-EXTRA_CFLAGS = ${CFLAGS} ${CPPFLAGS} ${EXTRA_CXXFLAGS} ${CPP_WARNINGS}
+EXTRA_CFLAGS = ${CFLAGS} ${CPPFLAGS} ${EXTRA_CXXFLAGS} ${CPP_WARNINGS} $(EXTRA_WARNINGS)
 
 #INCLUDEDIR = /usr/src/linux/include
 INCLUDEDIR =
@@ -50,7 +50,8 @@ EXTRA_CFLAGS+=-DPACKAGE=\"${NAME}\" -DLOCALEDIR=\"${LOCALEDIR}\"
 
 SRCS = aa_enabled.c
 HDRS =
-TOOLS = aa-enabled aa-exec
+BINTOOLS = aa-enabled aa-exec aa-features-abi
+SBINTOOLS = aa-status
 
 AALIB = -Wl,-Bstatic -lapparmor  -Wl,-Bdynamic -lpthread
 
@@ -97,7 +98,7 @@ po/%.pot: %.c
 
 # targets arranged this way so that people who don't want full docs can
 # pick specific targets they want.
-arch: 	$(TOOLS)
+arch: 	$(BINTOOLS) $(SBINTOOLS)
 
 manpages:	$(MANPAGES)
 
@@ -110,7 +111,7 @@ all:	arch indep
 
 .PHONY: coverage
 coverage:
-	$(MAKE) clean $(TOOLS) COVERAGE=1
+	$(MAKE) clean $(BINTOOLS) $(SBINTOOLS) COVERAGE=1
 
 ifndef USE_SYSTEM
 $(LIBAPPARMOR_A):
@@ -122,18 +123,27 @@ $(LIBAPPARMOR_A):
 	fi
 endif
 
+aa-features-abi: aa_features_abi.c $(LIBAPPARMOR_A)
+	$(CC) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ $< $(LIBS) $(AALIB)
+
 aa-enabled: aa_enabled.c $(LIBAPPARMOR_A)
 	$(CC) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ $< $(LIBS) $(AALIB) 
 
 aa-exec: aa_exec.c $(LIBAPPARMOR_A)
 	$(CC) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ $< $(LIBS) $(AALIB)
 
+aa-status: aa_status.c cJSON.o $(LIBAPPARMOR_A)
+	$(CC) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ $< $(LIBS) $(AALIB) cJSON.o
+
+cJSON.o: cJSON.c cJSON.h
+	$(CC) $(EXTRA_CFLAGS) -c -o $@ $<
+
 .SILENT: check
 .PHONY: check
 check: check_pod_files tests
 
 .SILENT: tests
-tests: $(TOOLS) $(TESTS)
+tests: $(BINTOOLS) $(SBINTOOLS) $(TESTS)
 	echo "no tests atm"
 
 .PHONY: install
@@ -142,12 +152,16 @@ install: install-indep install-arch
 .PHONY: install-arch
 install-arch: arch
 	install -m 755 -d ${BINDIR}
-	install -m 755 ${TOOLS} ${BINDIR}
+	install -m 755 ${BINTOOLS} ${BINDIR}
+	install -m 755 -d ${SBINDIR}
+	ln -sf aa-status ${SBINDIR}/apparmor_status
+	install -m 755 ${SBINTOOLS} ${SBINDIR}
 
 .PHONY: install-indep
 install-indep: indep
 	$(MAKE) -C po install NAME=${NAME} DESTDIR=${DESTDIR}
 	$(MAKE) install_manpages DESTDIR=${DESTDIR}
+	ln -sf aa-status.8 ${DESTDIR}/${MANDIR}/man8/apparmor_status.8
 
 ifndef VERBOSE
 .SILENT: clean
@@ -156,6 +170,6 @@ endif
 clean: pod_clean
 	rm -f core core.* *.o *.s *.a *~ *.gcda *.gcno
 	rm -f gmon.out
-	rm -f $(TOOLS) $(TESTS)
+	rm -f $(BINTOOLS) $(SBINTOOLS) $(TESTS)
 	$(MAKE) -s -C po clean
 

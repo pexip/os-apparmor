@@ -227,7 +227,18 @@ pattern_t convert_aaregex_to_pcre(const char *aare, int anchor, int glob,
 			} else {
 				update_re_pos(sptr - aare);
 				ptype = ePatternRegex;
-				pcre.append("[^/\\x00]");
+				switch (glob) {
+				case glob_default:
+					pcre.append("[^/\\x00]");
+					break;
+				case glob_null:
+					pcre.append("[^/]");
+					break;
+				default:
+					PERROR(_("%s: Invalid glob type %d\n"), progname, glob);
+					error = e_parse_error;
+					break;
+				}
 			}
 			break;
 
@@ -355,7 +366,7 @@ pattern_t convert_aaregex_to_pcre(const char *aare, int anchor, int glob,
 		case '(':
 		case ')':
 			pcre.append("\\");
-			// fall through to default
+			/* Fall through */
 
 		default:
 			if (bEscape) {
@@ -371,7 +382,7 @@ pattern_t convert_aaregex_to_pcre(const char *aare, int anchor, int glob,
 					/* quoting mark used for something that
 					 * does not need to be quoted; give a
 					 * warning */
-					pwarn("Character %c was quoted "
+					pwarn(WARN_FORMAT, "Character %c was quoted"
 					      "unnecessarily, dropped preceding"
 					      " quote ('\\') character\n",
 					      *sptr);
@@ -432,26 +443,56 @@ static const char *local_name(const char *name)
 	return name;
 }
 
+/*
+ * get_xattr_value returns the value of an xattr expression, performing NULL
+ * checks along the way. The method returns NULL if the xattr match doesn't
+ * have an xattrs (though this case currently isn't permitted by the parser).
+ */
+char *get_xattr_value(struct cond_entry *entry)
+{
+	if (!entry->eq)
+		return NULL;
+	if (!entry->vals)
+		return NULL;
+	return entry->vals->value;
+}
+
+/* do we want to warn once/profile or just once per compile?? */
+static void warn_once_xattr(const char *name)
+{
+	static const char *warned_name = NULL;
+    common_warn_once(name, "xattr attachment conditional ignored", &warned_name);
+}
+
 static int process_profile_name_xmatch(Profile *prof)
 {
 	std::string tbuf;
 	pattern_t ptype;
-	const char *name;
+	char *name;
 
-	/* don't filter_slashes for profile names */
-	if (prof->attachment)
+	struct cond_entry *entry;
+	const char *xattr_value;
+
+	if (prof->attachment) {
 		name = prof->attachment;
-	else
-		name = local_name(prof->name);
+	} else {
+		/* don't filter_slashes for profile names, do on attachment */
+		name = strdup(local_name(prof->name));
+		if (!name)
+			return FALSE;
+	}
+	filter_slashes(name);
 	ptype = convert_aaregex_to_pcre(name, 0, glob_default, tbuf,
 					&prof->xmatch_len);
 	if (ptype == ePatternBasic)
 		prof->xmatch_len = strlen(name);
+	if (!prof->attachment)
+		free(name);
 
 	if (ptype == ePatternInvalid) {
 		PERROR(_("%s: Invalid profile name '%s' - bad regular expression\n"), progname, name);
 		return FALSE;
-	} else if (ptype == ePatternBasic && !(prof->altnames || prof->attachment)) {
+	} else if (ptype == ePatternBasic && !(prof->altnames || prof->attachment || prof->xattrs.list)) {
 		/* no regex so do not set xmatch */
 		prof->xmatch = NULL;
 		prof->xmatch_len = 0;
@@ -470,6 +511,7 @@ static int process_profile_name_xmatch(Profile *prof)
 			list_for_each(prof->altnames, alt) {
 				int len;
 				tbuf.clear();
+				filter_slashes(alt->name);
 				ptype = convert_aaregex_to_pcre(alt->name, 0,
 								glob_default,
 								tbuf, &len);
@@ -479,7 +521,50 @@ static int process_profile_name_xmatch(Profile *prof)
 				}
 			}
 		}
-		prof->xmatch = rules->create_dfa(&prof->xmatch_size, &prof->xmatch_len, dfaflags);
+		if (prof->xattrs.list) {
+			if (!(features_supports_domain_xattr && kernel_supports_oob)) {
+				warn_once_xattr(prof->name);
+				free_cond_entry_list(prof->xattrs);
+				goto build;
+			}
+
+			for (entry = prof->xattrs.list; entry; entry = entry->next) {
+				xattr_value = get_xattr_value(entry);
+				if (!xattr_value)
+					xattr_value = "**"; // Default to allowing any value.
+				/* len is measured because it's required to
+				 * convert the regex to pcre, but doesn't impact
+				 * xmatch_len. The kernel uses the number of
+				 * xattrs matched to prioritized in addition to
+				 * xmatch_len.
+				 */
+				int len;
+				tbuf.clear();
+				/* prepend \x00 to every value. This is
+				 * done to separate the existance of the
+				 * xattr from a null value match.
+				 *
+				 * if an xattr exists, a single \x00 will
+				 * be done before matching any of the
+				 * xattr_value data.
+				 *
+				 * the pattern for a required xattr
+				 *    \x00{value_match}\x-1
+				 * optional xattr (null alternation)
+				 *    {\x00{value_match},}\x-1
+				 */
+				tbuf.append("\\x00");
+				convert_aaregex_to_pcre(xattr_value, 0,
+							glob_null, tbuf,
+							&len);
+				if (!rules->append_rule(tbuf.c_str(), true, true, dfaflags)) {
+					delete rules;
+					return FALSE;
+				}
+			}
+		}
+build:
+		prof->xmatch = rules->create_dfa(&prof->xmatch_size, &prof->xmatch_len, dfaflags, true);
 		delete rules;
 		if (!prof->xmatch)
 			return FALSE;
@@ -564,6 +649,7 @@ static int process_dfa_entry(aare_rules *dfarules, struct cod_entry *entry)
 		int pos;
 		vec[0] = tbuf.c_str();
 		if (entry->link_name) {
+			filter_slashes(entry->link_name);
 			ptype = convert_aaregex_to_pcre(entry->link_name, 0, glob_default, lbuf, &pos);
 			if (ptype == ePatternInvalid)
 				return FALSE;
@@ -574,7 +660,7 @@ static int process_dfa_entry(aare_rules *dfarules, struct cod_entry *entry)
 			perms |= LINK_TO_LINK_SUBSET(perms);
 			vec[1] = "/[^/].*";
 		}
-		if (!dfarules->add_rule_vec(entry->deny, perms, entry->audit & AA_LINK_BITS, 2, vec, dfaflags))
+		if (!dfarules->add_rule_vec(entry->deny, perms, entry->audit & AA_LINK_BITS, 2, vec, dfaflags, false))
 			return FALSE;
 	}
 	if (is_change_profile_mode(entry->mode)) {
@@ -602,7 +688,7 @@ static int process_dfa_entry(aare_rules *dfarules, struct cod_entry *entry)
 			/* allow change_profile for all execs */
 			vec[0] = "/[^/\\x00][^\\x00]*";
 
-		if (!kernel_supports_stacking) {
+		if (!features_supports_stacking) {
 			bool stack;
 
 			if (!parse_label(&stack, &ns, &name,
@@ -627,12 +713,12 @@ static int process_dfa_entry(aare_rules *dfarules, struct cod_entry *entry)
 		/* regular change_profile rule */
 		if (!dfarules->add_rule_vec(entry->deny,
 					    AA_CHANGE_PROFILE | onexec_perms,
-					    0, index - 1, &vec[1], dfaflags))
+					    0, index - 1, &vec[1], dfaflags, false))
 			return FALSE;
 
 		/* onexec rules - both rules are needed for onexec */
 		if (!dfarules->add_rule_vec(entry->deny, onexec_perms,
-					    0, 1, vec, dfaflags))
+					    0, 1, vec, dfaflags, false))
 			return FALSE;
 
 		/**
@@ -641,7 +727,7 @@ static int process_dfa_entry(aare_rules *dfarules, struct cod_entry *entry)
 		 */
 		onexec_perms |= (entry->mode & (AA_EXEC_BITS | ALL_AA_EXEC_UNSAFE));
 		if (!dfarules->add_rule_vec(entry->deny, onexec_perms,
-					    0, index, vec, dfaflags))
+					    0, index, vec, dfaflags, false))
 			return FALSE;
 	}
 	return TRUE;
@@ -677,7 +763,7 @@ int process_profile_regex(Profile *prof)
 	if (prof->dfa.rules->rule_count > 0) {
 		int xmatch_len = 0;
 		prof->dfa.dfa = prof->dfa.rules->create_dfa(&prof->dfa.size,
-							    &xmatch_len, dfaflags);
+							    &xmatch_len, dfaflags, true);
 		delete prof->dfa.rules;
 		prof->dfa.rules = NULL;
 		if (!prof->dfa.dfa)
@@ -762,6 +848,80 @@ int post_process_policydb_ents(Profile *prof)
 	return TRUE;
 }
 
+
+static bool gen_net_rule(Profile *prof, u16 family, unsigned int type_mask,
+			 bool audit, bool deny) {
+	std::ostringstream buffer;
+	std::string buf;
+
+	buffer << "\\x" << std::setfill('0') << std::setw(2) << std::hex << AA_CLASS_NETV8;
+	buffer << "\\x" << std::setfill('0') << std::setw(2) << std::hex << ((family & 0xff00) >> 8);
+	buffer << "\\x" << std::setfill('0') << std::setw(2) << std::hex << (family & 0xff);
+	if (type_mask > 0xffff) {
+		buffer << "..";
+	} else {
+		buffer << "\\x" << std::setfill('0') << std::setw(2) << std::hex << ((type_mask & 0xff00) >> 8);
+		buffer << "\\x" << std::setfill('0') << std::setw(2) << std::hex << (type_mask & 0xff);
+	}
+	buf = buffer.str();
+	if (!prof->policy.rules->add_rule(buf.c_str(), deny, map_perms(AA_VALID_NET_PERMS),
+					  audit ? map_perms(AA_VALID_NET_PERMS) : 0,
+					  dfaflags))
+		return false;
+
+	return true;
+}
+
+static bool gen_af_rules(Profile *prof, u16 family, unsigned int type_mask,
+			  unsigned int audit_mask, bool deny)
+{
+	if (type_mask > 0xffff && audit_mask > 0xffff) {
+		/* instead of generating multiple rules wild card type */
+		return gen_net_rule(prof, family, type_mask, audit_mask, deny);
+	} else {
+		int t;
+		/* generate rules for types that are set */
+		for (t = 0; t < 16; t++) {
+			if (type_mask & (1 << t)) {
+				if (!gen_net_rule(prof, family, t,
+						  audit_mask & (1 << t),
+						  deny))
+					return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+bool post_process_policydb_net(Profile *prof)
+{
+	u16 af;
+
+	/* no network rules defined so we don't have generate them */
+	if (!prof->net.allow)
+		return true;
+
+	/* generate rules if the af has something set */
+	for (af = AF_UNSPEC; af < get_af_max(); af++) {
+		if (prof->net.allow[af] ||
+		    prof->net.deny[af] ||
+		    prof->net.audit[af] ||
+		    prof->net.quiet[af]) {
+			if (!gen_af_rules(prof, af, prof->net.allow[af],
+					  prof->net.audit[af],
+					  false))
+				return false;
+			if (!gen_af_rules(prof, af, prof->net.deny[af],
+					  prof->net.quiet[af],
+					  true))
+				return false;
+		}
+	}
+
+	return true;
+}
+
 #define MAKE_STR(X) #X
 #define CLASS_STR(X) "\\d" MAKE_STR(X)
 #define MAKE_SUB_STR(X) "\\000" MAKE_STR(X)
@@ -773,6 +933,7 @@ static const char *mediates_dbus =  CLASS_STR(AA_CLASS_DBUS);
 static const char *mediates_signal =  CLASS_STR(AA_CLASS_SIGNAL);
 static const char *mediates_ptrace =  CLASS_STR(AA_CLASS_PTRACE);
 static const char *mediates_extended_net = CLASS_STR(AA_CLASS_NET);
+static const char *mediates_netv8 = CLASS_STR(AA_CLASS_NETV8);
 static const char *mediates_net_unix = CLASS_SUB_STR(AA_CLASS_NET, AF_UNIX);
 
 int process_profile_policydb(Profile *prof)
@@ -785,6 +946,9 @@ int process_profile_policydb(Profile *prof)
 
 	if (!post_process_policydb_ents(prof))
 		goto out;
+	/* TODO: move to network class */
+	if (features_supports_networkv8 && !post_process_policydb_net(prof))
+		goto out;
 
 	/* insert entries to show indicate what compiler/policy expects
 	 * to be supported
@@ -794,19 +958,22 @@ int process_profile_policydb(Profile *prof)
 	if (kernel_abi_version > 5 &&
 	    !prof->policy.rules->add_rule(mediates_file, 0, AA_MAY_READ, 0, dfaflags))
 		goto out;
-	if (kernel_supports_mount &&
+	if (features_supports_mount &&
 	    !prof->policy.rules->add_rule(mediates_mount, 0, AA_MAY_READ, 0, dfaflags))
 			goto out;
-	if (kernel_supports_dbus &&
+	if (features_supports_dbus &&
 	    !prof->policy.rules->add_rule(mediates_dbus, 0, AA_MAY_READ, 0, dfaflags))
 		goto out;
-	if (kernel_supports_signal &&
+	if (features_supports_signal &&
 	    !prof->policy.rules->add_rule(mediates_signal, 0, AA_MAY_READ, 0, dfaflags))
 		goto out;
-	if (kernel_supports_ptrace &&
+	if (features_supports_ptrace &&
 	    !prof->policy.rules->add_rule(mediates_ptrace, 0, AA_MAY_READ, 0, dfaflags))
 		goto out;
-	if (kernel_supports_unix &&
+	if (features_supports_networkv8 &&
+	    !prof->policy.rules->add_rule(mediates_netv8, 0, AA_MAY_READ, 0, dfaflags))
+		goto out;
+	if (features_supports_unix &&
 	    (!prof->policy.rules->add_rule(mediates_extended_net, 0, AA_MAY_READ, 0, dfaflags) ||
 	     !prof->policy.rules->add_rule(mediates_net_unix, 0, AA_MAY_READ, 0, dfaflags)))
 		goto out;
@@ -814,7 +981,7 @@ int process_profile_policydb(Profile *prof)
 	if (prof->policy.rules->rule_count > 0) {
 		int xmatch_len = 0;
 		prof->policy.dfa = prof->policy.rules->create_dfa(&prof->policy.size,
-														  &xmatch_len, dfaflags);
+								  &xmatch_len, dfaflags, false);
 		delete prof->policy.rules;
 
 		prof->policy.rules = NULL;

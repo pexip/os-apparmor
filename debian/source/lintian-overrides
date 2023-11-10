@@ -1,6 +1,8 @@
-# We replace usr/lib/perl5 with the corresponding multiarch path in debian/rules,
-# as a consequence this file contains this string.
-apparmor source: mentions-deprecated-usr-lib-perl5-directory rules
-
-# This is the manpage for a Debian/Ubuntu-specific script
-apparmor source: maintainer-manual-page debian/aa-update-browser.8
+# We don't build these libraries
+apparmor source: package-does-not-install-examples [libraries/libapparmor/swig/perl/examples/]
+apparmor source: package-does-not-install-examples [libraries/libapparmor/swig/ruby/examples/]
+# Source is the corresponding .pod file
+apparmor source: source-is-missing [changehat/mod_apparmor/mod_apparmor.8.html]
+apparmor source: source-is-missing [parser/apparmor.d.5.html]
+apparmor source: source-is-missing [parser/apparmor_parser.8.html]
+apparmor source: source-is-missing [utils/aa-unconfined.8.html]

@@ -1,0 +1,50 @@
+From: John Johansen <john@jjmx.net>
+Date: Tue, 24 Jan 2023 21:42:25 +0000
+Subject: Merge Fix: Opening links with Brave
+
+Resolves #292.
+
+This fix is the same as !830 but for Brave.
+Opening links in Brave now works as intended.
+
+Note that now a separate denial is caused, related to WidevineCDM, is produced:
+```
+[ERROR:content_main_runner_impl.cc(415)] Unable to load CDM /home/username/.config/BraveSoftware/Brave-Browser/WidevineCdm/4.10.2557.0/_platform_specific/linux_x64/libwidevinecdm.so (error: /home/username/.config/BraveSoftware/Brave-Browser/WidevineCdm/4.10.2557.0/_platform_specific/linux_x64/libwidevinecdm.so: failed to map segment from shared object)
+```
+
+In the syslog:
+```
+audit: type=1400 audit(1671108748.090:117): apparmor="DENIED" operation="file_mmap" profile="/usr/bin/evince//sanitized_helper" name="/home/username/.config/BraveSoftware/Brave-Browser/WidevineCdm/4.10.2557.0/_platform_specific/linux_x64/libwidevinecdm.so" pid=65765 comm="brave" requested_mask="m" denied_mask="m" fsuid=1000 ouid=100
+```
+
+I'm not sure if granting permission(s) for this is desirable. In either case, the potential relevant changes are out of the scope of this MR.
+
+If I disable WidevineCDM in Brave, I get the following denial on cap sys_admin:
+```
+audit: type=1400 audit(1671112807.666:174): apparmor="DENIED" operation="capable" profile="/usr/bin/evince//sanitized_helper" pid=112098 comm="brave" capability=21  capname="sys_admin"
+```
+which is fine, as mentioned by @jjohansen [here](https://gitlab.com/apparmor/apparmor/-/merge_requests/830#note_831915024).
+
+Closes #292
+MR: https://gitlab.com/apparmor/apparmor/-/merge_requests/957
+Approved-by: John Johansen <john@jjmx.net>
+Merged-by: John Johansen <john@jjmx.net>
+
+(cherry picked from commit 5fd8c25745020f816cb96d6daa15af0c140914e3)
+Signed-off-by: John Johansen <john.johansen@canonical.com>
+---
+ profiles/apparmor.d/abstractions/ubuntu-helpers | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/profiles/apparmor.d/abstractions/ubuntu-helpers b/profiles/apparmor.d/abstractions/ubuntu-helpers
+index b9a3b1c..7e07ef4 100644
+--- a/profiles/apparmor.d/abstractions/ubuntu-helpers
++++ b/profiles/apparmor.d/abstractions/ubuntu-helpers
+@@ -79,6 +79,7 @@ profile sanitized_helper {
+   /opt/brave.com/brave{,-beta,-dev,-nightly}/chrome-sandbox PUxr,
+   /opt/brave.com/brave{,-beta,-dev,-nightly}/brave-browser{,-beta,-dev,-nightly} Pixr,
+   /opt/brave.com/brave{,-beta,-dev,-nightly}/brave Pixr,
++  /opt/brave.com/brave{,-beta,-dev,-nightly}/chrome_crashpad_handler Pixr,
+   /opt/brave.com/brave{,-beta,-dev,-nightly}/{,**/}lib*.so{,.*} m,
+ 
+   # Full access

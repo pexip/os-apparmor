@@ -41,7 +41,7 @@ ifdef USE_SYSTEM
     LOGPROF?=aa-logprof
 else
     # PYTHON_DIST_BUILD_PATH based on libapparmor/swig/python/test/Makefile.am
-    PYTHON_DIST_BUILD_PATH = ../libraries/libapparmor/swig/python/build/$$($(PYTHON) -c "import distutils.util; import platform; print(\"lib.%s-%s\" %(distutils.util.get_platform(), platform.python_version()[:3]))")
+    PYTHON_DIST_BUILD_PATH = ../libraries/libapparmor/swig/python/build/$$($(PYTHON) ../libraries/libapparmor/swig/python/test/buildpath.py)
     LIBAPPARMOR_PATH=../libraries/libapparmor/src/.libs/
     LD_LIBRARY_PATH=$(LIBAPPARMOR_PATH):$(PYTHON_DIST_BUILD_PATH)
     PYTHONPATH=../utils/:$(PYTHON_DIST_BUILD_PATH)
@@ -82,7 +82,7 @@ local:
 	for profile in ${TOPLEVEL_PROFILES}; do \
 		fn=$$(basename $$profile); \
 		echo "# Site-specific additions and overrides for '$$fn'" > ${PROFILES_SOURCE}/local/$$fn; \
-		grep "include[[:space:]]\\+<local/$$fn>" "$$profile" >/dev/null || { echo "$$profile doesn't contain #include <local/$$fn>" ; exit 1; } ; \
+		grep "include[[:space:]]\\+if[[:space:]]\\+exists[[:space:]]\\+<local/$$fn>" "$$profile" >/dev/null || { echo "$$profile doesn't contain include if exists <local/$$fn>" ; exit 1; } ; \
 	done; \
 
 .PHONY: install
@@ -119,7 +119,7 @@ CHECK_PROFILES=$(filter-out ${IGNORE_FILES} ${SUBDIRS}, $(wildcard ${PROFILES_SO
 CHECK_ABSTRACTIONS=$(shell find ${ABSTRACTIONS_SOURCE} -type f -print)
 
 .PHONY: check
-check: check-parser check-logprof
+check: check-parser check-logprof check-abstractions.d
 
 .PHONY: check-parser
 check-parser: test-dependencies local
@@ -132,7 +132,7 @@ check-parser: test-dependencies local
 	@echo "*** Checking abstractions from ${ABSTRACTIONS_SOURCE} against apparmor_parser"
 	$(Q)for abstraction in ${CHECK_ABSTRACTIONS} ; do \
 	        [ -n "${VERBOSE}" ] && echo "Testing $${abstraction}" ; \
-		echo "#include <tunables/global> profile test { #include <$${abstraction}> }" \
+		echo "abi <abi/3.0>, #include <tunables/global> profile test { #include <$${abstraction}> }" \
 		| ${PARSER} --config-file=../parser/tst/parser.conf -S -b ${PWD}/apparmor.d -I ${PWD} > /dev/null \
 		|| exit 1; \
 	done
@@ -141,3 +141,13 @@ check-parser: test-dependencies local
 check-logprof: test-dependencies local
 	@echo "*** Checking profiles from ${PROFILES_SOURCE} against logprof"
 	$(Q)${LOGPROF} -d ${PROFILES_SOURCE} -f /dev/null || exit 1
+
+.PHONY: check-abstractions.d
+check-abstractions.d:
+	@echo "*** Checking if all abstractions (with a few exceptions) contain include if exists <abstractions/*.d>"
+	$(Q)cd apparmor.d/abstractions && for file in * ; do \
+		test -d "$$file" &&  continue ;  \
+		test "$$file" = 'ubuntu-browsers' && continue ; \
+		test "$$file" = 'ubuntu-helpers' && continue ; \
+		grep -q "^  include if exists <abstractions/$${file}.d>$$" $$file || { echo "$$file does not contain 'include if exists <abstractions/$${file}.d>'"; exit 1; } ; \
+	done

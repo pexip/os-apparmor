@@ -70,6 +70,10 @@ AppArmor extensions to the system are not available.
 
 AppArmor is available on the system but has been disabled at boot.
 
+=item B<EBUSY>
+
+AppArmor is available but only via private interfaces.
+
 =item B<ENOENT>
 
 AppArmor is available (and maybe even enforcing policy) but the interface is
@@ -86,6 +90,11 @@ Did not have sufficient permissions to determine if AppArmor is enabled.
 =item B<EACCES>
 
 Did not have sufficient permissions to determine if AppArmor is enabled.
+
+=item B<EBUSY>
+
+AppArmor is enabled but does not have access to shared interfaces, and
+only private interfaces are available.
 
 =back
 
@@ -110,7 +119,7 @@ The apparmor filesystem mount could not be found
 =head1 BUGS
 
 None known. If you find any, please report them at
-L<https://bugs.launchpad.net/apparmor/+filebug>.
+L<https://gitlab.com/apparmor/apparmor/-/issues>.
 
 =head1 SEE ALSO
 

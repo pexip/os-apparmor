@@ -1,0 +1,45 @@
+From: John Johansen <john@jjmx.net>
+Date: Wed, 4 Jan 2023 17:32:40 +0000
+Subject: Merge aa-status: Fix malformed json output with unconfined processes
+
+As reported in issue #295, the json output from aa-status would be invalid if
+there were profiles defined for processes that were unconfined. Fix this by
+ensuring the json for the processes array is closed properly.
+
+Signed-off-by: Alex Murray <alex.murray@canonical.com>
+
+MR: https://gitlab.com/apparmor/apparmor/-/merge_requests/964
+Approved-by: John Johansen <john@jjmx.net>
+Merged-by: John Johansen <john@jjmx.net>
+(cherry picked from commit dfc9847f89f5b960b42dda1bcfdd212ee2210c59)
+Signed-off-by: John Johansen <john.johansen@canonical.com>
+---
+ binutils/aa_status.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/binutils/aa_status.c b/binutils/aa_status.c
+index 57610d5..900c559 100644
+--- a/binutils/aa_status.c
++++ b/binutils/aa_status.c
+@@ -534,16 +534,19 @@ static int detailed_output(FILE *json) {
+ 				} else {
+ 					fprintf(json, "%s\"%s\": [{\"profile\": \"%s\", \"pid\": \"%s\", \"status\": \"%s\"}",
+ 					       // first element will be a unique executable
+-					       i == 0 && j == 0 ? "" : "], ",
++					       j == 0 ? "" : "], ",
+ 					       filtered[j].exe, filtered[j].profile, filtered[j].pid, filtered[j].mode);
+ 				}
+ 
+ 			}
++			if (j > 0) {
++				fprintf(json, "]");
++			}
+ 		}
+ 		free_processes(filtered, nfiltered);
+ 	}
+ 	if (json) {
+-		fprintf(json, "%s}}\n", nprocesses > 0 ? "]" : "");
++		fprintf(json, "}}\n");
+ 	}
+ 
+ exit:

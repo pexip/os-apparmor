@@ -22,7 +22,6 @@
 
 #include <iomanip>
 #include <string>
-#include <iostream>
 #include <sstream>
 
 int parse_ptrace_mode(const char *str_mode, int *mode, int fail)
@@ -100,20 +99,9 @@ int ptrace_rule::expand_variables(void)
 	return expand_entry_variables(&peer_label);
 }
 
-/* do we want to warn once/profile or just once per compile?? */
-static void warn_once(const char *name)
+void ptrace_rule::warn_once(const char *name)
 {
-	static const char *warned_name = NULL;
-
-	if ((warnflags & WARN_RULE_NOT_ENFORCED) && warned_name != name) {
-		cerr << "Warning from profile " << name << " (";
-		if (current_filename)
-			cerr << current_filename;
-		else
-			cerr << "stdin";
-		cerr << ") ptrace rules not enforced\n";
-		warned_name = name;
-	}
+	rule_t::warn_once(name, "ptrace rules not enforced");
 }
 
 int ptrace_rule::gen_policy_re(Profile &prof)
@@ -128,7 +116,7 @@ int ptrace_rule::gen_policy_re(Profile &prof)
 	 * the compile could be used on another kernel unchanged??
 	 * Current caching doesn't support this but in the future maybe
 	 */
-	if (!kernel_supports_ptrace) {
+	if (!features_supports_ptrace) {
 		warn_once(prof.name);
 		return RULE_NOT_SUPPORTED;
 	}

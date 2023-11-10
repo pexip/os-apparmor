@@ -75,7 +75,7 @@ class AATestTemplate(unittest.TestCase, metaclass=AANoCleanupMetaClass):
             self.assertIn(expected_string, report, 'Expected message "%s", got: \n%s' % (expected_string, report))
         return report
 
-    def run_cmd(self, command, input=None, stderr=subprocess.STDOUT, stdout=subprocess.PIPE,
+    def run_cmd(self, command, input=None, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                 stdin=None, timeout=120):
         '''Try to execute given command (array) and return its stdout, or
            return a textual error if it failed.'''
@@ -83,11 +83,20 @@ class AATestTemplate(unittest.TestCase, metaclass=AANoCleanupMetaClass):
         if self.debug:
             print('\n===> Running command: \'%s\'' % (' '.join(command)))
 
+        (rc, out, outerr) = self._run_cmd(command, input, stderr, stdout, stdin, timeout)
+        report = out + outerr
+
+        return [rc, report]
+
+    def _run_cmd(self, command, input=None, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
+                 stdin=None, timeout=120):
+        '''Try to execute given command (array) and return its rc, stdout, and stderr as a tuple'''
+
         try:
             sp = subprocess.Popen(command, stdin=stdin, stdout=stdout, stderr=stderr,
-                                  close_fds=True, preexec_fn=subprocess_setup)
+                                  close_fds=True, preexec_fn=subprocess_setup, universal_newlines=True)
         except OSError as e:
-            return [127, str(e)]
+            return [127, str(e), '']
 
         timeout_communicate = TimeoutFunction(sp.communicate, timeout)
         out, outerr = (None, None)
@@ -96,19 +105,17 @@ class AATestTemplate(unittest.TestCase, metaclass=AANoCleanupMetaClass):
             rc = sp.returncode
         except TimeoutFunctionException as e:
             sp.terminate()
-            outerr = b'test timed out, killed'
+            outerr = 'test timed out, killed'
             rc = TIMEOUT_ERROR_CODE
 
         # Handle redirection of stdout
         if out is None:
-            out = b''
+            out = ''
         # Handle redirection of stderr
         if outerr is None:
-            outerr = b''
+            outerr = ''
 
-        report = out.decode('utf-8') + outerr.decode('utf-8')
-
-        return [rc, report]
+        return (rc, out, outerr)
 
 
 # Timeout handler using alarm() from John P. Speno's Pythonic Avocado
@@ -173,7 +180,7 @@ def read_features_dir(path):
     if not os.path.exists(path) or not os.path.isdir(path):
         return result
 
-    for name in os.listdir(path):
+    for name in sorted(os.listdir(path)):
         entry = os.path.join(path, name)
         result += '%s {' % name
         if os.path.isfile(entry):
@@ -197,5 +204,3 @@ def write_file(directory, file, contents):
     with open(path, 'w+') as f:
         f.write(contents)
     return path
-
-

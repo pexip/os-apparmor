@@ -72,7 +72,7 @@ void string_buf_append(unsigned int length, char *text)
 
 %}
 
-ws		[ \t\r\n]
+ws		[ \t\r\n\x1d]
 
 equals		"="
 digit		[[:digit:]]
@@ -138,7 +138,9 @@ key_sock_type		"sock_type"
 key_protocol		"protocol"
 key_error		"error"
 key_fsuid		"fsuid"
+key_fsuid_upper		"FSUID"
 key_ouid		"ouid"
+key_ouid_upper		"OUID"
 key_uid			"uid"
 key_auid		"auid"
 key_sauid		"sauid"
@@ -172,6 +174,7 @@ audit			"audit"
 ip_addr			[a-f[:digit:].:]{3,}
 
 /* syslog tokens */
+socklogd_kernel		kern.notice{colon}
 syslog_kernel		kernel{colon}
 syslog_user		[[:alnum:]_-]+\[[[:digit:]]+\]{colon}
 syslog_yyyymmdd		{digit}{4}{minus}{digit}{2}{minus}{digit}{2}
@@ -323,7 +326,9 @@ yy_flex_debug = 0;
 {key_protocol}		{ return(TOK_KEY_PROTOCOL); }
 {key_error}		{ return(TOK_KEY_ERROR); }
 {key_fsuid}		{ return(TOK_KEY_FSUID); }
+{key_fsuid_upper}	{ return(TOK_KEY_FSUID_UPPER); }
 {key_ouid}		{ return(TOK_KEY_OUID); }
+{key_ouid_upper}	{ return(TOK_KEY_OUID_UPPER); }
 {key_uid}		{ return(TOK_KEY_UID); }
 {key_auid}		{ return(TOK_KEY_AUID); }
 {key_sauid}		{ return(TOK_KEY_SAUID); }
@@ -351,6 +356,7 @@ yy_flex_debug = 0;
 {key_flags}		{ BEGIN(safe_string); return(TOK_KEY_FLAGS); }
 {key_srcname}		{ BEGIN(safe_string); return(TOK_KEY_SRCNAME); }
 
+{socklogd_kernel}	{ BEGIN(dmesg_timestamp); return(TOK_SOCKLOGD_KERNEL); }
 {syslog_kernel}		{ BEGIN(dmesg_timestamp); return(TOK_SYSLOG_KERNEL); }
 {syslog_user}		{ return(TOK_SYSLOG_USER); }
 {syslog_month}		{ yylval->t_str = strdup(yytext); return(TOK_DATE_MONTH); }
@@ -365,6 +371,7 @@ yy_flex_debug = 0;
 
 <hostname>{
 	{ws}+		{ /* eat whitespace */ }
+	{socklogd_kernel} { BEGIN(dmesg_timestamp); return(TOK_SOCKLOGD_KERNEL); }
 	{syslog_hostname} { yylval->t_str = strdup(yytext); BEGIN(INITIAL); return(TOK_ID); }
 }
 

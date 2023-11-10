@@ -26,16 +26,20 @@ INCLUDES = $(all_includes)
 # For more information, see:
 # http://www.gnu.org/software/libtool/manual/html_node/Libtool-versioning.html
 #
-AA_LIB_CURRENT = 7
-AA_LIB_REVISION = 3
-AA_LIB_AGE = 6
+AA_LIB_CURRENT = 9
+AA_LIB_REVISION = 4
+AA_LIB_AGE = 8
+EXPECTED_SO_NAME = libapparmor.so.1.8.3
 
 SUFFIXES = .pc.in .pc
+
+COMMONDIR=$(top_srcdir)/../../common/
+include $(COMMONDIR)/Make.rules
 
 BUILT_SOURCES = grammar.h scanner.h af_protos.h
 AM_LFLAGS = -v
 AM_YFLAGS = -d -p aalogparse_
-AM_CFLAGS = -Wall
+AM_CFLAGS = -Wall $(EXTRA_WARNINGS) -fPIC -flto-partition=none
 AM_CPPFLAGS = -D_GNU_SOURCE -I$(top_srcdir)/include/
 scanner.h: scanner.l
 	$(LEX) -v $<
@@ -43,7 +47,7 @@ scanner.h: scanner.l
 scanner.c: scanner.l
 
 af_protos.h:
-	 echo '#include <netinet/in.h>' | $(CC) -E -dM - | LC_ALL=C  sed  -n -e "/IPPROTO_MAX/d"  -e "s/^\#define[ \\t]\\+IPPROTO_\\([A-Z0-9_]\\+\\)\\(.*\\)$$/AA_GEN_PROTO_ENT(\\UIPPROTO_\\1, \"\\L\\1\")/p" > $@
+	 echo '#include <netinet/in.h>' | $(CC) $(CPPFLAGS) -E -dM - | LC_ALL=C  sed  -n -e "/IPPROTO_MAX/d"  -e "s/^\#define[ \\t]\\+IPPROTO_\\([A-Z0-9_]\\+\\)\\(.*\\)$$/AA_GEN_PROTO_ENT(\\UIPPROTO_\\1, \"\\L\\1\")/p" > $@
 
 lib_LTLIBRARIES = libapparmor.la
 noinst_HEADERS = grammar.h parser.h scanner.h af_protos.h private.h PMurHash.h
@@ -73,5 +77,9 @@ tst_kernel_LDFLAGS = -pthread
 
 check_PROGRAMS = tst_aalogmisc tst_features tst_kernel
 TESTS = $(check_PROGRAMS)
+
+.PHONY: check-local
+check-local:
+	test -f ./.libs/$(EXPECTED_SO_NAME) || { echo '*** unexpected .so name/number for libapparmor (expected $(EXPECTED_SO_NAME), the actual filename is shown below) ***' ; ls -l ./.libs/libapparmor.so.*.* ; exit 1; }
 
 EXTRA_DIST = grammar.y scanner.l libapparmor.map libapparmor.pc

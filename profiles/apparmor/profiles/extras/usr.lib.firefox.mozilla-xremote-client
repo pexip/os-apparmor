@@ -10,11 +10,13 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+abi <abi/3.0>,
+
+include <tunables/global>
 
 /usr/lib/firefox/mozilla-xremote-client {
-  #include <abstractions/base>
-  #include <abstractions/X>
+  include <abstractions/base>
+  include <abstractions/X>
 
   /usr/lib/mozilla/lib*so* mr,
   /usr/lib/firefox/mozilla-xremote-client rmix,

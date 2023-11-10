@@ -118,6 +118,7 @@ int load_profile(int option, aa_kernel_interface *kernel_interface,
 		case OPTION_OFILE:
 			PERROR(_("%s: Unable to write to output file\n"),
 			       progname);
+			break;
 		default:
 			PERROR(_("%s: ASSERT: Invalid option: %d\n"),
 			       progname, option);
@@ -370,6 +371,28 @@ void sd_serialize_xtable(std::ostringstream &buf, char **table)
 	sd_write_structend(buf);
 }
 
+void sd_serialize_xattrs(std::ostringstream &buf, struct cond_entry_list xattrs)
+{
+	int count;
+	struct cond_entry *entry;
+
+	if (!(xattrs.list))
+		return;
+
+	count = 0;
+	for (entry = xattrs.list; entry; entry = entry->next) {
+		count++;
+	}
+
+	sd_write_struct(buf, "xattrs");
+	sd_write_array(buf, NULL, count);
+	for (entry = xattrs.list; entry; entry = entry->next) {
+		sd_write_string(buf, entry->name, NULL);
+	}
+	sd_write_arrayend(buf);
+	sd_write_structend(buf);
+}
+
 void sd_serialize_profile(std::ostringstream &buf, Profile *profile,
 			 int flattened)
 {
@@ -398,7 +421,7 @@ void sd_serialize_profile(std::ostringstream &buf, Profile *profile,
 	sd_write_struct(buf, "flags");
 	/* used to be flags.debug, but that's no longer supported */
 	sd_write_uint32(buf, profile->flags.hat);
-	sd_write_uint32(buf, profile->flags.complain);
+	sd_write_uint32(buf, profile_mode_packed(profile->flags.mode));
 	sd_write_uint32(buf, profile->flags.audit);
 	sd_write_structend(buf);
 	if (profile->flags.path) {
@@ -431,9 +454,14 @@ void sd_serialize_profile(std::ostringstream &buf, Profile *profile,
 	sd_write_uint32(buf, 0);
 	sd_write_structend(buf);
 
+	sd_serialize_xattrs(buf, profile->xattrs);
+
 	sd_serialize_rlimits(buf, &profile->rlimits);
 
-	if (profile->net.allow && kernel_supports_network) {
+	/* choice to support / downgrade needs to already have been made */
+	if (features_supports_networkv8) {
+		/* nothing - encoded in policydb */
+	} else if (profile->net.allow && features_supports_network) {
 		size_t i;
 		sd_write_array(buf, "net_allowed_af", get_af_max());
 		for (i = 0; i < get_af_max(); i++) {
@@ -444,8 +472,8 @@ void sd_serialize_profile(std::ostringstream &buf, Profile *profile,
 			sd_write_uint16(buf, profile->net.deny[i] & profile->net.quiet[i]);
 		}
 		sd_write_arrayend(buf);
-	} else if (profile->net.allow && (warnflags & WARN_RULE_NOT_ENFORCED))
-		pwarn(_("profile %s network rules not enforced\n"), profile->name);
+	} else if (profile->net.allow)
+		pwarn(WARN_RULE_NOT_ENFORCED, _("profile %s network rules not enforced\n"), profile->name);
 
 	if (profile->policy.dfa) {
 		sd_write_struct(buf, "policydb");

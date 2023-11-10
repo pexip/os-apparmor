@@ -93,7 +93,7 @@ class ChangeProfileTestParseInvalid(ChangeProfileTest):
 
 class ChangeProfileTestParseFromLog(ChangeProfileTest):
     def test_change_profile_from_log(self):
-        parser = ReadLog('', '', '', '')
+        parser = ReadLog('', '', '')
 
         event = 'type=AVC msg=audit(1428699242.551:386): apparmor="DENIED" operation="change_profile" profile="/foo/changeprofile" pid=3459 comm="changeprofile" target="/foo/rename"'
 
@@ -185,7 +185,7 @@ class InvalidChangeProfileTest(AATest):
         obj = None
         self.assertFalse(ChangeProfileRule.match(rawrule))
         with self.assertRaises(AppArmorException):
-            obj = ChangeProfileRule(ChangeProfileRule.parse(rawrule))
+            obj = ChangeProfileRule.parse(rawrule)
 
         self.assertIsNone(obj, 'ChangeProfileRule handed back an object unexpectedly')
 

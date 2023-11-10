@@ -1,3 +1,372 @@
+apparmor (3.0.8-3) unstable; urgency=medium
+
+  * Cherry-pick a few small, targeted fixes from upstream 3.0 branch
+
+ -- intrigeri <intrigeri@debian.org>  Tue, 14 Feb 2023 11:49:15 +0000
+
+apparmor (3.0.8-2) unstable; urgency=medium
+
+  * Only pin the policy ABI, not the kernel ABI.
+    This brings back the desired behavior that we had on Bullseye.
+    Fixes regression introduced in 3.0.3-1.
+  * Drop obsolete dependency on lsb-base: it's transitional
+    and provided by sysvinit-utils, which is essential
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 18 Jan 2023 11:10:22 +0000
+
+apparmor (3.0.8-1) unstable; urgency=medium
+
+  * New upstream release
+  * debian/watch: only track the 3.0 series for now
+  * Add upstream patch to fix test suite
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 10 Dec 2022 17:54:51 +0000
+
+apparmor (3.0.7-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- intrigeri <intrigeri@debian.org>  Tue, 16 Aug 2022 14:09:22 +0000
+
+apparmor (3.0.6-1) unstable; urgency=medium
+
+  * New upstream release (Closes: #1015354)
+  * Drop patch that was applied upstream
+  * Enable LTO
+  * Declare compliance with Policy 4.6.1
+
+ -- intrigeri <intrigeri@debian.org>  Tue, 02 Aug 2022 09:15:54 +0000
+
+apparmor (3.0.5-1) unstable; urgency=medium
+
+  * New upstream release
+  * Drop patches that were applied upstream
+  * Drop profile-load script: part of upstream 3.0.5
+  * Install newly upstreamed aa-notify.desktop instead of the custom Debian one
+  * Rename debian/master branch to debian/unstable
+  * New patch, to fix new upstream "dirtest" test
+  * Install new samba-* profiles
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 25 Jul 2022 13:46:44 +0000
+
+apparmor (3.0.4-3) unstable; urgency=medium
+
+  * Cherry-pick 7 patches from upstream apparmor-3.0 branch (Closes: #1003153)
+  * Adjust overrides for recent Lintian
+  * Override Lintian false positives
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 06 Jul 2022 07:48:25 +0000
+
+apparmor (3.0.4-2) unstable; urgency=medium
+
+  * Add upstream commit that makes the test suite compatible with Python 3.10
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 23 Feb 2022 09:48:59 +0000
+
+apparmor (3.0.4-1) unstable; urgency=medium
+
+  * New upstream release
+  * apparmor-profiles: install new samba-bgqd profile
+  * Drop backported patches that are now obsolete
+  * debian/allow-access-to-ibus-socket.patch: drop support for pre-Bullseye
+    ibus path
+  * Declare compliance with Policy 4.6.0.1
+  * Drop XS- prefix for adopted Python-Version control field
+  * Add new symbols
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 12 Feb 2022 12:34:23 +0000
+
+apparmor (3.0.3-6) unstable; urgency=medium
+
+  * debian/rules: let "set -e" take effect (Closes: #998843)
+  * Add support for Python 3.10 (Closes: #998686):
+    - upstream-ab4cfb5e-replace-distutils-with-setuptools.patch: new patch,
+      edited to drop changes to upstream .gitignore.
+    - Add build-dependency on python3-setuptools
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 18 Nov 2021 09:15:55 +0000
+
+apparmor (3.0.3-5) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Remove constraints unnecessary since stretch.
+
+  [ Helmut Grohne ]
+  * Make the package cross-buildable (Closes: #984582):
+    - Multiarchify python Build-Depends
+    - Let dh_auto_build pass cross tools to make
+    - Annotate perl build-dependency with !nocheck
+
+  [ intrigeri ]
+  * Remove obsolete libapparmor-perl on upgrade
+
+ -- intrigeri <intrigeri@debian.org>  Sat, 23 Oct 2021 10:22:04 +0000
+
+apparmor (3.0.3-4) unstable; urgency=medium
+
+  * Merge apparmor-easyprof into apparmor-utils (Closes: #972880)
+  * Make apparmor-utils and python3-apparmor arch:all (Closes: #972881)
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 17 Oct 2021 17:23:17 +0000
+
+apparmor (3.0.3-3) unstable; urgency=medium
+
+  * Adjust gbp.conf and Vcs-* control fields for 3.0.x now being in sid.
+  * Stop building the libapparmor-perl binary package (Closes: #993565)
+  * Update Lintian overrides
+  * Add B-D on dh-sequence-python3, to workaround #996089 in Lintian
+  * B-D: python3-all → python3-all:any, to appease Lintian
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 13 Oct 2021 05:56:16 +0000
+
+apparmor (3.0.3-2) unstable; urgency=medium
+
+  * Upload to unstable
+
+ -- intrigeri <intrigeri@debian.org>  Fri, 03 Sep 2021 08:23:30 +0000
+
+apparmor (3.0.3-1) experimental; urgency=medium
+
+  * New upstream release
+  * Drop debian/Revert-libapparmor-fixing-setup.py-call-when-crosscompili.patch:
+    obsolete
+  * Refresh patches
+  * Merge changes from sid, up to 2.13.6-10
+  * upstream-6cfc6eee-python-3.10.patch: new patch,
+    for compatibility with Python 3.10
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 23 Aug 2021 18:25:14 +0000
+
+apparmor (3.0.1-6) experimental; urgency=medium
+
+  * autopkgtest: use hint-testsuite-triggers to ensure dummy test is not run
+
+ -- intrigeri <intrigeri@debian.org>  Fri, 02 Apr 2021 11:38:16 +0000
+
+apparmor (3.0.1-5) experimental; urgency=medium
+
+  * Merge changes from sid, up to 2.13.6-9
+
+ -- intrigeri <intrigeri@debian.org>  Fri, 12 Feb 2021 14:37:24 +0000
+
+apparmor (3.0.1-4) experimental; urgency=medium
+
+  * apparmor: drop obsolete dependency on python3 (#981442)
+  * Merge changes from sid, up to 2.13.6-7
+
+ -- intrigeri <intrigeri@debian.org>  Fri, 05 Feb 2021 06:48:41 +0000
+
+apparmor (3.0.1-3) experimental; urgency=medium
+
+  * Supersede failed, incomplete dgit upload
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 27 Dec 2020 10:44:24 +0000
+
+apparmor (3.0.1-2) experimental; urgency=medium
+
+  * Supersede failed, incomplete dgit upload
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 27 Dec 2020 10:16:16 +0000
+
+apparmor (3.0.1-1) experimental; urgency=medium
+
+  * New upstream release
+  * Vcs-* control fields: track the debian/experimental branch
+  * Drop upstream-commit-*.patch: included in 3.0.1
+  * Refresh patches
+  * Add aa_features_new_from_file to symbols file
+  * Pin the Linux 5.9 feature set
+  * Only pin the policy ABI, not the kernel ABI
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 27 Dec 2020 09:23:01 +0000
+
+apparmor (3.0.0-1) experimental; urgency=medium
+
+  * New upstream release (Closes: #930031)
+  * Merge ubuntu/3.0.0-0ubuntu1:
+    - Drop upstreamed patches
+    - d/apparmor.install:
+      + install new aa-features-abi binary to /usr/bin
+      + include abi/ directory and tunables/etc.
+    - d/apparmor.manpages:
+      + install new aa-features-abi.1 manpage
+      + install apparmor_xattrs.7 manpage
+    - d/apparmor-profiles.install:
+      + install new usr.lib.dovecot.script-login
+      + adjust for renamed postfix profiles
+      + add usr.bin.dumpcap to extra-profiles
+      + remove usr.sbin.nmbd and usr.sbin.smbd from extra-profiles
+        (already in apparmor-profiles)
+    - d/control:
+      + apparmor-utils: drop perl dependency
+      + Update apparmor-notify dependencies: it was ported to Python
+    - d/tests/test-installed:
+      + include libraries/ in workdir so tests have access to private
+        headers
+    - New patches:
+      + d/p/u/parser-Fix-warning-message-when-complain-mode-is-for.patch:
+        Provide better message about caching not happening due to a profile
+        being in force-complain mode. (LP: #1899218)
+      + d/p/ubuntu/lp1891338.patch: adjust ubuntu-integration to use
+        abstractions/exo-open (LP: #1891338)
+      + d/p/ubuntu/lp1889699.patch: adjust to support brave in ubuntu
+        abstractions (LP: #1889699)
+      + d/p/ubuntu/lp1881357.patch: adjust for new ICEauthority path in /run
+        (LP: #1881357)
+  * Drop another already upstreamed patch
+  * Upstream the patches added by Ubuntu
+  * New patches:
+    - upstream-commit-9350038-add-CAP_CHECKPOINT_RESTORE.patch:
+      fixes FTBFS on Linux 5.9
+    - upstream-commit-5958930-add-_aa_asprintf-to-private-symbols.patch:
+      fixes symbols discrepancy
+    - upstream-commit-51144b5-apparmor_xattrs.7-fix-whatis-entry.patch
+    - upstream-commit-11d1f38-Fix-typos.patch
+    - debian/Revert-libapparmor-fixing-setup.py-call-when-crosscompili.patch:
+      fixes passing hardening LDFLAGS to Python build
+  * apparmor-profiles: install new php-fpm profile
+  * Tell dh_missing that we purposely don't ship the chromium-browser profile
+  * Override a Lintian false positive
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 25 Oct 2020 12:03:26 +0000
+
+apparmor (3.0.0-0ubuntu1) groovy; urgency=medium
+
+  [ Alex Murray ]
+  * Update to the final AppArmor 3.0 upstream release
+    - d/apparmor.install:
+      + install new aa-features-abi binary to /usr/bin
+    - d/apparmor.manpages:
+      + install new aa-features-abi.1 man page
+    - d/apparmor-profiles.install:
+      + install new usr.lib.dovecot.script-login
+      + adjust for renamed postfix profiles
+    - d/tests/test-installed:
+      + include libraries/ in workdir so tests have access to private
+        headers
+    - Drop the following patches that were originally backported from
+      upstream but are now incorporated in the final release:
+      + d/p/parser-fix_cap_match.patch
+      + d/p/policy-provide-example-and-base-abi-to-pin-pre-3.0-p.patch
+      + d/p/parser-add-abi-warning-flags.patch
+      + d/p/fix-tests-regression-apparmor-prologue-inc-settest.patch
+      + d/p/fix-automatic-adding-of-rule-for-change-hat-iface.patch
+      + d/p/fix-parser-to-emit-proc-attr-access-for-all-situations.patch
+      + d/p/fix-change-profile-stack-abstraction.patch
+      + d/p/ubuntu/stop-loading-snapd-profiles.patch
+
+  [ Emilia Torino ]
+  * d/control: adjust apparmor-notify to depends on python3-psutil and
+    python3-apparmor (LP: #1899046)
+
+  [ Steve Beattie ]
+  * d/p/u/parser-Fix-warning-message-when-complain-mode-is-for.patch:
+    Provide better message about caching not happening due to a profile
+    being in force-complain mode. (LP: #1899218)
+
+ -- Alex Murray <alex.murray@canonical.com>  Sun, 11 Oct 2020 16:26:32 -0700
+
+apparmor (3.0.0~beta1-0ubuntu6) groovy; urgency=medium
+
+  * Drop d/p/lp1824812.patch: this patch was only needed with 2.13 and not
+    3.0. With AppArmor 3, the patch ends up setting SFS_MOUNTPOINT to the
+    wrong directory in is_container_with_internal_policy(), which causes
+    policy to always fail to load in containers. Thanks to Christian Ehrhardt
+    for the analysis. (LP: #1895967)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Tue, 22 Sep 2020 15:10:33 +0000
+
+apparmor (3.0.0~beta1-0ubuntu5) groovy; urgency=medium
+
+  [ John Johansen ]
+  * d/p/fix-parser-to-emit-proc-attr-access-for-all-situations.patch:
+    fix-automatic-adding-of-rule-for-change-hat-iface.patch fixed the
+    parser to emit rules needed for change_hat in the hat profiles but
+    broke the rule being emitted for the parent profile, this fixes it for
+    both so that it is emitted for any profile that is a hat or that
+    contains a hat.
+  * d/p/fix-change-profile-stack-abstraction.patch: fix the change_profile
+    abstraction so that it allows access to the apparmor attribute paths
+    under LSM stacking.
+
+ -- Alex Murray <alex.murray@canonical.com>  Fri, 18 Sep 2020 11:58:59 +0930
+
+apparmor (3.0.0~beta1-0ubuntu2) groovy; urgency=medium
+
+  [ John Johansen ]
+  * d/p/fix-automatic-adding-of-rule-for-change-hat-iface.patch: fix
+    parser not adding a rule to profiles if they are a hat or contain hats
+    granting write access to the kernel interfaces.
+
+ -- Emilia Torino <emilia.torino@canonical.com>  Thu, 17 Sep 2020 12:40:09 -0300
+
+apparmor (3.0.0~beta1-0ubuntu1) groovy; urgency=medium
+
+  [ John Johansen ]
+  * New upstream release (LP: #1895060, LP: #1887577, LP: #1880841)
+  * Drop all patches backported from upstream: applied in 3.0
+  * d/p/policy-provide-example-and-base-abi-to-pin-pre-3.0-p.patch: provide
+    example and base abi to pin pre 3.0 policy
+  * d/p/ubuntu/enable-pinning-of-pre-AppArmor-3.x-poli.patch: enable pinning
+    of pre AppArmor 3.x policy
+  * drop d/p/debian/dont-include-site-local-with-dovecot.patch: no longer
+    needed with upstream 'include if exists'
+
+  [ Steve Beattie ]
+  * d/p/parser-fix_cap_match.patch: fix cap match to work correctly, important
+    now that groovy has a 5.8 kernel.
+  * d/apparmor-profiles.install:
+    + adjust for renamed postfix profiles
+    + add usr.bin.dumpcap and usr.bin.mlmmj-receive to extra-profiles
+    + remove usr.sbin.nmbd and usr.sbin.smbd from extra-profiles (already in
+      apparmor-profiles)
+  * d/apparmor.install: include abi/ directory and tunables/etc.
+  * d/apparmor.manpages: add apparmor_xattrs.7 manpage
+  * d/control:
+    + apparmor-utils: no more shipped perl tools, drop perl dependency
+    + apparmor-notify: aa-notify was converted to python3 from perl; adjust
+      -notify dependencies to compensate
+  * d/p/fix-tests-regression-apparmor-prologue-inc-settest.patch:
+    fix sed expression in settest()
+
+  [ Emilia Torino ]
+  * Removing Ubuntu specific chromium-browser profile. This is safe to do
+    since groovy's chromium-browser deb installs the snap. If apparmor3
+    is backported to 18.04 or earlier, the profile will need to be taken
+    into consideration
+    - d/profiles/chromium-browser: remove chromium-browser profile
+    - d/apparmor-profiles.postinst: remove postinst script as it only
+      contains chromium-browser related functionallity.
+    - d/apparmor-profiles.postrm: remove postrm script as it only
+      contains chromium-browser related functionallity.
+    - d/apparmor-profiles.install: remove ubuntu-specific
+      chromium-browser abstraction and profile
+    - d/apparmor-profiles.lintian-overrides: remove chromium-browser
+      profile lintian overrides
+    - d/p/ubuntu/add-chromium-browser.patch: remove patch which added
+      chrome-browser
+
+  [ Alex Murray ]
+  * d/p/policy-provide-example-and-base-abi-to-pin-pre-3.0-p.patch: refresh
+    this patch with the official upstream version
+  * d/p/ubuntu/enable-pinning-of-pre-AppArmor-3.x-poli.patch: refresh this
+    patch to match the above
+  * d/p/parser-add-abi-warning-flags.patch: enable parser warnings
+    to be silenced or to be treated as errors
+
+  [ Jamie Strandboge ]
+  * d/p/adjust-for-ibus-1.5.22.patch: update ibus abstract path for ibus
+    1.5.22. This can be dropped with AppArmor 3.0 final.
+  * d/p/parser-add-abi-warning-flags.patch: refresh to avoid lintian warnings
+  * d/p/ubuntu/lp1891338.patch: adjust ubuntu-integration to use
+    abstractions/exo-open (LP: #1891338)
+  * d/p/ubuntu/lp1889699.patch: adjust to support brave in ubuntu
+    abstractions. Patch thanks to François Marier (LP: #1889699)
+  * d/p/ubuntu/lp1881357.patch: adjust for new ICEauthority path in /run
+    (LP: #1881357)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Wed, 09 Sep 2020 21:48:17 +0000
+
 apparmor (2.13.6-10pexip3) pexip-bullseye; urgency=medium
 
   * Bullseye rebuild for ARM64 inclusion

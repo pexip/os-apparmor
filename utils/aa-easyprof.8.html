@@ -2,7 +2,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title></title>
+<title>aa-easyprof - AppArmor profile generation made easy.</title>
 <link rel="stylesheet" href="apparmor.css" type="text/css" />
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <link rev="made" href="mailto:root@localhost" />
@@ -11,7 +11,7 @@
 <body>
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;aa-easyprof - AppArmor profile generation made easy.</span></strong></big>
 </td></tr>
 </table>
 
@@ -164,10 +164,10 @@
 
 <p>Must be used with --policy-vendor and is used to specify the version of policy groups and templates. When specified, <b>aa-easyprof</b> looks for the subdirectory VENDOR/VERSION within the policy-groups and templates directory. The specified version must be a positive decimal number compatible with the JSON Number type. Eg, when using:</p>
 
-<pre><code>    $ aa-easyprof --templates-dir=/usr/share/apparmor/easyprof/templates \
-                  --policy-groups-dir=/usr/share/apparmor/easyprof/policygroups \
-                  --policy-vendor=&quot;foo&quot; \
-                  --policy-version=1.0</code></pre>
+<pre><code>$ aa-easyprof --templates-dir=/usr/share/apparmor/easyprof/templates \
+              --policy-groups-dir=/usr/share/apparmor/easyprof/policygroups \
+              --policy-vendor=&quot;foo&quot; \
+              --policy-version=1.0</code></pre>
 
 <p>Then /usr/share/apparmor/easyprof/templates/foo/1.0 will be searched for templates and /usr/share/apparmor/easyprof/policygroups/foo/1.0 for policy groups.</p>
 
@@ -201,80 +201,80 @@
 
 <p><b>aa-easyprof</b> also supports using a JSON manifest file for specifying options related to policy. Unlike command line arguments, the JSON file may specify multiple profiles. The structure of the JSON is:</p>
 
-<pre><code>  {
-    &quot;security&quot;: {
-      &quot;profiles&quot;: {
-        &quot;&lt;profile name 1&gt;&quot;: {
-          ... attributes specific to this profile ...
-        },
-        &quot;&lt;profile name 2&gt;&quot;: {
-          ...
-        }
+<pre><code>{
+  &quot;security&quot;: {
+    &quot;profiles&quot;: {
+      &quot;&lt;profile name 1&gt;&quot;: {
+        ... attributes specific to this profile ...
+      },
+      &quot;&lt;profile name 2&gt;&quot;: {
+        ...
       }
     }
-  }</code></pre>
+  }
+}</code></pre>
 
 <p>Each profile JSON object (ie, everything under a profile name) may specify any fields related to policy. The &quot;security&quot; JSON container object is optional and may be omitted. An example manifest file demonstrating all fields is:</p>
 
-<pre><code>  {
-    &quot;security&quot;: {
-      &quot;profiles&quot;: {
-        &quot;com.example.foo&quot;: {
-          &quot;abstractions&quot;: [
-            &quot;audio&quot;,
-            &quot;gnome&quot;
-          ],
-          &quot;author&quot;: &quot;Your Name&quot;,
-          &quot;binary&quot;: &quot;/opt/foo/**&quot;,
-          &quot;comment&quot;: &quot;Unstructured single-line comment&quot;,
-          &quot;copyright&quot;: &quot;Unstructured single-line copyright statement&quot;,
-          &quot;name&quot;: &quot;My Foo App&quot;,
-          &quot;policy_groups&quot;: [
-            &quot;networking&quot;,
-            &quot;user-application&quot;
-          ],
-          &quot;policy_vendor&quot;: &quot;somevendor&quot;,
-          &quot;policy_version&quot;: 1.0,
-          &quot;read_path&quot;: [
-            &quot;/tmp/foo_r&quot;,
-            &quot;/tmp/bar_r/&quot;
-          ],
-          &quot;template&quot;: &quot;user-application&quot;,
-          &quot;template_variables&quot;: {
-            &quot;APPNAME&quot;: &quot;foo&quot;,
-            &quot;VAR1&quot;: &quot;bar&quot;,
-            &quot;VAR2&quot;: &quot;baz&quot;
-          },
-          &quot;write_path&quot;: [
-            &quot;/tmp/foo_w&quot;,
-            &quot;/tmp/bar_w/&quot;
-          ]
-        }
+<pre><code>{
+  &quot;security&quot;: {
+    &quot;profiles&quot;: {
+      &quot;com.example.foo&quot;: {
+        &quot;abstractions&quot;: [
+          &quot;audio&quot;,
+          &quot;gnome&quot;
+        ],
+        &quot;author&quot;: &quot;Your Name&quot;,
+        &quot;binary&quot;: &quot;/opt/foo/**&quot;,
+        &quot;comment&quot;: &quot;Unstructured single-line comment&quot;,
+        &quot;copyright&quot;: &quot;Unstructured single-line copyright statement&quot;,
+        &quot;name&quot;: &quot;My Foo App&quot;,
+        &quot;policy_groups&quot;: [
+          &quot;networking&quot;,
+          &quot;user-application&quot;
+        ],
+        &quot;policy_vendor&quot;: &quot;somevendor&quot;,
+        &quot;policy_version&quot;: 1.0,
+        &quot;read_path&quot;: [
+          &quot;/tmp/foo_r&quot;,
+          &quot;/tmp/bar_r/&quot;
+        ],
+        &quot;template&quot;: &quot;user-application&quot;,
+        &quot;template_variables&quot;: {
+          &quot;APPNAME&quot;: &quot;foo&quot;,
+          &quot;VAR1&quot;: &quot;bar&quot;,
+          &quot;VAR2&quot;: &quot;baz&quot;
+        },
+        &quot;write_path&quot;: [
+          &quot;/tmp/foo_w&quot;,
+          &quot;/tmp/bar_w/&quot;
+        ]
       }
     }
-  }</code></pre>
+  }
+}</code></pre>
 
 <p>A manifest file does not have to include all the fields. Eg, a manifest file for an Ubuntu SDK application might be:</p>
 
-<pre><code>  {
-    &quot;security&quot;: {
-      &quot;profiles&quot;: {
-        &quot;com.ubuntu.developer.myusername.MyCoolApp&quot;: {
-          &quot;policy_groups&quot;: [
-            &quot;networking&quot;,
-            &quot;online-accounts&quot;
-          ],
-          &quot;policy_vendor&quot;: &quot;ubuntu&quot;,
-          &quot;policy_version&quot;: 1.0,
-          &quot;template&quot;: &quot;ubuntu-sdk&quot;,
-          &quot;template_variables&quot;: {
-            &quot;APPNAME&quot;: &quot;MyCoolApp&quot;,
-            &quot;APPVERSION&quot;: &quot;0.1.2&quot;
-          }
+<pre><code>{
+  &quot;security&quot;: {
+    &quot;profiles&quot;: {
+      &quot;com.ubuntu.developer.myusername.MyCoolApp&quot;: {
+        &quot;policy_groups&quot;: [
+          &quot;networking&quot;,
+          &quot;online-accounts&quot;
+        ],
+        &quot;policy_vendor&quot;: &quot;ubuntu&quot;,
+        &quot;policy_version&quot;: 1.0,
+        &quot;template&quot;: &quot;ubuntu-sdk&quot;,
+        &quot;template_variables&quot;: {
+          &quot;APPNAME&quot;: &quot;MyCoolApp&quot;,
+          &quot;APPVERSION&quot;: &quot;0.1.2&quot;
         }
       }
     }
-  }</code></pre>
+  }
+}</code></pre>
 
 </dd>
 <dt id="verify-manifest">--verify-manifest</dt>
@@ -301,37 +301,37 @@
 
 <p>Example usage for a program named &#39;foo&#39; which is installed in /opt/foo:</p>
 
-<pre><code>    $ aa-easyprof --template=user-application --template-var=&quot;@{APPNAME}=foo&quot; \
-                  --policy-groups=opt-application,user-application \
-                  /opt/foo/bin/FooApp</code></pre>
+<pre><code>$ aa-easyprof --template=user-application --template-var=&quot;@{APPNAME}=foo&quot; \
+              --policy-groups=opt-application,user-application \
+              /opt/foo/bin/FooApp</code></pre>
 
 <p>When using a manifest file:</p>
 
-<pre><code>    $ aa-easyprof --manifest=manifest.json</code></pre>
+<pre><code>$ aa-easyprof --manifest=manifest.json</code></pre>
 
 <p>To output a manifest file based on aa-easyprof arguments:</p>
 
-<pre><code>    $ aa-easyprof --output-format=json \
-                  --author=&quot;Your Name&quot; \
-                  --comment=&quot;Unstructured single-line comment&quot; \
-                  --copyright=&quot;Unstructured single-line copyright statement&quot; \
-                  --name=&quot;My Foo App&quot; \
-                  --profile-name=&quot;com.example.foo&quot; \
-                  --template=&quot;user-application&quot; \
-                  --policy-groups=&quot;user-application,networking&quot; \
-                  --abstractions=&quot;audio,gnome&quot; \
-                  --read-path=&quot;/tmp/foo_r&quot; \
-                  --read-path=&quot;/tmp/bar_r/&quot; \
-                  --write-path=&quot;/tmp/foo_w&quot; \
-                  --write-path=/tmp/bar_w/ \
-                  --template-var=&quot;@{APPNAME}=foo&quot; \
-                  --template-var=&quot;@{VAR1}=bar&quot; \
-                  --template-var=&quot;@{VAR2}=baz&quot; \
-                  &quot;/opt/foo/**&quot;</code></pre>
+<pre><code>$ aa-easyprof --output-format=json \
+              --author=&quot;Your Name&quot; \
+              --comment=&quot;Unstructured single-line comment&quot; \
+              --copyright=&quot;Unstructured single-line copyright statement&quot; \
+              --name=&quot;My Foo App&quot; \
+              --profile-name=&quot;com.example.foo&quot; \
+              --template=&quot;user-application&quot; \
+              --policy-groups=&quot;user-application,networking&quot; \
+              --abstractions=&quot;audio,gnome&quot; \
+              --read-path=&quot;/tmp/foo_r&quot; \
+              --read-path=&quot;/tmp/bar_r/&quot; \
+              --write-path=&quot;/tmp/foo_w&quot; \
+              --write-path=/tmp/bar_w/ \
+              --template-var=&quot;@{APPNAME}=foo&quot; \
+              --template-var=&quot;@{VAR1}=bar&quot; \
+              --template-var=&quot;@{VAR2}=baz&quot; \
+              &quot;/opt/foo/**&quot;</code></pre>
 
 <h1 id="BUGS">BUGS</h1>
 
-<p>If you find any additional bugs, please report them to Launchpad at <a href="https://bugs.launchpad.net/apparmor/+filebug">https://bugs.launchpad.net/apparmor/+filebug</a>.</p>
+<p>If you find any additional bugs, please report them to GitLab at <a href="https://gitlab.com/apparmor/apparmor/-/issues">https://gitlab.com/apparmor/apparmor/-/issues</a>.</p>
 
 <h1 id="SEE-ALSO">SEE ALSO</h1>
 
@@ -339,7 +339,7 @@
 
 <table border="0" width="100%" cellspacing="0" cellpadding="3">
 <tr><td class="_podblock_" valign="middle">
-<big><strong><span class="_podblock_">&nbsp;</span></strong></big>
+<big><strong><span class="_podblock_">&nbsp;aa-easyprof - AppArmor profile generation made easy.</span></strong></big>
 </td></tr>
 </table>
 

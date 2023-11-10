@@ -13,6 +13,11 @@ AC_DEFUN([AC_PYTHON_DEVEL],[
            PYTHON_VERSION=""
         fi
 
+        AC_PATH_TOOL([PYTHON_CONFIG],[`basename [$PYTHON]-config`])
+        if test -z "$PYTHON_CONFIG"; then
+           AC_MSG_ERROR([Cannot find python$PYTHON_VERSION-config in your system path])
+        fi
+
         #
         # Check for a version of Python >= 2.1.0
         #
@@ -61,17 +66,17 @@ variable to configure. See ``configure --help'' for reference.
         fi
 
         #
-        # Check if you have distutils, else fail
+        # Check if you have setuptools, else fail
         #
-        AC_MSG_CHECKING([for the distutils Python package])
-        ac_distutils_result=`$PYTHON -c "import distutils" 2>&1`
-        if test -z "$ac_distutils_result"; then
+        AC_MSG_CHECKING([for the setuptools Python package])
+        ac_setuptools_result=`$PYTHON -c "import setuptools" 2>&1`
+        if test -z "$ac_setuptools_result"; then
                 AC_MSG_RESULT([yes])
         else
                 AC_MSG_RESULT([no])
-                AC_MSG_ERROR([cannot import Python module "distutils".
+                AC_MSG_ERROR([cannot import Python module "setuptools".
 Please check your Python installation. The error was:
-$ac_distutils_result])
+$ac_setuptools_result])
                 PYTHON_VERSION=""
         fi
 
@@ -79,12 +84,12 @@ $ac_distutils_result])
         # Check for Python include path
         #
         AC_MSG_CHECKING([for Python include path])
-        if type $PYTHON-config; then
-                PYTHON_CPPFLAGS=`$PYTHON-config --includes`
+        if type $PYTHON_CONFIG; then
+                PYTHON_CPPFLAGS=`$PYTHON_CONFIG --includes`
         fi
         if test -z "$PYTHON_CPPFLAGS"; then
-                python_path=`$PYTHON -c "import sys; import distutils.sysconfig;\
-sys.stdout.write('%s\n' % distutils.sysconfig.get_python_inc());"`
+                python_path=`$PYTHON -c "import sys; import sysconfig;\
+sys.stdout.write('%s\n' % sysconfig.get_path('include'));"`
                 if test -n "${python_path}"; then
                         python_path="-I$python_path"
                 fi
@@ -97,14 +102,14 @@ sys.stdout.write('%s\n' % distutils.sysconfig.get_python_inc());"`
         # Check for Python library path
         #
         AC_MSG_CHECKING([for Python library path])
-        if type $PYTHON-config; then
-                PYTHON_LDFLAGS=`$PYTHON-config --ldflags`
+        if type $PYTHON_CONFIG; then
+                PYTHON_LDFLAGS=`$PYTHON_CONFIG --ldflags`
         fi
         if test -z "$PYTHON_LDFLAGS"; then
                 # (makes two attempts to ensure we've got a version number
                 # from the interpreter)
-                py_version=`$PYTHON -c "import sys; from distutils.sysconfig import *; \
-sys.stdout.write('%s\n' % ''.join(get_config_vars('VERSION')))"`
+                py_version=`$PYTHON -c "import sys; import sysconfig; \
+sys.stdout.write('%s\n' % ''.join(sysconfig.get_config_vars('VERSION')))"`
                 if test "$py_version" == "[None]"; then
                         if test -n "$PYTHON_VERSION"; then
                                 py_version=$PYTHON_VERSION
@@ -114,8 +119,8 @@ sys.stdout.write("%s\n" % sys.version[[:3]])"`
                         fi
                 fi
 
-                PYTHON_LDFLAGS=`$PYTHON -c "import sys; from distutils.sysconfig import *; \
-sys.stdout.write('-L' + get_python_lib(0,1) + ' -lpython\n')"`$py_version`$PYTHON -c \
+                PYTHON_LDFLAGS=`$PYTHON -c "import sys; import sysconfig; \
+sys.stdout.write('-L' + sysconfig.get_path('stdlib') + ' -lpython\n')"`$py_version`$PYTHON -c \
 "import sys; sys.stdout.write('%s' % getattr(sys,'abiflags',''))"`
         fi
         AC_MSG_RESULT([$PYTHON_LDFLAGS])
@@ -126,8 +131,8 @@ sys.stdout.write('-L' + get_python_lib(0,1) + ' -lpython\n')"`$py_version`$PYTHO
         #
         AC_MSG_CHECKING([for Python site-packages path])
         if test -z "$PYTHON_SITE_PKG"; then
-                PYTHON_SITE_PKG=`$PYTHON -c "import sys; import distutils.sysconfig; \
-sys.stdout.write('%s\n' % distutils.sysconfig.get_python_lib(0,0));"`
+                PYTHON_SITE_PKG=`$PYTHON -c "import sys; import sysconfig; \
+sys.stdout.write('%s\n' % sysconfig.get_path('purelib'));"`
         fi
         AC_MSG_RESULT([$PYTHON_SITE_PKG])
         AC_SUBST([PYTHON_SITE_PKG])
@@ -136,9 +141,13 @@ sys.stdout.write('%s\n' % distutils.sysconfig.get_python_lib(0,0));"`
         # libraries which must be linked in when embedding
         #
         AC_MSG_CHECKING(python extra libraries)
+        if type $PYTHON_CONFIG; then
+                PYTHON_EXTRA_LIBS=`$PYTHON_CONFIG --libs --embed` || \
+                        PYTHON_EXTRA_LIBS=''
+        fi
         if test -z "$PYTHON_EXTRA_LIBS"; then
-           PYTHON_EXTRA_LIBS=`$PYTHON -c "import sys; import distutils.sysconfig; \
-conf = distutils.sysconfig.get_config_var; \
+           PYTHON_EXTRA_LIBS=`$PYTHON -c "import sys; import sysconfig; \
+conf = sysconfig.get_config_var; \
 sys.stdout.write('%s %s %s\n' % (conf('BLDLIBRARY'), conf('LOCALMODLIBS'), conf('LIBS')))"`
         fi
         AC_MSG_RESULT([$PYTHON_EXTRA_LIBS])
@@ -148,9 +157,13 @@ sys.stdout.write('%s %s %s\n' % (conf('BLDLIBRARY'), conf('LOCALMODLIBS'), conf(
         # linking flags needed when embedding
         #
         AC_MSG_CHECKING(python extra linking flags)
+        if type $PYTHON_CONFIG; then
+                PYTHON_EXTRA_LDFLAGS=`$PYTHON_CONFIG --ldflags --embed` || \
+                        PYTHON_EXTRA_LDFLAGS=''
+        fi
         if test -z "$PYTHON_EXTRA_LDFLAGS"; then
-                PYTHON_EXTRA_LDFLAGS=`$PYTHON -c "import sys; import distutils.sysconfig; \
-conf = distutils.sysconfig.get_config_var; \
+                PYTHON_EXTRA_LDFLAGS=`$PYTHON -c "import sys; import sysconfig; \
+conf = sysconfig.get_config_var; \
 sys.stdout.write('%s\n' % conf('LINKFORSHARED'))"`
         fi
         AC_MSG_RESULT([$PYTHON_EXTRA_LDFLAGS])
@@ -164,7 +177,7 @@ sys.stdout.write('%s\n' % conf('LINKFORSHARED'))"`
         # save current global flags
         ac_save_LIBS="$LIBS"
         ac_save_CPPFLAGS="$CPPFLAGS"
-        LIBS="$ac_save_LIBS $PYTHON_LDFLAGS $PYTHON_EXTRA_LIBS"
+        LIBS="$ac_save_LIBS $PYTHON_EXTRA_LIBS $PYTHON_LDFLAGS"
         CPPFLAGS="$ac_save_CPPFLAGS $PYTHON_CPPFLAGS"
         AC_TRY_LINK([
                 #include <Python.h>

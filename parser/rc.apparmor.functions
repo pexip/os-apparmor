@@ -1,7 +1,7 @@
 #!/bin/sh
 # ----------------------------------------------------------------------
 #    Copyright (c) 1999-2008 NOVELL (All rights reserved)
-#    Copyright (c) 2009-2012 Canonical Ltd. (All rights reserved)
+#    Copyright (c) 2009-2018 Canonical Ltd. (All rights reserved)
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -31,77 +31,84 @@
 
 # Some nice defines that we use
 
-CONFIG_DIR=/etc/apparmor
-MODULE=apparmor
-OLD_MODULE=subdomain
-if [ -f "${CONFIG_DIR}/${MODULE}.conf" ] ; then
-	APPARMOR_CONF="${CONFIG_DIR}/${MODULE}.conf"
-elif [ -f "${CONFIG_DIR}/${OLD_MODULE}.conf" ] ; then
-	APPARMOR_CONF="${CONFIG_DIR}/${OLD_MODULE}.conf"
-elif [ -f "/etc/immunix/subdomain.conf" ] ; then
-	aa_log_warning_msg "/etc/immunix/subdomain.conf is deprecated, use ${CONFIG_DIR}/subdomain.conf instead"
-	APPARMOR_CONF="/etc/immunix/subdomain.conf"
-elif [ -f "/etc/subdomain.conf" ] ; then
-	aa_log_warning_msg "/etc/subdomain.conf is deprecated, use ${CONFIG_DIR}/subdomain.conf instead"
-	APPARMOR_CONF="/etc/subdomain.conf"
-else
-	aa_log_warning_msg "Unable to find config file in ${CONFIG_DIR}, installation problem?"
-fi
-
-# Read configuration options from /etc/subdomain.conf, default is to
-# warn if subdomain won't load.
-SUBDOMAIN_MODULE_PANIC="warn"
-SUBDOMAIN_ENABLE_OWLSM="no"
-APPARMOR_ENABLE_AAEVENTD="no"
-
-if [ -f "${APPARMOR_CONF}" ] ; then
-	#parse the conf file to see what we should do
-	. "${APPARMOR_CONF}"
-fi
-
 PARSER=/sbin/apparmor_parser
-
-# SUBDOMAIN_DIR and APPARMOR_DIR might be defined in subdomain.conf|apparmor.conf
-if [ -d "${APPARMOR_DIR}" ] ; then
-	PROFILE_DIR=${APPARMOR_DIR}
-elif [ -d "${SUBDOMAIN_DIR}" ] ; then
-	PROFILE_DIR=${SUBDOMAIN_DIR}
-elif [ -d /etc/apparmor.d ] ; then
-	PROFILE_DIR=/etc/apparmor.d
-elif [ -d /etc/subdomain.d ] ; then
-	PROFILE_DIR=/etc/subdomain.d
+PARSER_OPTS=
+# Suppress warnings when booting in quiet mode
+if [ "${QUIET:-no}" = yes ] || [ "${quiet:-n}" = y ]; then
+	PARSER_OPTS="$PARSER_OPTS --quiet"
 fi
-ABSTRACTIONS="-I${PROFILE_DIR}"
-AA_EV_BIN=/usr/sbin/aa-eventd
-AA_EV_PIDFILE=/var/run/aa-eventd.pid
-AA_STATUS=/usr/sbin/aa-status
-SD_EV_BIN=/usr/sbin/sd-event-dispatch.pl
-SD_EV_PIDFILE=/var/run/sd-event-dispatch.init.pid
-SD_STATUS=/usr/sbin/subdomain_status
-SECURITYFS=/sys/kernel/security
 
-SUBDOMAINFS_MOUNTPOINT=$(grep subdomainfs /etc/fstab  | \
-	sed -e 's|^[[:space:]]*[^[:space:]]\+[[:space:]]\+\(/[^[:space:]]*\)[[:space:]]\+subdomainfs.*$|\1|' 2> /dev/null)
+if [ -d /etc/apparmor.d ] ; then
+	PROFILE_DIRS=/etc/apparmor.d
+else
+	aa_log_warning_msg "Unable to find profiles directory, installation problem?"
+fi
+
+# Eg. snapd policy might need this on some systems if loading policy
+#     during early boot if not using the snapd unit file
+ADDITIONAL_PROFILE_DIR=
+if [ -n "$ADDITIONAL_PROFILE_DIR" ] && [ -d "$ADDITIONAL_PROFILE_DIR" ]; then
+	PROFILE_DIRS="$PROFILE_DIRS $ADDITIONAL_PROFILE_DIR"
+fi
+AA_STATUS=/usr/sbin/aa-status
+SECURITYFS=/sys/kernel/security
+SFS_MOUNTPOINT="${SECURITYFS}/apparmor"
 
 # keep exit status from parser during profile load.  0 is good, 1 is bad
 STATUS=0
 
 # Test if the apparmor "module" is present.
 is_apparmor_present() {
-	local modules=$1
-	shift
+	[ -d /sys/module/apparmor ]
+}
 
-	while [ $# -gt 0 ] ; do
-		modules="$modules|$1"
-		shift
-	done
+# Checks to see if the current container is capable of having internal AppArmor
+# profiles that should be loaded. Callers of this function should have already
+# verified that they're running inside of a container environment with
+# something like `systemd-detect-virt --container`.
+#
+# The only known container environments capable of supporting internal policy
+# are LXD and LXC environment.
+#
+# Returns 0 if the container environment is capable of having its own internal
+# policy and non-zero otherwise.
+#
+# IMPORTANT: This function will return 0 in the case of a non-LXD/non-LXC
+# system container technology being nested inside of a LXD/LXC container that
+# utilized an AppArmor namespace and profile stacking. The reason 0 will be
+# returned is because .ns_stacked will be "yes" and .ns_name will still match
+# "lx[dc]-*" since the nested system container technology will not have set up
+# a new AppArmor profile namespace. This will result in the nested system
+# container's boot process to experience failed policy loads but the boot
+# process should continue without any loss of functionality. This is an
+# unsupported configuration that cannot be properly handled by this function.
+is_container_with_internal_policy() {
+	# this function is sometimes called independently of
+	# is_apparmor_loaded(), so also define this here.
+	local ns_stacked_path="${SFS_MOUNTPOINT}/.ns_stacked"
+	local ns_name_path="${SFS_MOUNTPOINT}/.ns_name"
+	local ns_stacked
+	local ns_name
 
-	# check for subdomainfs version of module
-	grep -qE "^($modules)[[:space:]]" /proc/modules
+	if ! [ -f "$ns_stacked_path" ] || ! [ -f "$ns_name_path" ]; then
+		return 1
+	fi
 
-	[ $? -ne 0 -a -d /sys/module/apparmor ]
+	read -r ns_stacked < "$ns_stacked_path"
+	if [ "$ns_stacked" != "yes" ]; then
+		return 1
+	fi
 
-	return $?
+	# LXD and LXC set up AppArmor namespaces starting with "lxd-" and
+	# "lxc-", respectively. Return non-zero for all other namespace
+	# identifiers.
+	read -r ns_name < "$ns_name_path"
+	if [ "${ns_name#lxd-*}" = "$ns_name" ] && \
+	   [ "${ns_name#lxc-*}" = "$ns_name" ]; then
+		return 1
+	fi
+
+	return 0
 }
 
 # This set of patterns to skip needs to be kept in sync with
@@ -110,56 +117,93 @@ is_apparmor_present() {
 # returns 1 on verbose skip
 # returns 2 on silent skip
 skip_profile() {
-	local profile=$1
-	if [ "${profile%.rpmnew}" != "${profile}" -o \
-	     "${profile%.rpmsave}" != "${profile}" -o \
-	     "${profile%.orig}" != "${profile}" -o \
-	     "${profile%.rej}" != "${profile}" -o \
-	     -e "${PROFILE_DIR}/disable/`basename ${profile}`" -o \
-	     "${profile%\~}" != "${profile}" ] ; then
+	local profile="$1"
+	if [ "${profile%.rpmnew}"   != "$profile" ] || \
+	   [ "${profile%.rpmsave}"  != "$profile" ] || \
+	   [ "${profile%.orig}"     != "$profile" ] || \
+	   [ "${profile%.rej}"      != "$profile" ] || \
+	   [ "${profile%\~}"        != "$profile" ] ; then
 		return 1
 	fi
 	# Silently ignore the dpkg, pacman, and xbps files
-	if [ "${profile%.dpkg-new}" != "${profile}" -o \
-	     "${profile%.dpkg-old}" != "${profile}" -o \
-	     "${profile%.dpkg-dist}" != "${profile}" -o \
-	     "${profile%.dpkg-bak}" != "${profile}" -o \
-	     "${profile%.dpkg-remove}" != "${profile}" -o \
-	     "${profile%.pacsave}" != "${profile}" -o \
-	     "${profile%.pacnew}" != "${profile}" ] ; then
+	if [ "${profile%.dpkg-new}"     != "$profile" ] || \
+	   [ "${profile%.dpkg-old}"     != "$profile" ] || \
+	   [ "${profile%.dpkg-dist}"    != "$profile" ] || \
+	   [ "${profile%.dpkg-bak}"     != "$profile" ] || \
+	   [ "${profile%.dpkg-remove}"  != "$profile" ] || \
+	   [ "${profile%.pacsave}"      != "$profile" ] || \
+	   [ "${profile%.pacnew}"       != "$profile" ] ; then
 		return 2
 	fi
-	if echo "${profile}" | egrep -q '^.+\.new-[0-9\.]+_[0-9]+$'; then
+	if echo "$profile" | grep -E -q '^.+\.new-[0-9\.]+_[0-9]+$'; then
 		return 2
 	fi
 
 	return 0
 }
 
-force_complain() {
-	local profile=$1
+__parse_profiles_dir() {
+	local parser_cmd="$1"
+	local profile_dir="$2"
+	local status=0
 
-	# if profile not in complain mode
-	if ! egrep -q '^/.*[ \t]+flags[ \t]*=[ \t]*\([ \t]*complain[ \t]*\)[ \t]+\{' $profile ; then
-		local link="${PROFILE_DIR}/force-complain/`basename ${profile}`"
-		if [ -e "$link" ] ; then
-			aa_log_warning_msg "found $link, forcing complain mode"
-			return 0
-		fi
+	if [ ! -d "$profile_dir" ]; then
+		aa_log_failure_msg "Profile directory not found: $profile_dir"
+		return 1
 	fi
 
-	return 1
+	if [ -z "$(ls "$profile_dir"/)" ]; then
+		aa_log_failure_msg "No profiles found in $profile_dir"
+		return 1
+	fi
+
+	# Note: the parser automatically skips files that match skip_profile()
+	# when we pass it a directory, but not when we pass it an individual
+	# profile. So we need to use skip_profile only in the latter case,
+	# as long as the parser is in sync' with skip_profile().
+	"$PARSER" $PARSER_OPTS "$parser_cmd" -- "$profile_dir" || {
+		# FIXME: once the parser properly handles broken profiles
+		# (LP: #1377338), remove the following code and the
+		# skip_profile() function. For now, if the parser returns
+		# an error, just run it again separately on each profile.
+		for profile in "$profile_dir"/*; do
+			skip_profile "$profile"
+			skip=$?
+			if [ "$skip" -eq 2 ]; then
+				# Ignore skip status == 2 (silent skip)
+				continue
+			elif [ "$skip" -ne 0 ] ; then
+				aa_log_skipped_msg "$profile"
+				logger -t "AppArmor(init)" -p daemon.warn \
+					"Skipping profile $profile"
+				continue
+			fi
+			if [ ! -f "$profile" ] ; then
+				continue
+			fi
+			printf "%s\0" "$profile"
+		done | \
+		# Use xargs to parallelize calls to the parser over all CPUs
+		xargs -n1 -0r -P "$(getconf _NPROCESSORS_ONLN)" \
+			"$PARSER" $PARSER_OPTS "$parser_cmd" --
+		if [ $? -ne 0 ]; then
+			status=1
+			aa_log_failure_msg "At least one profile failed to load"
+		fi
+	}
+
+	return "$status"
 }
 
 parse_profiles() {
 	# get parser arg
 	case "$1" in
 		load)
-			PARSER_ARGS="--add"
+			PARSER_CMD="--add"
 			PARSER_MSG="Loading AppArmor profiles "
 			;;
 		reload)
-			PARSER_ARGS="--replace"
+			PARSER_CMD="--replace"
 			PARSER_MSG="Reloading AppArmor profiles "
 			;;
 		*)
@@ -175,47 +219,12 @@ parse_profiles() {
 		exit 1
 	fi
 
-	if [ ! -d "$PROFILE_DIR" ]; then
-		aa_log_failure_msg "Profile directory not found"
-		aa_log_action_end 1
-		exit 1
-	fi
-
-	if [ -z "$(ls $PROFILE_DIR/)" ]; then
-		aa_log_failure_msg "No profiles found"
-		aa_log_action_end 1
-		return 1
-	fi
-
-	for profile in $PROFILE_DIR/*; do
-		skip_profile "${profile}"
-		skip=$?
-		# Ignore skip status == 2 (silent skip)
-		if [ "$skip" -eq 1 ] ; then
-			aa_log_skipped_msg "$profile"
-			logger -t "AppArmor(init)" -p daemon.warn "Skipping profile $profile"
-			STATUS=2
-			continue
-		elif [ "$skip" -ne 0 ]; then
-			continue
-		fi
-		if [ -f "${profile}" ] ; then
-			COMPLAIN=""
-			if force_complain "${profile}" ; then
-				COMPLAIN="-C"
-			fi
-			$PARSER $ABSTRACTIONS $PARSER_ARGS $COMPLAIN "$profile" > /dev/null
-			if [ $? -ne 0 ]; then
-				aa_log_failure_msg "$profile failed to load"
-				STATUS=1
-			fi
-		fi
+	for profile_dir in $PROFILE_DIRS; do
+		__parse_profiles_dir "$PARSER_CMD" "$profile_dir" || STATUS=$?
 	done
-	if [ $STATUS -eq 2 ]; then
-		STATUS=0
-	fi
+
 	aa_log_action_end "$STATUS"
-	return $STATUS
+	return "$STATUS"
 }
 
 profiles_names_list() {
@@ -225,44 +234,32 @@ profiles_names_list() {
 		exit 1
 	fi
 
-	if [ ! -d "$PROFILE_DIR" ]; then
-		aa_log_failure_msg "- Profile directory not found"
-		exit 1
-	fi
-
-	for profile in $PROFILE_DIR/*; do
-	        if skip_profile "${profile}" && [ -f "${profile}" ] ; then
-			LIST_ADD=$($PARSER $ABSTRACTIONS -N "$profile" )
-			if [ $? -eq 0 ]; then
-				echo "$LIST_ADD"
-			fi
+	for profile_dir in $PROFILE_DIRS; do
+		if [ ! -d "$profile_dir" ]; then
+			aa_log_warning_msg "- Profile directory not found: $profile_dir"
+			continue
 		fi
+
+		for profile in "$profile_dir"/*; do
+			if skip_profile "$profile" && [ -f "$profile" ] ; then
+				LIST_ADD=$("$PARSER" -N "$profile" )
+				if [ $? -eq 0 ]; then
+					echo "$LIST_ADD"
+				fi
+			fi
+		done
 	done
 }
 
 failstop_system() {
 	level=$(runlevel | cut -d" " -f2)
-	if [ $level -ne "1" ] ; then
+	if [ "$level" -ne "1" ] ; then
 		aa_log_failure_msg "- could not start AppArmor.  Changing to runlevel 1"
 		telinit 1;
-		return -1;
+		return 255;
 	fi
 	aa_log_failure_msg "- could not start AppArmor."
-	return -1
-}
-
-module_panic() {
-	# the module failed to load, determine what action should be taken
-
-	case "$SUBDOMAIN_MODULE_PANIC" in
-		"warn"|"WARN")
-			return 1 ;;
-		"panic"|"PANIC") failstop_system
-			rc=$?
-			return $rc ;;
-		*) aa_log_failure_msg "- invalid AppArmor module fail option"
-			return -1 ;;
-	esac
+	return 255
 }
 
 is_apparmor_loaded() {
@@ -270,99 +267,39 @@ is_apparmor_loaded() {
 		mount_securityfs
 	fi
 
-	mount_subdomainfs
-
-	if [ -f "${SECURITYFS}/${MODULE}/profiles" ]; then
-		SFS_MOUNTPOINT="${SECURITYFS}/${MODULE}"
+	if [ -f "${SFS_MOUNTPOINT}/profiles" ]; then
 		return 0
 	fi
 
-	if [ -f "${SECURITYFS}/${OLD_MODULE}/profiles" ]; then
-		SFS_MOUNTPOINT="${SECURITYFS}/${OLD_MODULE}"
-		return 0
-	fi
-
-	if [ -f "${SUBDOMAINFS_MOUNTPOINT}/profiles" ]; then
-		SFS_MOUNTPOINT=${SUBDOMAINFS_MOUNTPOINT}
-		return 0
-	fi
-
-	# check for subdomainfs version of module
-	is_apparmor_present apparmor subdomain
+	is_apparmor_present
 
 	return $?
 }
 
 is_securityfs_mounted() {
-	test -d ${SECURITYFS} -a -d /sys/fs/cgroup/systemd || grep -q securityfs /proc/filesystems && grep -q securityfs /proc/mounts
+	test -d "$SECURITYFS" -a -d /sys/fs/cgroup/systemd || grep -q securityfs /proc/filesystems && grep -q securityfs /proc/mounts
 	return $?
 }
 
 mount_securityfs() {
 	if grep -q securityfs /proc/filesystems ; then
-		aa_action "Mounting securityfs on ${SECURITYFS}" \
-				mount -t securityfs securityfs "${SECURITYFS}"
+		aa_action "Mounting securityfs on $SECURITYFS" \
+				mount -t securityfs securityfs "$SECURITYFS"
 		return $?
 	fi
 	return 0
-}
-
-
-mount_subdomainfs() {
-	# for backwords compatibility
-	if grep -q subdomainfs /proc/filesystems && \
-	   ! grep -q subdomainfs /proc/mounts && \
-	   [ -n "${SUBDOMAINFS_MOUNTPOINT}" ]; then
-		aa_action "Mounting subdomainfs on ${SUBDOMAINFS_MOUNTPOINT}" \
-				mount "${SUBDOMAINFS_MOUNTPOINT}"
-		return $?
-	fi
-	return 0
-}
-
-unmount_subdomainfs() {
-	SUBDOMAINFS=$(grep subdomainfs /proc/mounts  | cut -d" " -f2 2> /dev/null)
-	if [ -n "${SUBDOMAINFS}" ]; then
-		aa_action "Unmounting subdomainfs" umount ${SUBDOMAINFS}
-	fi
-}
-
-load_module() {
-	local rc=0
-	if modinfo -F filename apparmor > /dev/null 2>&1 ; then
-		MODULE=apparmor
-	elif modinfo -F filename ${OLD_MODULE} > /dev/null 2>&1 ; then
-		MODULE=${OLD_MODULE}
-	fi
-
-	if ! is_apparmor_present apparmor subdomain ; then
-		aa_action "Loading AppArmor module" /sbin/modprobe -q $MODULE $1
-		rc=$?
-		if [ $rc -ne 0 ] ; then
-			module_panic
-			rc=$?
-			if [ $rc -ne 0 ] ; then
-				exit $rc
-			fi
-		fi
-	fi
-
-	if ! is_apparmor_loaded ; then
-		return 1
-	fi
-
-	return $rc
 }
 
 apparmor_start() {
 	aa_log_daemon_msg "Starting AppArmor"
-	if ! is_apparmor_loaded ; then
-		load_module
-		rc=$?
-		if [ $rc -ne 0 ] ; then
-			aa_log_end_msg $rc
-			return $rc
-		fi
+	if ! is_apparmor_present ; then
+		aa_log_failure_msg "Starting AppArmor - failed, To enable AppArmor, ensure your kernel is configured with CONFIG_SECURITY_APPARMOR=y then add 'security=apparmor apparmor=1' to the kernel command line"
+		aa_log_end_msg 1
+		return 1
+	elif ! is_apparmor_loaded ; then
+		aa_log_failure_msg "Starting AppArmor - AppArmor control files aren't available under /sys/kernel/security/, please make sure securityfs is mounted."
+		aa_log_end_msg 1
+		return 1
 	fi
 
 	if [ ! -w "$SFS_MOUNTPOINT/.load" ] ; then
@@ -371,10 +308,8 @@ apparmor_start() {
 		return 1
 	fi
 
-	configure_owlsm
-
 	# if there is anything in the profiles file don't load
-	if ! read line < "$SFS_MOUNTPOINT/profiles"; then
+	if ! read -r line < "$SFS_MOUNTPOINT/profiles"; then
 		parse_profiles load
 	else
 		aa_log_skipped_msg ": already loaded with profiles."
@@ -386,7 +321,7 @@ apparmor_start() {
 
 remove_profiles() {
 
-	# removing profiles as we directly read from subdomainfs
+	# removing profiles as we directly read from apparmorfs
 	# doesn't work, since we are removing entries which screws up
 	# our position.  Lets hope there are never enough profiles to
 	# overflow the variable
@@ -400,7 +335,7 @@ remove_profiles() {
 		return 1
 	fi
 
-	if [ ! -x "${PARSER}" ] ; then
+	if [ ! -x "$PARSER" ] ; then
 		aa_log_failure_msg "Unable to execute AppArmor parser"
 		return 1
 	fi
@@ -410,14 +345,14 @@ remove_profiles() {
 	# the children
 	sed -e "s/ (\(enforce\|complain\))$//" "$SFS_MOUNTPOINT/profiles" | \
 	LC_COLLATE=C sort | grep -v // | {
-		while read profile ; do
-			echo -n "$profile" > "$SFS_MOUNTPOINT/.remove"
+		while read -r profile ; do
+			printf "%s" "$profile" > "$SFS_MOUNTPOINT/.remove"
 			rc=$?
-			if [ ${rc} -ne 0 ] ; then
-				retval=${rc}
+			if [ "$rc" -ne 0 ] ; then
+				retval=$rc
 			fi
 		done
-		return ${retval}
+		return "$retval"
 	}
 }
 
@@ -425,30 +360,18 @@ apparmor_stop() {
 	aa_log_daemon_msg "Unloading AppArmor profiles "
 	remove_profiles
 	rc=$?
-	aa_log_end_msg $rc
-	return $rc
+	aa_log_end_msg "$rc"
+	return "$rc"
 }
 
 apparmor_kill() {
-	aa_log_daemon_msg "Unloading AppArmor modules "
 	if ! is_apparmor_loaded ; then
 		aa_log_failure_msg "AppArmor module is not loaded"
 		return 1
 	fi
 
-	unmount_subdomainfs
-	if is_apparmor_present apparmor ; then
-		MODULE=apparmor
-	elif is_apparmor_present subdomain ; then
-		MODULE=subdomain
-	else
-		aa_log_failure_msg "AppArmor is builtin"
-		return 1
-	fi
-	/sbin/modprobe -qr $MODULE
-	rc=$?
-	aa_log_end_msg $rc
-	return $rc
+	aa_log_failure_msg "apparmor_kill() is no longer supported because AppArmor can't be built as a module"
+	return 1
 }
 
 __apparmor_restart() {
@@ -459,19 +382,18 @@ __apparmor_restart() {
 
 	aa_log_daemon_msg "Restarting AppArmor"
 
-	configure_owlsm
 	parse_profiles reload
 
 	rc=$?
-	aa_log_end_msg $rc
-	return $rc
+	aa_log_end_msg "$rc"
+	return "$rc"
 }
 
 apparmor_restart() {
 	if ! is_apparmor_loaded ; then
 		apparmor_start
 		rc=$?
-		return $rc
+		return "$rc"
 	fi
 
 	__apparmor_restart
@@ -487,25 +409,9 @@ apparmor_try_restart() {
 	return $?
 }
 
-configure_owlsm () {
-	if [ "${SUBDOMAIN_ENABLE_OWLSM}" = "yes" -a -f ${SFS_MOUNTPOINT}/control/owlsm ] ; then
-		# Sigh, the "sh -c" is necessary for the SuSE aa_action
-		# and it can't be abstracted out as a seperate function, as
-		# that breaks under RedHat's action, which needs a
-		# binary to invoke.
-		aa_action "Enabling OWLSM extension" sh -c "echo -n \"1\" > \"${SFS_MOUNTPOINT}/control/owlsm\""
-	elif [ -f "${SFS_MOUNTPOINT}/control/owlsm" ] ; then
-		aa_action "Disabling OWLSM extension" sh -c "echo -n \"0\" > \"${SFS_MOUNTPOINT}/control/owlsm\""
-	fi
-}
-
 apparmor_status () {
-	if test -x ${AA_STATUS} ; then
-		${AA_STATUS} --verbose
-		return $?
-	fi
-	if test -x ${SD_STATUS} ; then
-		${SD_STATUS} --verbose
+	if test -x "$AA_STATUS" ; then
+		"$AA_STATUS" --verbose
 		return $?
 	fi
 	if ! is_apparmor_loaded ; then
@@ -516,7 +422,7 @@ apparmor_status () {
 		rc=0
 	fi
 	echo "Install the apparmor-utils package to receive more detailed"
-	echo "status information here (or examine ${SFS_MOUNTPOINT} directly)."
+	echo "status information here (or examine $SFS_MOUNTPOINT directly)."
 
-	return $rc
+	return "$rc"
 }

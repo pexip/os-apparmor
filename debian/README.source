@@ -1,8 +1,10 @@
+-*- mode: markdown -*-
+
 Patch handling
 ==============
 
-This package uses gbp pq for maintaining patches with a git-like
-workflow in a "patch-queue/<branch>" local branch and then exporting
+This package uses `gbp pq` for maintaining patches with a git-like
+workflow in a `patch-queue/<branch>` local branch and then exporting
 them as quilt series. For working on patches run:
 
     gbp pq import --force
@@ -13,7 +15,7 @@ upstream commits, rebase, etc. there. After you are done, run:
     gbp pq export
 
 … which puts you back into your packaging branch and updates
-debian/patches/ (including series). You need to git add etc.
+`debian/patches/` (including series). You need to git add etc.
 new patches, possibly other packaging changes, and then git commit
 as usual.
 
@@ -21,17 +23,17 @@ This package uses gbp pq's "topic" branches for organizing patches in
 the following order:
 
  - Upstream cherry-picks and patches already submitted upstream go
-   into the "empty" topic (i.e. directly into debian/patches/).
+   into the "empty" topic (i.e. directly into `debian/patches/`).
 
  - Patches applied on Debian and presumably all derivatives, that are
-   not applicable upstream, go into "Gbp-Pq:  Topic debian" (i.e.
-   debian/patches/debian/).
+   not applicable upstream, go into `Gbp-Pq:  Topic debian` (i.e.
+   `debian/patches/debian/`).
 
  - Patches that Debian wants but Ubuntu doesn't go into the
-   "debian-only" topic.
+   `debian-only` topic.
 
- - Patches applied on $derivative go into "Gbp-Pq: Topic $derivative"
-   (i.e. debian/patches/$derivative/).
+ - Patches applied on `$derivative` go into `Gbp-Pq: Topic $derivative`
+   (i.e. `debian/patches/$derivative/`).
 
 Importing a new upstream release from Ubuntu into Debian
 ========================================================
@@ -56,43 +58,44 @@ Importing a new upstream release from the tarball
 =================================================
 
 1. Prepare the environment, e.g.:
-   NEW_UPSTREAM_VERSION=2.11
-   NEW_UPSTREAM_TAG=v2.11
+
+        NEW_UPSTREAM_VERSION=2.11
+        NEW_UPSTREAM_TAG=v2.11
 
 2. Import the new upstream release:
 
-       git fetch -v --tags origin && \
-       git fetch -v --tags upstream-repo && \
-       git tag -v "$NEW_UPSTREAM_TAG" && \
-       gbp import-orig --uscan --upstream-vcs-tag="$NEW_UPSTREAM_TAG"
+        git fetch -v --tags origin && \
+        git fetch -v --tags upstream-repo && \
+        git tag -v "$NEW_UPSTREAM_TAG" && \
+        gbp import-orig --uscan --upstream-vcs-tag="$NEW_UPSTREAM_TAG"
 
 3. Drop obsolete patches. Sometimes it's as simple as:
 
-       grep --color=never -E '^upstream-commit-.*\.patch' debian/patches/series \
-          | xargs -n 1 quilt delete \
-          && git rm debian/patches/upstream-commit-*.patch \
-          && git commit debian/patches \
-                        -m "Drop backported patches that are now obsolete."
+        grep --color=never -E '^upstream-.*\.patch' debian/patches/series \
+           | xargs -n 1 quilt delete \
+           && git rm debian/patches/upstream-*.patch \
+           && git commit debian/patches \
+                         -m "Drop backported patches that are now obsolete."
 
 4. Apply all quilt patches, update/refresh/delete them as needed.
    Commit.
 
 5. Update debian/changelog:
 
-       gbp dch --new-version "${NEW_UPSTREAM_VERSION}-1" \
-               --auto --snapshot debian/ \
-          && git commit debian/changelog \
-                        -m "$(echo "Update debian/changelog.\n\nGbp-Dch: Ignore\n")"
+        gbp dch --new-version "${NEW_UPSTREAM_VERSION}-1" \
+                --auto --snapshot debian/ \
+           && git commit debian/changelog \
+                         -m "$(echo "Update debian/changelog.\n\nGbp-Dch: Ignore\n")"
 
 6. Build, test, run QA checks (Lintian, autopkgtest, etc.).
    Fix problems, rince and repeat.
 
 7. Mark changelog entry as released and tag:
 
-       gbp dch --release \
-          && git commit debian/changelog \
-                -m "$(echo "Release ${NEW_UPSTREAM_VERSION}-1.\n\nGbp-Dch: Ignore\n")" \
-          && gbp buildpackage --git-tag-only --git-sign-tags
+        gbp dch --release \
+           && git commit debian/changelog \
+                 -m "$(echo "Release ${NEW_UPSTREAM_VERSION}-1.\n\nGbp-Dch: Ignore\n")" \
+           && gbp buildpackage --git-tag-only --git-sign-tags
 
 8. Build once last time
 
@@ -100,4 +103,4 @@ Importing a new upstream release from the tarball
 
 10. Push to Vcs-Git:
 
-       gbp push salsa
+        gbp push salsa

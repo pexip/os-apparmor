@@ -1,1 +1,1 @@
-rm_conffile /etc/X11/Xsession.d/90apparmor-notify 2.8.95~2430-0ubuntu3~
+mv_conffile /etc/xdg/autostart/apparmor-notify.desktop /etc/xdg/autostart/aa-notify.desktop 3.0.5-1~

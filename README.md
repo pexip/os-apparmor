@@ -35,14 +35,13 @@ and questions to the
 [AppArmor mailing list](https://lists.ubuntu.com/mailman/listinfo/apparmor).
 
 Bug reports can be filed against the AppArmor project on
-[launchpad](https://bugs.launchpad.net/apparmor) or reported to the mailing
+[GitLab](https://gitlab.com/apparmor/apparmor/-/issues) or reported to the mailing
 list directly for those who wish not to register for an account on
-launchpad. See the
+GitLab. See the
 [wiki page](https://gitlab.com/apparmor/apparmor/wikis/home#reporting-bugs)
 for more information.
 
-Security issues can be filed as security bugs on launchpad
-or directed to `security@apparmor.net`. Additional details can be found
+Security issues can be filed in GitLab by opening up a new [issue](https://gitlab.com/apparmor/apparmor/-/issues) and selecting the tick box ```This issue is confidential and should only be visible to team members with at least Reporter access.``` or directed to `security@apparmor.net`. Additional details can be found
 in the [wiki](https://gitlab.com/apparmor/apparmor/wikis/home#reporting-security-vulnerabilities).
 
 
@@ -58,9 +57,9 @@ The AppArmor userspace tools do not collect information on the system user beyon
 
 Users may submit information as part of an email, bug report or merge request, etc. and that will be recorded as part of the mailing list, bug/issue tracker, or code repository but only as part of a user initiated action.
 
-The AppArmor project does not collect information from contributors beyond their interactions with the AppArmor project, code, and community. However contributors are subject to the terms and conditions and privacy policy of the individual platforms (currently GitLab and LaunchPad) should they choose to contribute through those platforms. And those platforms may collect data on the user that the AppArmor project does not.
+The AppArmor project does not collect information from contributors beyond their interactions with the AppArmor project, code, and community. However contributors are subject to the terms and conditions and privacy policy of the individual platforms (currently GitLab) should they choose to contribute through those platforms. And those platforms may collect data on the user that the AppArmor project does not.
 
-Currently both GitLab an LaunchPad require a user account to submit patches or report bugs and issues. If a contributor does not wish to create an account for these platforms the mailing list is available. Membership in the list is not required. Content from non-list members will be sent to moderation, to ensure that it is on topic, so there may be a delay in choosing to interact in this way.
+Currently GitLab requires a user account to submit patches or report bugs and issues. If a contributor does not wish to create an account for these platforms the mailing list is available. Membership in the list is not required. Content from non-list members will be sent to moderation, to ensure that it is on topic, so there may be a delay in choosing to interact in this way.
 
 
 -------------
@@ -112,7 +111,7 @@ $ export PYTHON_VERSION=3
 $ export PYTHON_VERSIONS=python3
 ```
 
-libapparmor:
+### libapparmor:
 
 ```
 $ cd ./libraries/libapparmor
@@ -127,7 +126,7 @@ $ make install
 generate Ruby bindings to libapparmor.]
 
 
-Binary Utilities:
+### Binary Utilities:
 
 ```
 $ cd binutils
@@ -136,7 +135,7 @@ $ make check
 $ make install
 ```
 
-parser:
+### Parser:
 
 ```
 $ cd parser
@@ -146,7 +145,7 @@ $ make install
 ```
 
 
-Utilities:
+### Utilities:
 
 ```
 $ cd utils
@@ -155,7 +154,7 @@ $ make check PYFLAKES=/usr/bin/pyflakes3
 $ make install
 ```
 
-Apache mod_apparmor:
+### Apache mod_apparmor:
 
 ```
 $ cd changehat/mod_apparmor
@@ -164,7 +163,7 @@ $ make install
 ```
 
 
-PAM AppArmor:
+### PAM AppArmor:
 
 ```
 $ cd changehat/pam_apparmor
@@ -173,7 +172,7 @@ $ make install
 ```
 
 
-Profiles:
+### Profiles:
 
 ```
 $ cd profiles
@@ -201,6 +200,20 @@ For details on structure and adding tests, see
 tests/regression/apparmor/README.
 
 To run:
+
+### Regression tests - using apparmor userspace installed on host
+```
+$ cd tests/regression/apparmor (requires root)
+$ make USE_SYSTEM=1
+$ sudo make tests USE_SYSTEM=1
+$ sudo bash open.sh -r	 # runs and saves the last testcase from open.sh
+```
+
+### Regression tests - using apparmor userspace from the tree.
+- [build libapparmor](#libapparmor)
+- [build binutils](#binary-utilities)
+- [build apparmor parser](#parser)
+- [build Pam apparmor](#pam-apparmor)
 
 ```
 $ cd tests/regression/apparmor (requires root)
@@ -332,10 +345,15 @@ The AppArmor userspace utilities are written with some assumptions about
 installed and available versions of other tools. This is a (possibly
 incomplete) list of known version dependencies:
 
-The Python utilities require a minimum of Python 2.7 (deprecated) or Python 3.3.
-Python 3.x is recommended. Python 2.x support is deprecated since AppArmor 2.11.
+The Python utilities require a minimum of Python 3.3.
 
-Some utilities (aa-exec, aa-notify and aa-decode) require Perl 5.10.1 or newer.
+The aa-notify tool's Python dependencies can be satisfied by installing the
+following packages (Debian package names, other distros may vary):
+* python3-notify2
+* python3-psutil
+
+Perl is no longer needed since none of the utilities shipped to end users depend
+on it anymore.
 
 Most shell scripts are written for POSIX-compatible sh. aa-decode expects
 bash, probably version 3.2 and higher.

@@ -6,7 +6,7 @@ PARSER_BIN=apparmor_parser
 PARSER=$(PARSER_DIR)/$(PARSER_BIN)
 # parser.conf to use in tests. Note that some test scripts have the parser options hardcoded, so passing PARSER_ARGS=... is not enough to override it.
 PARSER_ARGS=--config-file=./parser.conf
-PROVE_ARG=-f
+PROVE_ARG=-f --directives
 
 ifeq ($(VERBOSE),1)
   PROVE_ARG+=-v
@@ -17,8 +17,8 @@ endif
 
 all: tests
 
-.PHONY: tests error_output gen_dbus gen_xtrans parser_sanity caching minimize equality valgrind
-tests: error_output caching minimize equality parser_sanity
+.PHONY: tests error_output gen_dbus gen_xtrans parser_sanity caching minimize equality dirtest valgrind
+tests: error_output caching minimize equality dirtest parser_sanity
 
 GEN_TRANS_DIRS=simple_tests/generated_x/ simple_tests/generated_perms_leading/ simple_tests/generated_perms_safe/ simple_tests/generated_dbus
 
@@ -32,16 +32,7 @@ gen_dbus: $(GEN_TRANS_DIRS)
 	./gen-dbus.pl
 
 error_output: $(PARSER)
-	LANG=C $(PARSER) $(PARSER_ARGS) -S -I errors >/dev/null errors/okay.sd
-	LANG=C $(PARSER) $(PARSER_ARGS) -S -I errors 2>&1 >/dev/null errors/single.sd | \
-		grep -q "AppArmor parser error for errors/single.sd in errors/single.sd at line 3: Could not open 'failure'"
-	LANG=C $(PARSER) $(PARSER_ARGS) -S -I errors 2>&1 >/dev/null errors/double.sd | \
-		grep -q "AppArmor parser error for errors/double.sd in errors/includes/busted at line 66: Could not open 'does-not-exist'"
-	LANG=C $(PARSER) $(PARSER_ARGS) -S -I errors 2>&1 >/dev/null errors/modefail.sd | \
-		grep -q "AppArmor parser error for errors/modefail.sd in errors/modefail.sd at line 6: syntax error"
-	LANG=C $(PARSER) $(PARSER_ARGS) -S -I errors 2>&1 >/dev/null errors/multi_include.sd | \
-		grep -q "AppArmor parser error for errors/multi_include.sd in errors/multi_include.sd at line 12: Could not open 'failure'"
-	@echo "Error Output: PASS"
+	LANG=C ./errors.py -p "$(PARSER)" $(PYTEST_ARG)
 
 parser_sanity: $(PARSER) gen_xtrans gen_dbus
 	$(Q)LANG=C APPARMOR_PARSER="$(PARSER)" ${PROVE} ${PROVE_ARG} ${TESTS}
@@ -54,6 +45,9 @@ minimize: $(PARSER)
 
 equality: $(PARSER)
 	LANG=C APPARMOR_PARSER="$(PARSER) $(PARSER_ARGS)" ./equality.sh
+
+dirtest: $(PARSER)
+	LANG=C APPARMOR_PARSER="$(PARSER) $(PARSER_ARGS)" ./dirtest.sh
 
 valgrind: $(PARSER) gen_xtrans gen_dbus
 	LANG=C ./valgrind_simple.py -p "$(PARSER) $(PARSER_ARGS)" -v simple_tests

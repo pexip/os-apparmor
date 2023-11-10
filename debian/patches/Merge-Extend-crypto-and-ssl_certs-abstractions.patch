@@ -1,0 +1,47 @@
+From: John Johansen <john@jjmx.net>
+Date: Tue, 24 Jan 2023 21:38:19 +0000
+Subject: Merge Extend crypto and ssl_certs abstractions
+
+- ssl_certs: /{etc,usr/share}/pki/trust/ has more than the 'anchors' subdirectory
+- crypoto: allow reading /etc/gcrypt/hwf.deny
+
+I propose this patch for 3.0..master (2.13 doesn't have abstractions/crypto).
+
+MR: https://gitlab.com/apparmor/apparmor/-/merge_requests/961
+Approved-by: John Johansen <john@jjmx.net>
+Merged-by: John Johansen <john@jjmx.net>
+
+
+(cherry picked from commit bb30df7843d13ebb1a282ec20421d9427c056aa1)
+
+d15bfa99 Extend crypto and ssl_certs abstractions
+---
+ profiles/apparmor.d/abstractions/crypto    | 1 +
+ profiles/apparmor.d/abstractions/ssl_certs | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/profiles/apparmor.d/abstractions/crypto b/profiles/apparmor.d/abstractions/crypto
+index 8367600..50852e8 100644
+--- a/profiles/apparmor.d/abstractions/crypto
++++ b/profiles/apparmor.d/abstractions/crypto
+@@ -13,6 +13,7 @@
+ 
+   abi <abi/3.0>,
+ 
++  @{etc_ro}/gcrypt/hwf.deny r,
+   @{etc_ro}/gcrypt/random.conf r,
+   @{PROC}/sys/crypto/fips_enabled r,
+ 
+diff --git a/profiles/apparmor.d/abstractions/ssl_certs b/profiles/apparmor.d/abstractions/ssl_certs
+index 56ab53c..82e532b 100644
+--- a/profiles/apparmor.d/abstractions/ssl_certs
++++ b/profiles/apparmor.d/abstractions/ssl_certs
+@@ -17,7 +17,7 @@
+   /etc/{,libre}ssl/certs/{,**} r,
+   /{etc,usr/share}/pki/bl[ao]cklist/{,*} r,
+   /{etc,usr/share}/pki/trust/{,*} r,
+-  /{etc,usr/share}/pki/trust/anchors/{,**} r,
++  /{etc,usr/share}/pki/trust/{bl[oa]cklist,anchors}/{,**} r,
+   /usr/share/ca-certificates/{,**} r,
+   /usr/share/ssl/certs/ca-bundle.crt          r,
+   /usr/local/share/ca-certificates/{,**} r,

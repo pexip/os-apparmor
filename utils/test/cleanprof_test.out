@@ -1,16 +1,21 @@
-abi  <abi/4.19>    ,
+abi <abi/4.19>,
 
 alias /foo -> /bar,
 
-#include <tunables/global>
+include <tunables/global>
+include if exists <tunables/nothing>
+
+@{xy} = x y
+@{asdf} = "" foo
 
 # A simple test comment which will persist
 
 
 /usr/bin/a/simple/cleanprof/test/profile {
-  abi  "abi/4.20"    ,
+  abi "abi/4.20",
 
-  #include <abstractions/base>
+  include <abstractions/base>
+  include if exists <foo>
 
   set rlimit nofile <= 256,
 
@@ -20,14 +25,20 @@ alias /foo -> /bar,
 
   dbus send bus=session,
 
+  mount options=(rw,suid) /c -> /3,
+
   signal set=(abrt alrm bus chld fpe hup ill int kill pipe quit segv stkflt term trap usr1 usr2),
 
-  unix (receive) type=dgram,
+  pivot_root oldroot=/mnt/root/old/,
 
-  link subset /alpha/beta -> /tmp/**,
+  unix (receive) type=dgram,
+  unix shutdown addr=@HypotheticalServiceDaemon,
+
+  deny owner link /some/thing -> /foo/bar,
 
   allow /home/*/** r,
   allow /home/foo/** w,
+  link subset /alpha/beta -> /tmp/**,
 
   change_profile,
 
@@ -42,5 +53,9 @@ alias /foo -> /bar,
 /usr/bin/other/cleanprof/test/profile {
   allow /home/*/** rw,
   allow /home/foo/bar r,
+
+}
+/what/ever/xattr xattrs=(   foo=bar      ) flags=(  complain ) {
+  /what/ever r,
 
 }

@@ -4,11 +4,17 @@ binutils/aa-enabled
 binutils/aa-enabled.1
 binutils/aa-exec
 binutils/aa-exec.1
+binutils/aa-features-abi
+binutils/aa-features-abi.1
+binutils/aa-status
+binutils/aa-status.8
+binutils/cJSON.o
 binutils/po/*.mo
 parser/po/*.mo
 parser/af_names.h
 parser/cap_names.h
 parser/generated_cap_names.h
+parser/generated_af_names.h
 parser/tst_lib
 parser/tst_misc
 parser/tst_regex
@@ -24,6 +30,7 @@ parser/af_rule.o
 parser/af_unix.o
 parser/common_optarg.o
 parser/dbus.o
+parser/default_features.o
 parser/lib.o
 parser/libapparmor_re/aare_rules.o
 parser/libapparmor_re/chfa.o
@@ -153,6 +160,7 @@ libraries/libapparmor/swig/perl/libapparmor_wrap.c
 libraries/libapparmor/swig/perl/libapparmor_wrap.o
 libraries/libapparmor/swig/perl/pm_to_blib
 libraries/libapparmor/swig/python/LibAppArmor.py
+libraries/libapparmor/swig/python/LibAppArmor.egg-info/
 libraries/libapparmor/swig/python/build/
 libraries/libapparmor/swig/python/libapparmor_wrap.c
 libraries/libapparmor/swig/python/Makefile
@@ -169,7 +177,7 @@ libraries/libapparmor/swig/ruby/LibAppArmor_wrap.c
 libraries/libapparmor/swig/ruby/LibAppArmor_wrap.o
 libraries/libapparmor/swig/ruby/Makefile
 libraries/libapparmor/swig/ruby/Makefile.in
-libraries/libapparmor/swig/ruby/Makefile.new
+libraries/libapparmor/swig/ruby/Makefile.bak
 libraries/libapparmor/swig/ruby/Makefile.ruby
 libraries/libapparmor/swig/ruby/mkmf.log
 libraries/libapparmor/testsuite/.deps
@@ -197,8 +205,12 @@ utils/*.tmp
 utils/po/*.mo
 utils/apparmor/*.pyc
 utils/apparmor/rule/*.pyc
+utils/apparmor.egg-info/
+utils/build/
+utils/htmlcov/
 utils/test/common_test.pyc
 utils/test/.coverage
+utils/test/coverage-report.txt
 utils/test/htmlcov/
 utils/vim/apparmor.vim
 utils/vim/apparmor.vim.5

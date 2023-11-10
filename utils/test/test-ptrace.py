@@ -84,7 +84,7 @@ class PtraceTestParseInvalid(PtraceTest):
 
 class PtraceTestParseFromLog(PtraceTest):
     def test_ptrace_from_log(self):
-        parser = ReadLog('', '', '', '')
+        parser = ReadLog('', '', '')
         event = 'type=AVC msg=audit(1409700683.304:547661): apparmor="DENIED" operation="ptrace" profile="/home/ubuntu/bzr/apparmor/tests/regression/apparmor/ptrace" pid=22465 comm="ptrace" requested_mask="tracedby" denied_mask="tracedby" peer="/home/ubuntu/bzr/apparmor/tests/regression/apparmor/ptrace"'
 
 
@@ -169,7 +169,7 @@ class InvalidPtraceTest(AATest):
         obj = None
         self.assertFalse(PtraceRule.match(rawrule))
         with self.assertRaises(AppArmorException):
-            obj = PtraceRule(PtraceRule.parse(rawrule))
+            obj = PtraceRule.parse(rawrule)
 
         self.assertIsNone(obj, 'PtraceRule handed back an object unexpectedly')
 
@@ -368,9 +368,9 @@ class PtraceCoveredTest_07(PtraceCoveredTest):
         ('ptrace,'                              , [ False   , False         , False     , False     ]),
         ('ptrace read,'                         , [ False   , False         , False     , False     ]),
         ('ptrace read peer=/foo/bar,'           , [ False   , False         , True      , True      ]),
-        ('ptrace read peer=/foo/*,'             , [ False   , False         , True      , True      ]),
-        ('ptrace read peer=/**,'                , [ False   , False         , True      , True      ]),
-        ('ptrace read peer=/what/*,'            , [ False   , False         , True      , True      ]),
+        ('ptrace read peer=/foo/*,'             , [ False   , False         , False     , False     ]),  # TODO: wildcard vs. wildcard never matches in is_covered_aare()
+        ('ptrace read peer=/**,'                , [ False   , False         , False     , False     ]),  # TODO: wildcard vs. wildcard never matches in is_covered_aare()
+        ('ptrace read peer=/what/*,'            , [ False   , False         , False     , False     ]),  # TODO: wildcard vs. wildcard never matches in is_covered_aare()
         ('ptrace peer=/foo/bar,'                , [ False   , False         , False     , False     ]),
         ('ptrace read, # comment'               , [ False   , False         , False     , False     ]),
         ('allow ptrace read,'                   , [ False   , False         , False     , False     ]),
@@ -443,10 +443,19 @@ class PtraceCoveredTest_Invalid(AATest):
         with self.assertRaises(AppArmorBug):
             obj.is_covered(testobj)
 
-    def test_invalid_is_equal(self):
+    def test_invalid_is_equal_1(self):
         obj = PtraceRule.parse('ptrace read,')
 
         testobj = BaseRule()  # different type
+
+        with self.assertRaises(AppArmorBug):
+            obj.is_equal(testobj)
+
+    def test_invalid_is_equal_2(self):
+        obj = PtraceRule.parse('ptrace read,')
+
+        testobj = PtraceRule.parse('ptrace read,')
+        testobj.all_peers = False  # make testobj invalid (should trigger exception in _is_equal_aare())
 
         with self.assertRaises(AppArmorBug):
             obj.is_equal(testobj)
@@ -478,6 +487,10 @@ class PtraceRulesTest(AATest):
         self.assertEqual([], ruleset_2.get_raw(2))
         self.assertEqual([], ruleset_2.get_clean(2))
 
+        # test __repr__() for empty ruleset
+        as_string = '%s' % ruleset
+        self.assertEqual(as_string, '<PtraceRuleset (empty) />')
+
     def test_ruleset_1(self):
         ruleset = PtraceRuleset()
         rules = [
@@ -502,6 +515,10 @@ class PtraceRulesTest(AATest):
 
         self.assertEqual(expected_raw, ruleset.get_raw())
         self.assertEqual(expected_clean, ruleset.get_clean())
+
+        # test __repr__() for non-empty ruleset
+        as_string = '%s' % ruleset
+        self.assertEqual(as_string, '<PtraceRuleset>\n  ptrace peer=/foo,\n  ptrace read,\n</PtraceRuleset>')
 
     def test_ruleset_2(self):
         ruleset = PtraceRuleset()

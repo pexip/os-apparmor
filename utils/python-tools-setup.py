@@ -20,14 +20,14 @@
 # Note: --version=... must be the last argument to this script
 #
 
-from distutils.command.install import install as _install
-from distutils.core import setup
+from setuptools.command.install import install as _install
+from setuptools import setup
 import os
 import shutil
 import sys
 
 class Install(_install, object):
-    '''Override distutils to install the files where we want them.'''
+    '''Override setuptools to install the files where we want them.'''
     def run(self):
         # Now byte-compile everything
         super(Install, self).run()
@@ -70,7 +70,7 @@ setup (name='apparmor',
        long_description='Python libraries for AppArmor utilities',
        author='AppArmor Developers',
        author_email='apparmor@lists.ubuntu.com',
-       url='https://launchpad.net/apparmor',
+       url='https://gitlab.com/apparmor/apparmor',
        license='GPL-2',
        cmdclass={'install': Install},
        package_dir={'apparmor': 'staging'},

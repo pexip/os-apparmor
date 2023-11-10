@@ -42,11 +42,11 @@ AC_ARG_WITH(python,
 [AC_MSG_RESULT($withval)], [AC_MSG_RESULT(no)])
 if test "$with_python" = "yes"; then
    test -z "$SWIG" && AC_MSG_ERROR([swig is required when enabling python bindings])
-   AC_PATH_PROG(PYTHON, python)
+   AC_PATH_PROG(PYTHON, python3)
    test -z "$PYTHON" && AC_MSG_ERROR([python is required when enabling python bindings])
    sinclude(m4/ac_python_devel.m4)
    AC_PYTHON_DEVEL
-   AM_PATH_PYTHON
+   AM_PATH_PYTHON([3.0])
 fi
 
 AC_MSG_CHECKING([whether perl bindings are enabled])
@@ -58,7 +58,7 @@ if test "$with_perl" = "yes"; then
    AC_PATH_PROG(PERL, perl)
    test -z "$PERL" && AC_MSG_ERROR([perl is required when enabling perl bindings])
    perl_includedir="`$PERL -e 'use Config; print $Config{archlib}'`/CORE"
-   AC_CHECK_FILE($perl_includedir/perl.h, enable_perl=yes, enable_perl=no)
+   AS_IF([test -e "$perl_includedir/perl.h"], enable_perl=yes, enable_perl=no)
 fi
 
 
