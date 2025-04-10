@@ -2,14 +2,16 @@ From: Debian AppArmor Team <pkg-apparmor-team@lists.alioth.debian.org>
 Date: Mon, 29 Jan 2018 12:26:43 +0000
 Subject: Add entries for lighttpd to work in a Debian/Ubuntu install
 
-Forwarded: no (Debian/Ubuntu specific)
+This is Debian/Ubuntu specific, so no need to forward upstream.
+
+Forwarded: not-needed
 Ubuntu-Bug: https://bugs.launchpad.net/ubuntu/+source/apparmor/+bug/582814
 ---
  profiles/apparmor/profiles/extras/usr.sbin.lighttpd | 1 +
  1 file changed, 1 insertion(+)
 
 diff --git a/profiles/apparmor/profiles/extras/usr.sbin.lighttpd b/profiles/apparmor/profiles/extras/usr.sbin.lighttpd
-index af11fb5..c21b95c 100644
+index b331509..6c391e2 100644
 --- a/profiles/apparmor/profiles/extras/usr.sbin.lighttpd
 +++ b/profiles/apparmor/profiles/extras/usr.sbin.lighttpd
 @@ -60,6 +60,7 @@ include <tunables/global>

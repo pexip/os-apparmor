@@ -27,17 +27,14 @@
 #define AA_VALID_PTRACE_PERMS (AA_MAY_READ | AA_MAY_TRACE | AA_MAY_READBY | \
 			       AA_MAY_TRACEDBY)
 
-int parse_ptrace_mode(const char *str_mode, int *mode, int fail);
+int parse_ptrace_perms(const char *str_perms, perm32_t *perms, int fail);
 
-class ptrace_rule: public rule_t {
+class ptrace_rule: public perms_rule_t {
 	void move_conditionals(struct cond_entry *conds);
 public:
 	char *peer_label;
-	int mode;
-	int audit;
-	int deny;
 
-	ptrace_rule(int mode, struct cond_entry *conds);
+	ptrace_rule(perm32_t perms, struct cond_entry *conds);
 	virtual ~ptrace_rule()
 	{
 		free(peer_label);
@@ -46,7 +43,24 @@ public:
 	virtual ostream &dump(ostream &os);
 	virtual int expand_variables(void);
 	virtual int gen_policy_re(Profile &prof);
-	virtual void post_process(Profile &prof unused) { };
+
+	virtual bool valid_prefix(const prefixes &p, const char *&error) {
+		if (p.owner != OWNER_UNSPECIFIED) {
+			error = "owner prefix not allowed on ptrace rules";
+			return false;
+		}
+		return true;
+	};
+
+	virtual bool is_mergeable(void) { return true; }
+	virtual int cmp(rule_t const &rhs) const
+	{
+		int res = perms_rule_t::cmp(rhs);
+		if (res)
+			return res;
+		return null_strcmp(peer_label,
+			    (rule_cast<ptrace_rule const &>(rhs)).peer_label);
+	};
 
 protected:
 	virtual void warn_once(const char *name) override;

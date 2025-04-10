@@ -23,9 +23,9 @@
 #include "rule.h"
 #include "profile.h"
 
-extern int parse_dbus_mode(const char *str_mode, int *mode, int fail);
+extern int parse_dbus_perms(const char *str_mode, perm32_t *mode, int fail);
 
-class dbus_rule: public rule_t {
+class dbus_rule: public perms_rule_t {
 	void move_conditionals(struct cond_entry *conds);
 public:
 	char *bus;
@@ -39,11 +39,8 @@ public:
 	char *path;
 	char *interface;
 	char *member;
-	int mode;
-	int audit;
-	int deny;
 
-	dbus_rule(int mode_p, struct cond_entry *conds,
+	dbus_rule(perm32_t perms_p, struct cond_entry *conds,
 		  struct cond_entry *peer_conds);
 	virtual ~dbus_rule() {
 		free(bus);
@@ -53,11 +50,43 @@ public:
 		free(interface);
 		free(member);
 	};
+	virtual bool valid_prefix(const prefixes &p, const char *&error) {
+		if (p.owner != OWNER_UNSPECIFIED) {
+			error = "owner prefix not allowed on dbus rules";
+			return false;
+		}
+		return true;
+	};
 
 	virtual ostream &dump(ostream &os);
 	virtual int expand_variables(void);
 	virtual int gen_policy_re(Profile &prof);
-	virtual void post_process(Profile &prof unused) { };
+
+	virtual bool is_mergeable(void) { return true; }
+	virtual int cmp(rule_t const &rhs) const
+	{
+		int res = perms_rule_t::cmp(rhs);
+		if (res)
+			return res;
+		dbus_rule const &trhs = (rule_cast<dbus_rule const &>(rhs));
+		res = null_strcmp(bus, trhs.bus);
+		if (res)
+			return res;
+		res = null_strcmp(name, trhs.name);
+		if (res)
+			return res;
+		res = null_strcmp(peer_label, trhs.peer_label);
+		if (res)
+			return res;
+		res = null_strcmp(path, trhs.path);
+		if (res)
+			return res;
+		res = null_strcmp(interface, trhs.interface);
+		if (res)
+			return res;
+		return null_strcmp(member, trhs.member);
+	};
+
 
 protected:
 	virtual void warn_once(const char *name) override;

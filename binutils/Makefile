@@ -21,7 +21,7 @@ DESTDIR=/
 BINDIR=${DESTDIR}/usr/bin
 SBINDIR=${DESTDIR}/usr/sbin
 LOCALEDIR=/usr/share/locale
-MANPAGES=aa-enabled.1 aa-exec.1 aa-features-abi.1 aa-status.8
+MANPAGES=aa-enabled.1 aa-exec.1 aa-features-abi.1 aa-load.8 aa-status.8
 
 WARNINGS = -Wall
 CPP_WARNINGS =
@@ -48,10 +48,10 @@ endif
 # Internationalization support. Define a package and a LOCALEDIR
 EXTRA_CFLAGS+=-DPACKAGE=\"${NAME}\" -DLOCALEDIR=\"${LOCALEDIR}\"
 
-SRCS = aa_enabled.c
+SRCS = aa_enabled.c aa_load.c
 HDRS =
 BINTOOLS = aa-enabled aa-exec aa-features-abi
-SBINTOOLS = aa-status
+SBINTOOLS = aa-status aa-load
 
 AALIB = -Wl,-Bstatic -lapparmor  -Wl,-Bdynamic -lpthread
 
@@ -124,6 +124,9 @@ $(LIBAPPARMOR_A):
 endif
 
 aa-features-abi: aa_features_abi.c $(LIBAPPARMOR_A)
+	$(CC) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ $< $(LIBS) $(AALIB)
+
+aa-load: aa_load.c $(LIBAPPARMOR_A)
 	$(CC) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ $< $(LIBS) $(AALIB)
 
 aa-enabled: aa_enabled.c $(LIBAPPARMOR_A)

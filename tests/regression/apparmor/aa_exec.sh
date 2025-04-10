@@ -19,7 +19,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 ns=aa_exec_ns
 
@@ -31,18 +31,19 @@ genprofile_aa_exec()
 			mode="(complain) "
 		fi
 	fi
-	genprofile --stdin <<EOF
+	genprofile image=$1 --stdin <<EOF
 $1 ${mode}{
   file,
 }
-
+EOF
+	genprofile --append image=:${ns}:${1} --stdin <<EOF
 :${ns}:${1} ${mode}{
   file,
 }
 EOF
 }
 
-settest aa_exec_profile ${bin}/aa_exec_wrapper.sh
+settest aa_exec_profile "${bin}/aa_exec_wrapper.sh"
 
 genprofile_aa_exec "$test" 0
 runchecktest "unconfined" pass "$aa_exec" "unconfined"
@@ -79,3 +80,17 @@ runchecktest "complain (--namespace=${ns})" pass "$aa_exec -n $ns -p $test" "$te
 
 genprofile_aa_exec "$test" 0
 runchecktest "negative test: bad ns (--namespace=${ns}XXX)" fail "$aa_exec -n ${ns}XXX -p $test" "$test (enforce)"
+
+if [ "$(parser_supports 'all,')" = "true" ]; then
+    genprofile image=$test --stdin <<EOF
+$test {
+  all,
+}
+EOF
+    genprofile --append image=:${ns}:${test} --stdin <<EOF
+:${ns}:${test} {
+  all,
+}
+EOF
+    runchecktest "allow all" pass "$aa_exec -p $test" "$test (enforce)"
+fi

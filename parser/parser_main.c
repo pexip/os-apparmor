@@ -82,13 +82,19 @@ int abort_on_error = 0;			/* stop processing profiles if error */
 int skip_bad_cache_rebuild = 0;
 int mru_skip_cache = 1;
 
+bool O_rule_merge = true;
+bool D_rule_merge = false;
+
 /* for jobs_max and jobs
  * LONG_MAX : no limit
  * LONG_MIN  : auto  = detect system processing cores
- * n  : use that number of processes/threads to compile policy
+ * -n  : multiply by the number of CPUs to compile policy
  */
 #define JOBS_AUTO LONG_MIN
-long jobs_max = -8;			/* 8 * cpus */
+#define DEFAULT_JOBS_MAX -8
+#define DEFAULT_ESTIMATED_JOB_SIZE (50 * 1024 * 1024)
+long estimated_job_size = DEFAULT_ESTIMATED_JOB_SIZE;
+long jobs_max = DEFAULT_JOBS_MAX;	/* 8 * cpus */
 long jobs = JOBS_AUTO;			/* default: number of processor cores */
 long njobs = 0;
 long jobs_scale = 0;			/* number of chance to resample online
@@ -130,6 +136,9 @@ static const char *config_file = "/etc/apparmor/parser.conf";
 #define ARG_OVERRIDE_POLICY_ABI		141
 #define EARLY_ARG_CONFIG_FILE		142
 #define ARG_WERROR			143
+#define ARG_ESTIMATED_COMPILE_SIZE	144
+#define ARG_PROMPT_COMPAT		145
+#define ARG_PRINT_PROMPT_COMPAT		146
 
 /* Make sure to update BOTH the short and long_options */
 static const char *short_options = "ad::f:h::rRVvI:b:BCD:NSm:M:qQn:XKTWkL:O:po:j:";
@@ -184,6 +193,9 @@ struct option long_options[] = {
 	{"print-config-file",	0, 0, ARG_PRINT_CONFIG_FILE},	/* no short option */
 	{"override-policy-abi",	1, 0, ARG_OVERRIDE_POLICY_ABI},	/* no short option */
 	{"config-file",		1, 0, EARLY_ARG_CONFIG_FILE},	/* early option, no short option */
+	{"estimated-compile-size", 1, 0, ARG_ESTIMATED_COMPILE_SIZE}, /* no short option, not in help */
+	{"prompt-compat",	1, 0, ARG_PROMPT_COMPAT},	/* no short option */
+	{"print-prompt-compat",	1, 0, ARG_PRINT_PROMPT_COMPAT},	/* no short option */
 
 	{NULL, 0, 0, 0},
 };
@@ -264,9 +276,11 @@ optflag_table_t warnflag_table[] = {
 	{ 1, "missing", "warn when missing qualifier and a default is used", WARN_MISSING },
 	{ 1, "override", "warn when overriding", WARN_OVERRIDE },
 	{ 1, "dev", "turn on warnings that are useful for profile development", WARN_DEV },
+	{ 1, "pound-include", "warn when #include is used", WARN_INCLUDE },
 	{ 1, "all", "turn on all warnings", WARN_ALL},
 	{ 0, NULL, NULL, 0 },
 };
+
 
 /* Parse comma separated cachelocations. Commas can be escaped by \, */
 static int parse_cacheloc(const char *arg, const char **cacheloc, int max_size)
@@ -414,6 +428,19 @@ static long process_jobs_arg(const char *arg, const char *val) {
 	return n;
 }
 
+static long str_to_size(const char *s)
+{
+	if (*s == '\0')
+		return 1;
+	else if (strcmp(s, "KB") == 0)
+		return 1024;
+	else if (strcmp(s, "MB") == 0)
+		return 1024*1024;
+	else if (strcmp(s, "GB") == 0)
+		return 1024*1024*1024;
+	return -1;
+}
+
 #define	EARLY_ARG   1
 #define	LATE_ARG    2
 #define	TWOPASS_ARG (EARLY_ARG | LATE_ARG)
@@ -434,7 +461,7 @@ int arg_pass(int c) {
 	return LATE_ARG;
 }
 
-/* process a single argment from getopt_long
+/* process a single argument from getopt_long
  * Returns: 1 if an action arg, else 0
  */
 #define DUMP_HEADER "     variables      \tDump variables\n" \
@@ -478,7 +505,7 @@ static int process_arg(int c, char *optarg)
 		} else if (strcmp(optarg, "Optimize") == 0 ||
 			   strcmp(optarg, "optimize") == 0 ||
 			   strcmp(optarg, "O") == 0) {
-			flagtable_help("-O ", "", progname, optflag_table);
+			flagtable_help("-O ", "", progname, dfaoptflag_table);
 		} else if (strcmp(optarg, "warn") == 0) {
 			flagtable_help("--warn=", "", progname, warnflag_table);
 		} else if (strcmp(optarg, "Werror") == 0) {
@@ -549,13 +576,13 @@ static int process_arg(int c, char *optarg)
 		if (!optarg) {
 			dump_vars = 1;
 		} else if (strcmp(optarg, "show") == 0) {
-			print_flags("dump", dumpflag_table, dfaflags);
+			print_flags("dump", dumpflag_table, parseopts.dump);
 		} else if (strcmp(optarg, "variables") == 0) {
 			dump_vars = 1;
 		} else if (strcmp(optarg, "expanded-variables") == 0) {
 			dump_expanded_vars = 1;
 		} else if (!handle_flag_table(dumpflag_table, optarg,
-					      &dfaflags)) {
+					      &parseopts.dump)) {
 			PERROR("%s: Invalid --Dump option %s\n",
 			       progname, optarg);
 			exit(1);
@@ -563,9 +590,9 @@ static int process_arg(int c, char *optarg)
 		break;
 	case 'O':
 		if (strcmp(optarg, "show") == 0) {
-			print_flags("Optimize", optflag_table, dfaflags);
-		} else if (!handle_flag_table(optflag_table, optarg,
-				       &dfaflags)) {
+			print_flags("Optimize", dfaoptflag_table, parseopts.control);
+		} else if (!handle_flag_table(dfaoptflag_table, optarg,
+					      &parseopts.control)) {
 			PERROR("%s: Invalid --Optimize option %s\n",
 			       progname, optarg);
 			exit(1);
@@ -646,7 +673,7 @@ static int process_arg(int c, char *optarg)
 	case 'q':
 		conf_verbose = 0;
 		conf_quiet = 1;
-		warnflags = 0;
+		parseopts.warn = 0;
 		break;
 	case 'v':
 		conf_verbose = 1;
@@ -704,9 +731,9 @@ static int process_arg(int c, char *optarg)
 		break;
 	case ARG_WARN:
 		if (strcmp(optarg, "show") == 0) {
-			print_flags("warn", warnflag_table, warnflags);
+			print_flags("warn", warnflag_table, parseopts.warn);
 		} else if (!handle_flag_table(warnflag_table, optarg,
-				       &warnflags)) {
+				       &parseopts.warn)) {
 			PERROR("%s: Invalid --warn option %s\n",
 			       progname, optarg);
 			exit(1);
@@ -714,18 +741,18 @@ static int process_arg(int c, char *optarg)
 		break;
 	case ARG_WERROR:
 		if (!optarg) {
-			werrflags = -1;
+			parseopts.Werror = -1;
 		} else if (strcmp(optarg, "show") == 0) {
-			print_flags("Werror", warnflag_table, werrflags);
+			print_flags("Werror", warnflag_table, parseopts.Werror);
 		} else if (optarg && !handle_flag_table(warnflag_table, optarg,
-					      &werrflags)) {
+					      &parseopts.Werror)) {
 			PERROR("%s: Invalid --Werror option %s\n",
 			       progname, optarg);
 			exit(1);
 		}
 		break;
 	case ARG_DEBUG_CACHE:
-		warnflags |= WARN_DEBUG_CACHE;
+		parseopts.warn |= WARN_DEBUG_CACHE;
 		break;
 	case 'j':
 		jobs = process_jobs_arg("-j", optarg);
@@ -750,6 +777,45 @@ static int process_arg(int c, char *optarg)
 		break;
 	case ARG_PRINT_CONFIG_FILE:
 		printf("%s\n", config_file);
+		break;
+	case ARG_ESTIMATED_COMPILE_SIZE:
+		/* used to auto tune parser on low resource systems */
+		{
+			char *end;
+			long mult;
+			long long tmp = strtoll(optarg, &end, 0);
+			if (end == optarg ||
+			    (errno == ERANGE && (tmp == LLONG_MIN || tmp == LLONG_MAX)) ||
+			    (mult = str_to_size(end)) == -1) {
+				PERROR("%s: --estimated-compile-size invalid size '%s'", progname, optarg);
+				exit(1);
+			}
+			estimated_job_size = tmp * mult;
+		}
+		break;
+	case ARG_PROMPT_COMPAT:
+		if (strcmp(optarg, "permsv2") == 0) {
+			prompt_compat_mode = PROMPT_COMPAT_PERMSV2;
+		} else if (strcmp(optarg, "permsv1") == 0) {
+			prompt_compat_mode = PROMPT_COMPAT_PERMSV1;
+		} else if (strcmp(optarg, "default") == 0) {
+			prompt_compat_mode = default_prompt_compat_mode();
+		} else if (strcmp(optarg, "dev") == 0) {
+			prompt_compat_mode = PROMPT_COMPAT_DEV;
+		} else if (strcmp(optarg, "ignore") == 0) {
+			prompt_compat_mode = PROMPT_COMPAT_IGNORE;
+		} else if (strcmp(optarg, "flag") == 0) {
+			prompt_compat_mode = PROMPT_COMPAT_FLAG;
+		} else {
+			PERROR("%s: Invalid --prompt-compat option '%s'\n",
+			       progname, optarg);
+			exit(1);
+		}
+		break;
+	case ARG_PRINT_PROMPT_COMPAT:
+		fprintf(stderr, "Prompt compat mode: ");
+		print_prompt_compat_mode(stderr);
+		fprintf(stderr, "\n");
 		break;
 	default:
 		/* 'unrecognized option' error message gets printed by getopt_long() */
@@ -821,12 +887,6 @@ int have_enough_privilege(void)
 	uid = getuid();
 	euid = geteuid();
 
-	if (uid != 0 && euid != 0) {
-		PERROR(_("%s: Sorry. You need root privileges to run this program.\n\n"),
-		       progname);
-		return EPERM;
-	}
-
 	if (uid != 0 && euid == 0) {
 		PERROR(_("%s: Warning! You've set this program setuid root.\n"
 			 "Anybody who can run this program can update "
@@ -887,12 +947,23 @@ void set_supported_features()
 	features_supports_networkv8 = features_intersect(kernel_features,
 							 policy_features,
 							 "network_v8");
+	features_supports_inet = features_intersect(kernel_features,
+						    policy_features,
+						    "network_v8/af_inet");
 	features_supports_unix = features_intersect(kernel_features,
 						    policy_features,
 						    "network/af_unix");
 	features_supports_mount = features_intersect(kernel_features,
 						     policy_features,
 						     "mount");
+	/*
+	 * note: detached mounts are just a null condition, so previous
+	 *       mount rule encoding supports it, if the kernel supports
+	 *       it. So support for detached depends on mount intersect and
+	 *       kernel detached.
+	 */
+	features_supports_detached_mount = aa_features_supports(kernel_features,
+							      "mount/move_mount/detached");
 	features_supports_dbus = features_intersect(kernel_features,
 						    policy_features, "dbus");
 	features_supports_signal = features_intersect(kernel_features,
@@ -907,6 +978,27 @@ void set_supported_features()
 	features_supports_domain_xattr = features_intersect(kernel_features,
 							    policy_features,
 							    "domain/attach_conditions/xattr");
+	features_supports_userns = features_intersect(kernel_features,
+						      policy_features,
+						      "namespaces/mask/userns_create");
+	features_supports_posix_mqueue = features_intersect(kernel_features,
+						      policy_features,
+						      "ipc/posix_mqueue");
+	features_supports_sysv_mqueue = features_intersect(kernel_features,
+						      policy_features,
+						      "ipc/sysv_mqueue");
+	features_supports_io_uring = features_intersect(kernel_features,
+							policy_features,
+							"io_uring");
+	features_supports_flag_interruptible = features_intersect(kernel_features,
+						policy_features,
+						"policy/profile/interruptible");
+	features_supports_flag_signal = features_intersect(kernel_features,
+							   policy_features,
+				      "policy/profile/kill.signal");
+	features_supports_flag_error = features_intersect(kernel_features,
+							  policy_features,
+							  "policy/profile/error");
 }
 
 static bool do_print_cache_dir(aa_features *features, int dirfd, const char *path)
@@ -1112,7 +1204,7 @@ int process_profile(int option, aa_kernel_interface *kernel_interface,
 			retval = process_binary(option, kernel_interface,
 						cachename);
 			if (!retval || skip_bad_cache_rebuild)
-				return retval;
+				goto out;
 		}
 	}
 
@@ -1175,7 +1267,8 @@ int process_profile(int option, aa_kernel_interface *kernel_interface,
 		}
 	}
 out:
-
+	/* cleanup */
+	reset_parser(profilename);
 	return retval;
 }
 
@@ -1263,7 +1356,7 @@ do {									\
  * from work_spawn and work_sync. We could throw a C++ exception, is it
  * worth doing it to avoid the exit here.
  *
- * atm not all resources maybe cleanedup at exit
+ * atm not all resources may be cleaned up at exit
  */
 int last_error = 0;
 void handle_work_result(int retval)
@@ -1291,33 +1384,118 @@ static long compute_jobs(long n, long j)
 	return j;
 }
 
-static void setup_parallel_compile(void)
+static void setup_parallel_compile(long ncpus, long maxcpus)
 {
-	/* jobs and paralell_max set by default, config or args */
-	long n = sysconf(_SC_NPROCESSORS_ONLN);
-	long maxn = sysconf(_SC_NPROCESSORS_CONF);
-	if (n == -1)
-		/* unable to determine number of processors, default to 1 */
-		n = 1;
-	if (maxn == -1)
-		/* unable to determine number of processors, default to 1 */
-		maxn = 1;
+	/* jobs and parallel_max set by default, config or args */
 	if (jobs < 0 || jobs == JOBS_AUTO)
 		jobs_scale = 1;
-	jobs = compute_jobs(n, jobs);
-	jobs_max = compute_jobs(maxn, jobs_max);
+	jobs = compute_jobs(ncpus, jobs);
+	jobs_max = compute_jobs(maxcpus, jobs_max);
 
 	if (jobs > jobs_max) {
-		pwarn(WARN_JOBS, "%s: Warning capping number of jobs to %ld * # of cpus == '%ld'",
+		pwarn(WARN_JOBS, "%s: Capping number of jobs to %ld * # of cpus == '%ld'",
 		      progname, jobs_max, jobs);
 		jobs = jobs_max;
 	} else if (jobs_scale && jobs < jobs_max)
 		/* the bigger the difference the more sample chances given */
-		jobs_scale = jobs_max + 1 - n;
+		jobs_scale = jobs_max + 1 - ncpus;
 
 	njobs = 0;
 	if (debug_jobs)
 		fprintf(stderr, "jobs: %ld\n", jobs);
+}
+
+
+/*
+ * Tune parameters to adjust the parser to adapt to low memory, low power
+ * systems.
+ * with a profile compile taking up to 10s of MB, launching a lot of
+ * parallel compiles is a bad idea on lauch 16 parallel compiles with
+ * only 50 MB free.
+ *
+ */
+#define PREFIX_TOTAL	"MemTotal:"
+#define PREFIX_FREE	"MemFree:"
+#define PREFIX_CACHE	"Cached:"
+
+static bool get_memstat(long long &mem_total, long long &mem_free,
+			long long &mem_cache)
+{
+	char *line, buf[256];
+	autofclose FILE *f = NULL;
+
+	mem_total = mem_free = mem_cache = -1;
+
+	/* parse /proc/meminfo to get a rough idea of available mem,
+	   look into libstatgrab as alternative */
+	f = fopen("/proc/meminfo", "r");
+	if (f == NULL) {
+		PDEBUG("Failed to open /proc/meminfo");
+		return false;
+	}
+
+	while ((line = fgets(buf, sizeof(buf), f)) != NULL) {
+		long long value;
+		if (sscanf(buf, "%*s %lld kB", &value) != 1)
+			continue;
+
+		if (strncmp(buf, PREFIX_FREE, strlen(PREFIX_FREE)) == 0)
+			mem_free = value * 1024;
+		else if (strncmp(buf, PREFIX_TOTAL, strlen(PREFIX_TOTAL)) == 0)
+			mem_total = value * 1024;
+		else if (strncmp(buf, PREFIX_CACHE, strlen(PREFIX_CACHE)) == 0)
+			mem_cache = value * 1024;
+	}
+
+	if (mem_free == -1 || mem_total == -1 || mem_cache == -1) {
+		PDEBUG("Failed to parse mem value");
+		return false;
+	}
+	mem_free += mem_cache;
+
+	return true;
+}
+
+static void auto_tune_parameters(void)
+{
+	long long mem_total, mem_free, mem_cache;
+	long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
+	long maxcpus = sysconf(_SC_NPROCESSORS_CONF);
+	if (ncpus == -1) {
+		PDEBUG("Unable to determine number of processors, default to 1");
+		ncpus = 1;
+	}
+	if (maxcpus == -1) {
+		PDEBUG("Unable to determine number of processors, default to 1");
+		maxcpus = 1;
+	}
+	/* only override if config or param hasn't overridden */
+	if (get_memstat(mem_total, mem_free, mem_cache) == true &&
+	    jobs == JOBS_AUTO) {
+		long estimated_jobs = (long) (mem_free / estimated_job_size);
+
+		if (mem_free < 2) {
+			/* -j0 - no workers */
+			jobs = jobs_max = 0;
+			PDEBUG("Auto tune: --jobs=0");
+		} else if (estimated_jobs < ncpus) {
+			/* --jobs=estimate_jobs */
+			jobs = estimated_jobs;
+			PDEBUG("Auto tune: --jobs=%ld", estimated_jobs);
+		} else {
+			long long n = estimated_jobs / ncpus;
+
+			if (n < -DEFAULT_JOBS_MAX) {
+				/* --jobs=cpus*n */
+				jobs = -n;
+				PDEBUG("Auto tune: --jobs=%ld", jobs);
+			}
+		}
+	} else {
+		PDEBUG("Unable to get meminfo, using defaults");
+	}
+
+	setup_parallel_compile(ncpus, maxcpus);
 }
 
 struct dir_cb_data {
@@ -1394,6 +1572,10 @@ static bool get_kernel_features(struct aa_features **features)
 						       "policy/set_load");
 	kernel_supports_diff_encode = aa_features_supports(*features,
 							   "policy/diff_encode");
+	kernel_supports_state32 = aa_features_supports(*features,
+						       "policy/state32");
+	kernel_supports_flags_table = aa_features_supports(*features,
+						     "policy/flags_table");
 	kernel_supports_oob = aa_features_supports(*features,
 						   "policy/outofband");
 
@@ -1402,9 +1584,34 @@ static bool get_kernel_features(struct aa_features **features)
 	else if (aa_features_supports(*features, "policy/versions/v6"))
 		kernel_abi_version = 6;
 
+	kernel_supports_promptdev = aa_features_supports(*features, "policy/perms_compatprompt");
+	kernel_supports_permstable32 = aa_features_supports(*features, "policy/permstable32");
+	if (kernel_supports_permstable32) {
+		//fprintf(stderr, "kernel supports prompt\n");
+	}
+	kernel_supports_permstable32_v1 = aa_features_supports(*features, "policy/permstable32_version/0x000001");
+	if (kernel_supports_permstable32_v1) {
+		/* permstabl32 is broken in kernels that only support v1
+		 * so disable it
+		 */
+		kernel_supports_permstable32 = false;
+	}
+
+	/* set default prompt_compat_mode to the best that is supported */
+	if (prompt_compat_mode == PROMPT_COMPAT_UNKNOWN) {
+		prompt_compat_mode = default_prompt_compat_mode();
+	}
 	if (!kernel_supports_diff_encode)
 		/* clear diff_encode because it is not supported */
-		dfaflags &= ~DFA_CONTROL_DIFF_ENCODE;
+		parseopts.control &= ~CONTROL_DFA_DIFF_ENCODE;
+
+	if (!kernel_supports_state32)
+		parseopts.control &= ~CONTROL_DFA_STATE32;
+	if (!kernel_supports_flags_table || !kernel_supports_state32)
+		/* if only encoding 16 bit states, don't waste space on
+		 * a flags table
+		 */
+		parseopts.control &= ~CONTROL_DFA_FLAGS_TABLE;
 
 	return true;
 }
@@ -1427,7 +1634,7 @@ int main(int argc, char *argv[])
 	process_config_file(config_file);
 	optind = process_args(argc, argv);
 
-	setup_parallel_compile();
+	auto_tune_parameters();
 
 	setlocale(LC_MESSAGES, "");
 	bindtextdomain(PACKAGE, LOCALEDIR);
@@ -1577,6 +1784,7 @@ int main(int argc, char *argv[])
 	if (ofile)
 		fclose(ofile);
 	aa_policy_cache_unref(policy_cache);
+	aa_kernel_interface_unref(kernel_interface);
 
 	return last_error;
 }

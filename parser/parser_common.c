@@ -69,25 +69,37 @@ int kernel_load = 1;
 int kernel_supports_setload = 0;	/* kernel supports atomic set loads */
 int features_supports_network = 0;	/* kernel supports network rules */
 int features_supports_networkv8 = 0;	/* kernel supports 4.17 network rules */
+int features_supports_inet = 0; 	/* kernel supports inet network rules */
 int features_supports_unix = 0;		/* kernel supports unix socket rules */
 int kernel_supports_policydb = 0;	/* kernel supports new policydb */
 int features_supports_mount = 0;	/* kernel supports mount rules */
+bool features_supports_detached_mount = false;
 int features_supports_dbus = 0;		/* kernel supports dbus rules */
 int kernel_supports_diff_encode = 0;	/* kernel supports diff_encode */
 int features_supports_signal = 0;	/* kernel supports signal rules */
 int features_supports_ptrace = 0;	/* kernel supports ptrace rules */
 int features_supports_stacking = 0;	/* kernel supports stacking */
 int features_supports_domain_xattr = 0;	/* x attachment cond */
+int features_supports_userns = 0;	/* kernel supports user namespace */
+int features_supports_posix_mqueue = 0;	/* kernel supports mqueue rules */
+int features_supports_sysv_mqueue = 0;	/* kernel supports mqueue rules */
+int features_supports_io_uring = 0;	/* kernel supports io_uring rules */
+int features_supports_flag_interruptible = 0;
+int features_supports_flag_signal = 0;
+int features_supports_flag_error = 0;
 int kernel_supports_oob = 0;		/* out of band transitions */
+int kernel_supports_promptdev = 0;	/* prompt via audit perms */
+int kernel_supports_permstable32 = 0;	/* extended permissions */
+int kernel_supports_permstable32_v1 = 0;	/* extended permissions */
+int prompt_compat_mode = PROMPT_COMPAT_UNKNOWN;
+int kernel_supports_state32 = 0;	/* 32 bit state table entries */
+int kernel_supports_flags_table = 0;	/* state flags stored in table */
 int conf_verbose = 0;
 int conf_quiet = 0;
 int names_only = 0;
 int current_lineno = 1;
 int option = OPTION_ADD;
 
-dfaflags_t dfaflags = (dfaflags_t)(DFA_CONTROL_TREE_NORMAL | DFA_CONTROL_TREE_SIMPLE | DFA_CONTROL_MINIMIZE | DFA_CONTROL_DIFF_ENCODE);
-dfaflags_t warnflags = DEFAULT_WARNINGS;
-dfaflags_t werrflags = 0;
 
 const char *progname = __FILE__;
 char *profile_ns = NULL;
@@ -97,6 +109,19 @@ char *current_filename = NULL;
 FILE *ofile = NULL;
 
 IncludeCache_t *g_includecache;
+
+optflags parseopts = {
+	.control = (optflags_t)(CONTROL_DFA_TREE_NORMAL | CONTROL_DFA_TREE_SIMPLE | CONTROL_DFA_MINIMIZE | CONTROL_DFA_DIFF_ENCODE | CONTROL_RULE_MERGE |
+				/* TODO: remove when we have better auto
+				 * selection on when/which explicit denies
+				 * to remove
+				 */
+				CONTROL_DFA_FILTER_DENY),
+	.dump = 0,
+	.warn = DEFAULT_WARNINGS,
+	.Werror = 0
+};
+
 
 #ifdef FORCE_READ_IMPLIES_EXEC
 int read_implies_exec = 1;
@@ -136,8 +161,8 @@ void pwarnf(bool werr, const char *fmt, ...)
 /* do we want to warn once/profile or just once per compile?? */
 void common_warn_once(const char *name, const char *msg, const char **warned_name)
 {
-	if ((warnflags & WARN_RULE_NOT_ENFORCED) && *warned_name != name) {
-		if (werrflags & WARN_RULE_NOT_ENFORCED)
+	if ((parseopts.warn & WARN_RULE_NOT_ENFORCED) && *warned_name != name) {
+		if (parseopts.Werror & WARN_RULE_NOT_ENFORCED)
 			cerr << "Warning converted to Error";
 		else
 			cerr << "Warning";
@@ -150,6 +175,68 @@ void common_warn_once(const char *name, const char *msg, const char **warned_nam
 		*warned_name = name;
 	}
 
-	if (werrflags & WARN_RULE_NOT_ENFORCED)
+	if (parseopts.Werror & WARN_RULE_NOT_ENFORCED)
 		exit(1);
+}
+
+bool prompt_compat_mode_supported(int mode)
+{
+	if (mode == PROMPT_COMPAT_PERMSV2 &&
+	    (kernel_supports_permstable32 && !kernel_supports_permstable32_v1))
+		return true;
+	/*
+	else if (mode == PROMPT_COMPAT_DEV &&
+		 kernel_supports_promptdev)
+		return true;
+	*/
+	else if (mode == PROMPT_COMPAT_FLAG &&
+		 kernel_supports_permstable32)
+		return true;
+	/*
+	else if (mode == PROMPT_COMPAT_PERMSV1 &&
+		 (kernel_supports_permstable32_v1))
+		return true;
+	*/
+	else if (mode == PROMPT_COMPAT_IGNORE)
+		return true;
+
+	return false;
+}
+
+int default_prompt_compat_mode()
+{
+	if (prompt_compat_mode_supported(PROMPT_COMPAT_PERMSV2))
+		return PROMPT_COMPAT_PERMSV2;
+	if (prompt_compat_mode_supported(PROMPT_COMPAT_DEV))
+		return PROMPT_COMPAT_DEV;
+	if (prompt_compat_mode_supported(PROMPT_COMPAT_FLAG))
+		return PROMPT_COMPAT_FLAG;
+	if (prompt_compat_mode_supported(PROMPT_COMPAT_PERMSV1))
+		return PROMPT_COMPAT_PERMSV1;
+	if (prompt_compat_mode_supported(PROMPT_COMPAT_IGNORE))
+		return PROMPT_COMPAT_IGNORE;
+	return PROMPT_COMPAT_IGNORE;
+}
+
+void print_prompt_compat_mode(FILE *f)
+{
+	switch (prompt_compat_mode) {
+	case PROMPT_COMPAT_IGNORE:
+		fprintf(f, "ignore");
+		break;
+	case PROMPT_COMPAT_FLAG:
+		fprintf(f, "flag");
+		break;
+	case PROMPT_COMPAT_PERMSV2:
+		fprintf(f, "permsv2");
+		break;
+	case PROMPT_COMPAT_PERMSV1:
+		fprintf(f, "permsv1");
+		break;
+	case PROMPT_COMPAT_DEV:
+		fprintf(stderr, "dev");
+		break;
+	default:
+		fprintf(f, "Unknown prompt compat mode '%d'", prompt_compat_mode);
+	}
 }

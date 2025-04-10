@@ -26,10 +26,10 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 requires_kernel_features policy/versions/v6
 #af_mask for downgrade test af_unix for full test
-requires_kernel_features network/af_mask
+requires_any_of_kernel_features network/af_mask network_v8/af_mask
 
 settest unix_socket
 
@@ -40,12 +40,13 @@ message=4a0c83d87aaa7afa2baab5df3ee4df630f0046d5bfb7a3080c550b721f401b3b\
 8a738e1435a3b77aa6482a70fb51c44f20007221b85541b0184de66344d46a4c
 
 # v6 requires 'w' and v7 requires 'rw'
+downgraded=false
 okserver=w
 badserver1=r
 badserver2=
-if [ "$(kernel_features policy/versions/v7)" == "true" ] ; then
+if [ "$(kernel_features policy/versions/v7)" = "true" ] ; then
 	okserver=rw
-	badserver2=w
+#	badserver2=w
 fi
 
 # af_unix support requires 'unix create' to call socket()
@@ -54,9 +55,18 @@ fi
 # af_unix support requires 'unix getattr' to call getsockname()
 af_unix_okserver=
 af_unix_okclient=
-if [ "$(kernel_features network/af_unix)" == "true" -a "$(parser_supports 'unix,')" == "true" ] ; then
+if ( [ "$(kernel_features network_v8/af_unix)" = "true" ] ||
+     [ "$(kernel_features network/af_unix)" = "true" ] ) &&
+     [ "$(parser_supports 'unix,')" = "true" ] ; then
 	af_unix_okserver="create,setopt"
 	af_unix_okclient="create,getopt,setopt,getattr"
+elif [ "$(kernel_features network_v8)" = "true" ] ; then
+	af_unix_okserver="create,setopt,bind,listen,accept,getopt,rw,shutdown"
+	af_unix_okclient="create,getopt,setopt,getattr,connect,rw"
+	downgraded="true"
+	echo "    using unix socket mediation downgrade ..."
+	# af_unix_okserver="create"
+	# af_unix_okclient="create"
 fi
 
 okclient=rw
@@ -88,7 +98,7 @@ testsocktype()
 	#   https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1373176
 	# get resolved
 	local ex_result="pass"
-	if [ "${socktype}" == "dgram" ] ; then
+	if [ "${socktype}" = "dgram" ] ; then
 		ex_result="xpass"
 	fi
 
@@ -105,19 +115,19 @@ testsocktype()
 
 	# PASS - server w/ access to the file
 
-	genprofile $sockpath:$okserver $af_unix $client:Ux
+	genprofile $sockpath:$okserver $af_unix "$client:Ux"
 	runchecktest "$testdesc; confined server w/ access ($okserver)" $ex_result $args
 	removesockets $sockpath $client_sockpath
 
 	# FAIL - server w/o access to the file
 
-	genprofile $af_unix $client:Ux
+	genprofile $af_unix "$client:Ux"
 	runchecktest "$testdesc; confined server w/o access" fail $args
 	removesockets $sockpath $client_sockpath
 
 	# FAIL - server w/ bad access to the file
 
-	genprofile $sockpath:$badserver1 $af_unix $client:Ux
+	genprofile $sockpath:$badserver1 $af_unix "$client:Ux"
 	runchecktest "$testdesc; confined server w/ bad access ($badserver1)" fail $args
 	removesockets $sockpath $client_sockpath
 
@@ -126,7 +136,7 @@ testsocktype()
 	if [ -n "$badserver2" ] ; then
 		# FAIL - server w/ bad access to the file
 
-		genprofile $sockpath:$badserver2 $af_unix $client:Ux
+		genprofile $sockpath:$badserver2 $af_unix "$client:Ux"
 		runchecktest "$testdesc; confined server w/ bad access ($badserver2)" fail $args
 		removesockets $sockpath $client_sockpath
 
@@ -135,7 +145,7 @@ testsocktype()
 	if [ -n "$af_unix_okserver" ] ; then
 		# FAIL - server w/o af_unix access
 
-		genprofile $sockpath:$okserver $client:Ux
+		genprofile $sockpath:$okserver "$client:Ux"
 		runchecktest "$testdesc; confined server w/o af_unix" fail $args
 		removesockets $sockpath $client_sockpath
 
@@ -144,8 +154,13 @@ testsocktype()
 		# one-by-one, and verify that the test fails.
 		for access in ${af_unix_okserver//,/ }; do
 			# FAIL - server w/ a missing af_unix access
-
-			genprofile $sockpath:$okserver "unix:(${af_unix_okserver//$access/})" $client:Ux
+			if [ "$socktype" = "dgram" -a \
+			      \( "$access" = "listen" -o \
+			         "$access" = "accept" \) ] ; then
+				# listen/accept not used on dgram
+				continue
+			fi
+			genprofile $sockpath:$okserver "unix:(${af_unix_okserver//$access/})" "$client:Ux"
 			runchecktest "$testdesc; confined server w/ a missing af_unix access ($access)" fail $args
 			removesockets $sockpath $client_sockpath
 		done
@@ -156,39 +171,59 @@ testsocktype()
 	# We are transitioning from testing the server program to testing the
 	# client program. Reset the af_unix variable and, if necessary,
 	# reinitialize it with the needed client permissions.
+	# dgram client with a path address will trigger a bind perm check
+	# instead of only mknod that stream and seq_packet trigger
 	af_unix=
 	if [ -n "$af_unix_okclient" ]; then
-		af_unix="unix:(${af_unix_okclient})"
+		if [ "$downgraded" = "true" -a "$socktype" = "dgram" ] ; then
+			af_unix="unix:(${af_unix_okclient},bind)"
+		else
+			af_unix="unix:(${af_unix_okclient})"
+		fi
 	fi
 
 	# PASS - client w/ access to the file
 
-	genprofile $server -- image=$client $sockpath:$okclient $af_unix
+	genprofile $server -- "image=$client" $sockpath:$okclient $af_unix
 	runchecktest "$testdesc; confined client w/ access ($okclient)" $ex_result $args
 	removesockets $sockpath $client_sockpath
 
 	# FAIL - client w/o access to the file
+	# in the downgrade situation where the path isn't mediated just
+	# coarse socket level permissions, this becomes a pass.
+	# dgram bind requires both network (bind) unix, and mknod of path
+	# this will cause it to fail despite the downgrade
+	xres="fail"
+	if [ "$downgraded" = "true" -a "$socktype" != "dgram" ] ; then
+		xres="pass"
+	fi
+	genprofile $server -- "image=$client" $af_unix
+	runchecktest "$testdesc; confined client w/o access" $xres $args
+	removesockets $sockpath $client_sockpath
 
-	genprofile $server -- image=$client $af_unix
-	runchecktest "$testdesc; confined client w/o access" fail $args
+	# FAIL - client w/ bad access to the file
+	# no write perm to create the path location
+	genprofile $server -- "image=$client" $sockpath:$badclient1 $af_unix
+	runchecktest "$testdesc; confined client w/ bad access1 ($badclient1)" $xres $args
 	removesockets $sockpath $client_sockpath
 
 	# FAIL - client w/ bad access to the file
 
-	genprofile $server -- image=$client $sockpath:$badclient1 $af_unix
-	runchecktest "$testdesc; confined client w/ bad access ($badclient1)" fail $args
-	removesockets $sockpath $client_sockpath
+	# no generic af_unix perm rule so this actually will still fail if
+	# downgraded
 
-	# FAIL - client w/ bad access to the file
 
-	genprofile $server -- image=$client $sockpath:$badclient2
-	runchecktest "$testdesc; confined client w/ bad access ($badclient2)" fail $args
+
+
+
+	genprofile $server -- "image=$client" $sockpath:$badclient2
+	runchecktest "$testdesc; confined client w/ bad access2 ($badclient2)" fail $args
 	removesockets $sockpath $client_sockpath
 
 	if [ -n "$af_unix_okclient" ] ; then
 		# FAIL - client w/o af_unix access
 
-		genprofile $server -- image=$client $sockpath:$okclient
+		genprofile $server -- "image=$client" $sockpath:$okclient
 		runchecktest "$testdesc; confined client w/o af_unix" fail $args
 		removesockets $sockpath $client_sockpath
 
@@ -198,7 +233,14 @@ testsocktype()
 		for access in ${af_unix_okclient//,/ }; do
 			# FAIL - client w/ a missing af_unix access
 
-			genprofile $server -- image=$client $sockpath:$okclient "unix:(${af_unix_okclient//$access/})"
+			if [ "$socktype" = "dgram" -a \
+				 \( "$access" = "listen" -o \
+				    "$access" = "accept" \) ] ; then
+				# listen/accept not used on dgram
+				continue
+			fi
+
+			genprofile $server -- "image=$client" $sockpath:$okclient "unix:(${af_unix_okclient//$access/})"
 			runchecktest "$testdesc; confined client w/ a missing af_unix access ($access)" fail $args
 			removesockets $sockpath $client_sockpath
 		done

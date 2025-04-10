@@ -113,9 +113,13 @@ B<XATTR VALUE FILEGLOB> = I<FILEGLOB>
 
 B<PROFILE FLAG CONDS> =  [ 'flags=' ] '(' comma or white space separated list of I<PROFILE FLAGS> ')'
 
-B<PROFILE FLAGS> = I<PROFILE MODE> | I<AUDIT_MODE> | 'mediate_deleted' | 'attach_disconnected' | 'chroot_relative'
+B<PROFILE FLAGS> = I<PROFILE MODE> | I<AUDIT_MODE> | 'mediate_deleted'
+| 'attach_disconnected' | 'attach_disconnected.path='I<ABS PATH> | 'chroot_relative'
+| 'debug' | 'interruptible' | 'kill.signal='I<SIGNAL> | 'error='I<ERROR CODE>
 
-B<PROFILE MODE> = 'enforce' | 'complain' | 'kill' | 'unconfined'
+B<ERROR CODE> = (case insensitive error code name starting with 'E'; see errno(3))
+
+B<PROFILE MODE> = 'enforce' | 'complain' | 'kill' | 'default_allow' | 'unconfined' | 'prompt'
 
 B<AUDIT MODE> = 'audit'
 
@@ -123,7 +127,7 @@ B<RULES> = [ ( I<LINE RULES> | I<COMMA RULES> ',' | I<BLOCK RULES> )
 
 B<LINE RULES> = ( I<COMMENT> | I<INCLUDE> ) [ '\r' ] '\n'
 
-B<COMMA RULES> = ( I<CAPABILITY RULE> | I<NETWORK RULE> | I<MOUNT RULE> | I<PIVOT ROOT RULE> | I<UNIX RULE> | I<FILE RULE> | I<LINK RULE> | I<CHANGE_PROFILE RULE> | I<RLIMIT RULE> | I<DBUS RULE> )
+B<COMMA RULES> = ( I<CAPABILITY RULE> | I<NETWORK RULE> | I<MOUNT RULE> | I<PIVOT ROOT RULE> | I<UNIX RULE> | I<FILE RULE> | I<LINK RULE> | I<CHANGE_PROFILE RULE> | I<RLIMIT RULE> | I<DBUS RULE> | I<MQUEUE RULE> | I<IO_URING RULE> | I<USERNS RULE> | I<ALL RULE>)
 
 B<BLOCK RULES> = ( I<SUBPROFILE> | I<HAT> | I<QUALIFIER BLOCK> )
 
@@ -135,9 +139,11 @@ B<HATNAME> = (must start with alphanumeric character. See aa_change_hat(2) for a
 
 B<QUALIFIER BLOCK> = I<QUALIFIERS> I<BLOCK>
 
+B<INTEGER> = (+ | -)? [[:digit:]]+
+
 B<ACCESS TYPE> = ( 'allow' | 'deny' )
 
-B<QUALIFIERS> = [ 'audit' ] [ I<ACCESS TYPE> ]
+B<QUALIFIERS> = [ 'priority' '=' <INTEGER> ] [ 'audit' ] [ I<ACCESS TYPE> ]
 
 B<CAPABILITY RULE> = [ I<QUALIFIERS> ] 'capability' [ I<CAPABILITY LIST> ]
 
@@ -146,13 +152,36 @@ B<CAPABILITY LIST> = ( I<CAPABILITY> )+
 B<CAPABILITY> = (lowercase capability name without 'CAP_' prefix; see
 capabilities(7))
 
-B<NETWORK RULE> = [ I<QUALIFIERS> ] 'network' [ I<DOMAIN> ] [ I<TYPE> | I<PROTOCOL> ]
+B<NETWORK RULE> = [ I<QUALIFIERS> ] 'network' [ I<NETWORK ACCESS EXPR> ] [ I<DOMAIN> ] [ I<TYPE> | I<PROTOCOL> ] [ I<NETWORK LOCAL EXPR> ] [ I<NETWORK PEER EXPR> ]
+
+B<NETWORK ACCESS EXPR> = ( I<NETWORK ACCESS> | I<NETWORK ACCESS LIST> )
+
+B<NETWORK ACCESS> = ( 'create' | 'bind' | 'listen' | 'accept' | 'connect' | 'shutdown' | 'getattr' | 'setattr' | 'getopt' | 'setopt' | 'send' | 'receive' | 'r' | 'w' | 'rw' )
+  Some access modes are incompatible with some rules.
+
+B<NETWORK ACCESS LIST> = '(' I<NETWORK ACCESS> ( [','] I<NETWORK ACCESS> )* ')'
 
 B<DOMAIN> = ( 'unix' | 'inet' | 'ax25' | 'ipx' | 'appletalk' | 'netrom' | 'bridge' | 'atmpvc' | 'x25' | 'inet6' | 'rose' | 'netbeui' | 'security' | 'key' | 'netlink' | 'packet' | 'ash' | 'econet' | 'atmsvc' | 'rds' | 'sna' | 'irda' | 'pppox' | 'wanpipe' | 'llc' | 'ib' | 'mpls' | 'can' | 'tipc' | 'bluetooth' | 'iucv' | 'rxrpc' | 'isdn' | 'phonet' | 'ieee802154' | 'caif' | 'alg' | 'nfc' | 'vsock' | 'kcm' | 'qipcrtr' | 'smc' | 'xdp' | 'mctp' ) ','
 
 B<TYPE> = ( 'stream' | 'dgram' | 'seqpacket' |  'rdm' | 'raw' | 'packet' )
 
 B<PROTOCOL> = ( 'tcp' | 'udp' | 'icmp' )
+
+B<NETWORK LOCAL EXPR> = ( I<NETWORK IP COND> | I<NETWORK PORT COND> )*
+  Each cond can appear at most once.
+
+B<NETWORK PEER EXPR> = 'peer' '=' '(' ( I<NETWORK IP COND> | I<NETWORK PORT COND> )+ ')'
+  Each cond can appear at most once.
+
+B<NETWORK IP COND> = 'ip' '=' ( 'none' | I<NETWORK IPV4> | I<NETWORK IPV6> )
+
+B<NETWORK PORT COND> = 'port' '=' ( I<NETWORK PORT> | I<NETWORK PORT> '-' I<NETWORK PORT> )
+
+B<NETWORK IPV4> = IPv4, represented by four 8-bit decimal numbers separated by '.'
+
+B<NETWORK IPV6> = IPv6, represented by eight groups of four hexadecimal numbers separated by ':'. Shortened representation of contiguous zeros is allowed by using '::'
+
+B<NETWORK PORT> = 16-bit number ranging from 0 to 65535
 
 B<MOUNT RULE> = ( I<MOUNT> | I<REMOUNT> | I<UMOUNT> )
 
@@ -172,9 +201,33 @@ B<MOUNT FLAGS EXPRESSION> = ( I<MOUNT FLAGS LIST> | I<MOUNT EXPRESSION> )
 
 B<MOUNT FLAGS LIST> = Comma separated list of I<MOUNT FLAGS>.
 
-B<MOUNT FLAGS> = ( 'ro' | 'rw' | 'nosuid' | 'suid' | 'nodev' | 'dev' | 'noexec' | 'exec' | 'sync' | 'async' | 'remount' | 'mand' | 'nomand' | 'dirsync' | 'noatime' | 'atime' | 'nodiratime' | 'diratime' | 'bind' | 'rbind' | 'move' | 'verbose' | 'silent' | 'loud' | 'acl' | 'noacl' | 'unbindable' | 'runbindable' | 'private' | 'rprivate' | 'slave' | 'rslave' | 'shared' | 'rshared' | 'relatime' | 'norelatime' | 'iversion' | 'noiversion' | 'strictatime' | 'nouser' | 'user' )
+B<MOUNT FLAGS> = ( 'ro' | 'rw' | 'nosuid' | 'suid' | 'nodev' | 'dev' | 'noexec' | 'exec' | 'sync' | 'async' | 'remount' | 'mand' | 'nomand' | 'dirsync' | 'noatime' | 'atime' | 'nodiratime' | 'diratime' | 'bind' | 'rbind' | 'move' | 'verbose' | 'silent' | 'loud' | 'acl' | 'noacl' | 'unbindable' | 'runbindable' | 'private' | 'rprivate' | 'slave' | 'rslave' | 'shared' | 'rshared' | 'relatime' | 'norelatime' | 'iversion' | 'noiversion' | 'strictatime' | 'nostrictatime' | 'lazytime' | 'nolazytime' | 'nouser' | 'user' | 'symfollow' | 'nosymfollow' )
 
 B<MOUNT EXPRESSION> = ( I<ALPHANUMERIC> | I<AARE> ) ...
+
+B<MQUEUE_RULE> = [ I<QUALIFIERS> ] 'mqueue' [ I<MQUEUE ACCESS PERMISSIONS> ] [ I<MQUEUE TYPE> ] [ I<MQUEUE LABEL> ] [ I<MQUEUE NAME> ]
+
+B<MQUEUE ACCESS PERMISSIONS> = I<MQUEUE ACCESS> | I<MQUEUE ACCESS LIST>
+
+B<MQUEUE ACCESS LIST> = '(' Comma or space separated list of I<MQUEUE ACCESS> ')'
+
+B<MQUEUE ACCESS> = ( 'r' | 'w' | 'rw' | 'read' | 'write' | 'create' | 'open' | 'delete' | 'getattr' | 'setattr' )
+
+B<MQUEUE TYPE> = 'type' '=' ( 'posix' | 'sysv' )
+
+B<MQUEUE LABEL> = 'label' '=' '(' '"' I<AARE> '"' | I<AARE> ')'
+
+B<MQUEUE NAME> = I<AARE>
+
+B<USERNS RULE> = [ I<QUALIFIERS> ] 'userns' [ I<USERNS ACCESS PERMISSIONS> ]
+
+B<USERNS ACCESS PERMISSIONS> = ( 'create' )
+
+B<IO_URING RULE> = [ I<QUALIFIERS> ] 'io_uring' [ I<IO_URING ACCESS PERMISSIONS> [ I<IO_URING LABEL> ]
+
+B<IO_URING ACCESS PERMISSIONS> = ( 'sqpoll' | 'override_creds' )
+
+B<IO_URING LABEL> = 'label' '=' '(' '"' I<AARE> '"' | I<AARE> ')'
 
 B<PIVOT ROOT RULE> = [ I<QUALIFIERS> ] pivot_root [ oldroot=I<OLD PUT FILEGLOB> ] [ I<NEW ROOT FILEGLOB> ] [ '-E<gt>' I<PROFILE NAME> ]
 
@@ -204,9 +257,9 @@ B<SIGNAL ACCESS> = ( 'r' | 'w' | 'rw' | 'read' | 'write' | 'send' | 'receive' )
 
 B<SIGNAL SET> = 'set' '=' '(' I<SIGNAL LIST> ')'
 
-B<SIGNAL LIST> = Comma or space separated list of I<SIGNALS>
+B<SIGNAL LIST> = Comma or space separated list of I<SIGNAL>s
 
-B<SIGNALS> = ( 'hup' | 'int' | 'quit' | 'ill' | 'trap' | 'abrt' | 'bus' | 'fpe' | 'kill' | 'usr1' | 'segv' | 'usr2' | 'pipe' | 'alrm' | 'term' | 'stkflt' | 'chld' | 'cont' | 'stop' | 'stp' | 'ttin' | 'ttou' | 'urg' | 'xcpu' | 'xfsz' | 'vtalrm' | 'prof' | 'winch' | 'io' | 'pwr' | 'sys' | 'emt' | 'exists' | 'rtmin+0' ... 'rtmin+32' )
+B<SIGNAL> = ( 'hup' | 'int' | 'quit' | 'ill' | 'trap' | 'abrt' | 'bus' | 'fpe' | 'kill' | 'usr1' | 'segv' | 'usr2' | 'pipe' | 'alrm' | 'term' | 'stkflt' | 'chld' | 'cont' | 'stop' | 'stp' | 'ttin' | 'ttou' | 'urg' | 'xcpu' | 'xfsz' | 'vtalrm' | 'prof' | 'winch' | 'io' | 'pwr' | 'sys' | 'emt' | 'exists' | 'rtmin+0' ... 'rtmin+32' )
 
 B<SIGNAL PEER> = 'peer' '=' I<AARE>
 
@@ -240,9 +293,6 @@ B<DBUS ACCESS LIST> = Comma separated list of I<DBUS ACCESS>
 
 B<DBUS ACCESS> = ( 'send' | 'receive' | 'bind' | 'eavesdrop' | 'r' | 'read' | 'w' | 'write' | 'rw' )
   Some accesses are incompatible with some rules; see below.
-
-B<AARE> = B<?*[]{}^>
-  See below for meanings.
 
 B<UNIX RULE> = [ I<QUALIFIERS> ] 'unix' [ I<UNIX ACCESS EXPR> ] [ I<UNIX RULE CONDS> ] [ I<UNIX LOCAL EXPR> ] [ I<UNIX PEER EXPR> ]
 
@@ -300,6 +350,9 @@ B<QUOTED FILEGLOB> = '"' I<UNQUOTED FILEGLOB> '"'
 
 B<UNQUOTED FILEGLOB> = (must start with '/' (after variable expansion), B<AARE> have special meanings; see below. May include I<VARIABLE>. Rules with embedded spaces or tabs must be quoted. Rules must end with '/' to apply to directories.)
 
+B<AARE> = B<?*[]{}^>
+  See section "Globbing (AARE)" below for meanings.
+
 B<ACCESS> = ( 'r' | 'w' | 'a' | 'l' | 'k' | 'm' | I<EXEC TRANSITION> )+  (not all combinations are allowed; see below.)
 
 B<EXEC TRANSITION> =  ( 'ix' | 'ux' | 'Ux' | 'px' | 'Px' | 'cx' | 'Cx' | 'pix' | 'Pix' | 'cix' | 'Cix' | 'pux' | 'PUx' | 'cux' | 'CUx' | 'x' )
@@ -319,6 +372,8 @@ B<CHANGE_PROFILE RULE> = 'change_profile' [ [ I<EXEC MODE> ] I<EXEC COND> ] [ '-
 B<EXEC_MODE> = ( 'safe' | 'unsafe' )
 
 B<EXEC COND> = I<FILEGLOB>
+
+B<ALL RULE> = 'all'
 
 =back
 
@@ -438,12 +493,41 @@ a signal to kill it.
 permission the action will be allowed, but the violation will be logged
 with a tag of the access being B<ALLOWED>.
 
+=item B<default_allow> This mode changes the default behavior of
+apparmor from default deny to default allow. When default_allow is
+specified the resulting profile will allow operations that the profile
+does not have a rule for. This mode is similar to I<unconfined> but
+allows for allow and deny rules, specifying audit, and domain
+transitions.  Profiles in this mode may be be reported as being in
+I<enforce> mode or I<allow> mode when introspected from the kernel.
+
+Note: default_allow is similar and for many profiles will be equivalent
+to specifying an I<allow all,> rule in the profile. The default_allow
+flag does not provide all the same option that the I<allow all,> rule
+provides.
+
 =item B<unconfined> This mode allows a task confined by the profile to
-behave as though they are I<unconfined>. This mode allow for an
-unconfined behavior that can be later changed to confinement by using
-profile replacement. This mode is should not be used under regular
-deployment but can be useful during debugging and some system
-initialization scenarios.
+behave as though it is I<unconfined>. The unconfined behavior can be
+later changed to confinement by using profile replacement. This mode
+should not be used under regular deployment but can be useful during
+debugging and some system initialization scenarios.
+
+This mode is similar to default_allow and may be emulated by
+default_allow in kernels that no longer support a true unconfined
+mode. It does not generally allow for specifying deny rules, or allow
+rules that override the default behavior, except in a few custom
+kernels where unconfined restricts a few operations. It relies on
+special customized behavior of the unconfined profile in the kernel
+and as such should only be used for debugging.
+
+Note: true unconfined is being phased out, with unconfined becoming a
+replaceable profile. As such unconfined mode will be emulated by a
+special profile compiled with the default_allow flag in newer kernels.
+
+=item B<prompt> This mode allows task mediation to send an up call to
+userspace to ask for a decision when there isn't a rule covering the
+permission request. If userspace does not respond then the access
+will be denied.
 
 =back
 
@@ -472,8 +556,26 @@ though they are part of the namespace. WARNING this mode is unsafe and
 can result in aliasing and access to objects that should not be
 allowed. Its intent is a debug and policy development tool.
 
+=item B<attach_disconnected.path>=I<ABS PATH> Like attach_disconnected, but
+attach disconnected objects to the supplied path instead of the root of
+the namespace.
+
 =item B<chroot_relative> This forces file names to be relative to a
 chroot and behave as if the chroot is a mount namespace.
+
+=item B<debug> This flag allows turning on kernel debug messages on
+a per profile basis. It works in conjunction with other kernel debug
+flags to control what messages will be output. Its effect is kernel
+dependent, and it should never appear in policy except when trying
+to debug kernel or policy problems.
+
+=item B<interruptible> Enables interrupts for prompt upcall to userspace.
+
+=item B<kill.signal>=I<SIGNAL> This changes the signal that will be
+sent by AppArmor when in kill mode or a kill rule has been violated.
+
+=item B<error>=I<ERROR CODE> This changes the error code returned by
+AppArmor when a rule has been violated.
 
 =back
 
@@ -840,11 +942,10 @@ and other operations that are typically reserved for the root user.
 
 =head2 Network Rules
 
-AppArmor supports simple coarse grained network mediation.  The network
-rule restrict all socket(2) based operations.  The mediation done is
-a coarse-grained check on whether a socket of a given type and family
-can be created, read, or written.  There is no mediation based of port
-number or protocol beyond tcp, udp, and raw.  Network netlink(7) rules may
+AppArmor supports simple coarse grained network mediation.  The
+network rule restrict all socket(2) based operations.  The mediation
+done is a coarse-grained check on whether a socket of a given type and
+family can be created, read, or written. Network netlink(7) rules may
 only specify type 'dgram' and 'raw'.
 
 AppArmor network rules are accumulated so that the granted network
@@ -860,6 +961,49 @@ eg.
  network inet tcp,	#allow access to tcp only for inet4 addresses
  network inet6 tcp,	#allow access to tcp only for inet6 addresses
  network netlink raw,	#allow access to AF_NETLINK SOCK_RAW
+
+=head3 Network permissions
+
+Network rule permissions are implied when a rule does not explicitly
+state an access list. By default if a rule does not have an access
+list all permissions that are compatible with the specified set of
+local and peer conditionals are implied.
+
+The create, bind, listen, shutdown, getattr, setattr, getopt, and
+setopt permissions are local socket permissions. They are only applied
+to the local socket and can't be specified in rules that have a peer
+conditional. The accept permission applies to the combination of a
+local and peer socket. The connect, send, and receive permissions are
+peer socket permissions.
+
+=head3 Mediation of inet/inet6 family
+
+AppArmor supports fine grained mediation of the inet and inet6
+families by using the ip and port conditionals. The ip conditional
+accepts both IPv4 and IPv6 using the regular representation of four
+octets separated by '.' for IPv4 and eight groups of four hexadecimal
+numbers separated by ':' for IPv6. Contiguous leading zeros can be
+replaced by '::' once. On a connected socket, the sender and receiver
+don't need to be specified in the recvfrom and sendto system calls. In
+that case, and with unbounded sockets, the IP address is none, or
+unknown. Unknown or Unbound IP addresses are represented in policy by the
+'none' keyword. When the ip conditional is omitted, then all IP
+addresses will be allowed: IPv4, IPv6 and none. If INADDR_ANY or
+in6addr_any is used, then the ip conditional can be omitted or they
+can be represented by:
+
+ network ip=::,		#allow in6addr_any
+ network ip=0.0.0.0;	#allow INADDR_ANY
+
+The network rules support the specification of local and remote IP
+addresses, ports, and port ranges.
+
+ network ip=127.0.0.1 port=8080,
+ network peer=(ip=10.139.15.23 port=8081),
+ network ip=fd74:1820:b03a:b361::cf32 peer=(ip=fd74:1820:b03a:b361::a0f9),
+ network port=8080 peer=(port=8081),
+ network ip=127.0.0.1 port=8080 peer=(ip=10.139.15.23 port=8081),
+ network ip=127.0.0.1 port=8080-8084,
 
 =head2 Mount Rules
 
@@ -880,7 +1024,7 @@ If a conditional is specified using '=', then the rule only grants permission
 for mounts matching the exactly specified options. For example, an AppArmor
 policy with the following rule:
 
-    mount options=ro /dev/foo -E<gt> /mnt/,
+    mount options=ro /dev/foo -> /mnt/,
 
 Would match:
 
@@ -927,7 +1071,7 @@ grants permission for each set of options. This provides a shorthand when
 writing mount rules which might help to logically break up a conditional. For
 example, if an AppArmor policy has the following rule:
 
-    mount options=ro options=atime
+    mount options=ro options=atime,
 
 both of these mount commands will match:
 
@@ -1057,6 +1201,134 @@ Matches only:
 
 =back
 
+=head2 Message Queue rules
+
+AppArmor supports mediation of POSIX and SYSV message queues.
+
+AppArmor Message Queue permissions are implied when a rule does not explicitly
+state an access list. By default, all Message Queue permissions are implied.
+
+AppArmor Message Queue permissions become more restricted as further information
+is specified. Policy can be specified by determining its access mode, type,
+label, and message queue name.
+
+Regarding access modes, 'r' and 'read' are used to read messages from the queue.
+'w' and 'write' are used to write to the message queue. 'create' is used to create
+the message queue, and 'open' is used to get the message queue identifier when the
+queue is already created. 'delete' is used to remove the message queue. The access
+modes to get and set attributes of the message queue are 'setattr' and 'getattr'.
+
+The type of the policy can be either 'posix' or 'sysv'. This information is
+relevant when the message queue name is not specified, and when specified can be
+inferred by the queue name, since message queues' name for posix must start with '/',
+and message queues' key for SYSV must be a positive integer.
+
+The policy label is the label assigned to the message queue when it is created.
+
+The message queue name can be either a string starting with '/' if the type
+is POSIX, or a positive integer if the type is SYSV. If the type is not
+specified, then it will be inferred by the queue name.
+
+Example AppArmor Message Queue rules:
+
+    # Allow all Message Queue access
+    mqueue,
+
+    # Explicitly allow all Message Queue access,
+    mqueue (create, open, delete, read, write, getattr, setattr),
+
+    # Explicitly deny use of Message Queue
+    deny mqueue,
+
+    # Allow all access for POSIX queue of name /bar
+    mqueue type=posix /bar,
+
+    # Allow create permission for a SYSV queue of label foo
+    mqueue create label=foo 123,
+
+=head2 User Namespace Rules
+
+User namespaces are part of many sandboxing and containerization
+solutions.  They provide a way for a non-system root process to be
+root within the container. Unfortunately this opens up attack surface
+in the kernel and has been part of several exploit chains. As such
+AppArmor can be used to restrict the creation of user namespaces to
+select processes.
+
+User namespace permission are implied when a rule does not explicitly
+state an access list. The rule becomes more restrictive as further
+information is specified.
+
+Note: user namespace creation may be restricted so that it is not
+available to unprivieged unconfined processes. If this is the case any
+process trying to create user namespaces will require a profile that
+allows the necessary permissions.
+
+=over 4
+
+=item B<create>
+
+Allow creation of user namespaces.
+
+=back
+
+Example userns rules:
+
+=over 4
+
+  # Allow all userns perms
+  userns,
+
+  # Allow creation of a userns
+  userns create,
+
+=back
+
+=head2 IO_URing Rules
+
+AppArmor supports mediation of the new Linux high speed IO interface.
+There is limited mediation at this time to just a few permissions at
+the moment.
+
+IO Uring permission are implied when a rule does not explicitly state
+an access list. The rule becomes more restrictive as further
+information is specified.
+
+Note: io_uring access may be restricted so that it is not available to
+unprivileged unconfined processes. If this is the case any process
+trying to use io_uring will require a profile that allows the
+necessary io_uring permissions.
+
+=over 4
+
+=item B<sqpoll>
+
+All the task confined by the profile to spawn a io_uring polling
+thread.
+
+=item B<override_creds>
+
+Grants the task confined by the profile to override (change) its
+credentials to the specified label, when executing an io_uring
+operation.
+
+=back
+
+Example IO_URING rules:
+
+=over 4
+
+  # Allow io_uring operations
+  io_uring,
+
+  # Allow creation of a polling thread
+  io_uring sqpoll,
+
+  # Allow task to override credentials during io_uring operation
+  io_uring override_creds label=new_creds,
+
+=back
+
 =head2 Pivot Root Rules
 
 AppArmor mediates changing of the root filesystem through the pivot_root(2)
@@ -1067,8 +1339,9 @@ pivot_root(2) is optionally specified in the 'pivot_root' rule using the
 'oldroot=' prefix.
 
 AppArmor 'pivot_root' rules can specify a profile transition to occur during
-the pivot_root(2) system call. Note that AppArmor will only transition the
-process calling pivot_root(2) to the new profile.
+the pivot_root(2) system call. Note that currently, this feature is not
+supported by any kernel. When this feature will be supported, AppArmor will
+only transition the process calling pivot_root(2) to the new profile.
 
 The paths specified in 'pivot_root' rules must end with '/' since they are
 directories.
@@ -1430,6 +1703,26 @@ Not all kernels support B<safe> mode and the parser will downgrade rules to
 B<unsafe> mode in that situation. If no exec mode is specified, the default is
 B<safe> mode in kernels that support it.
 
+=head2 all rule
+
+The all rule is used to add a generic rule for all supported rule types.
+This is useful when policy wants to define a black list instead of
+white list, but can also be useful to add an access qualifier to all
+rules.
+
+Eg. Black list
+
+  allow all,
+  # begin blacklist
+  deny file,
+  deny unix,
+
+
+Eg. Adding audit qualifier
+
+  audit access all,
+
+
 =head2 rlimit rules
 
 AppArmor can set and control the resource limits associated with a
@@ -1503,6 +1796,61 @@ F</etc/apparmor.d/tunables/xdg-user-dirs.d> for B<@{XDG_*}>.
 The special B<@{profile_name}> variable is set to the profile name and may be
 used in all policy.
 
+=head3 Notes on variable expansion and the / character
+
+It is important to note that how AppArmor performs variable expansion
+depends on the context where a variable is used. When a variable is
+expanded it can result in a string with multiple path characters
+next to each other, in a way that is not evident when looking at
+policy.
+
+Eg.
+
+=over 4
+
+Given the following variable definition and rule
+
+@{HOME}=/home/*/
+file rw @{HOME}/*,
+
+The variable expansion results in a rule of
+
+file rw /home/*//*.
+
+=back
+
+When this occurs in a context where a path is expected, AppArmor will
+canonicalize the path by collapsing consecutive / characters into
+a single character. For the above example, this would be
+
+  file rw /home/*/*,
+
+There is one exception to this rule, when the consecutive / characters
+are at the beginning of a path, this indicates a posix namespace
+and the characters will not be collapsed.
+
+Eg.
+
+=over 4
+
+@{HOME}=/home/*/
+file rw /@{HOME}/*,
+
+will result in an expansion of
+
+file rw //home/*//*,
+
+which is collapsed to
+
+file rw //home/*/*,
+
+Note: that the leading // in the above example is not collapsed to a
+single /. However the second // (that was also seen in the first
+example) is collapsed.
+
+=back
+
+
 =head2 Alias rules
 
 AppArmor also provides alias rules for remapping paths for site-specific
@@ -1513,9 +1861,10 @@ F</etc/apparmor.d/tunables/alias>, which is included by
 F</etc/apparmor.d/tunables/global>. F</etc/apparmor.d/tunables/global> is
 typically included at the beginning of an AppArmor profile.
 
-=head2 Globbing
+=head2 Globbing (AARE)
 
-File resources may be specified with a globbing syntax similar to that
+File resources and other parameters accepting an AARE
+may be specified with a globbing syntax similar to that
 used by popular shells, such as csh(1), bash(1), zsh(1).
 
 =over 4
@@ -1547,6 +1896,12 @@ will substitute for any single character not matching a, b or c
 =item B<{ab,cd}>
 
 will expand to one rule to match ab, one rule to match cd
+
+Can also include variables.
+
+=item B<@{variable}>
+
+will expand to all values assigned to the given variable.
 
 =back
 
@@ -1581,6 +1936,17 @@ There are several rule qualifiers that can be applied to permission rules.
 Rule qualifiers can modify the rule and/or permissions within the rule.
 
 =over 4
+
+=item B<priority>
+
+Specifies the priority of the rule. Currently the allowed range is
+-1000 to 1000 with the default priority of rule is 0.  Rules with
+higher priority are given preferences and will completely override
+permissions of lower priority rules where they overlap. When rules
+partially overlap the permissions of the higher priority rule will
+completely override lower priority rules within in overlap. Within a
+given priority level rules that overlap will accumulate permissions in
+the standard apparmor fashion.
 
 =item B<allow>
 
@@ -1786,7 +2152,7 @@ An example AppArmor profile:
   	  /usr/lib/**         r,
   	  /tmp/foo.pid        wr,
   	  /tmp/foo.*          lrw,
-	  /@{HOME}/.foo_file  rw,
+	  @{HOME}/.foo_file  rw,
 	  /usr/bin/baz        Cx -> baz,
 
 	  # a comment about foo's hat (subprofile), bar.
@@ -1809,8 +2175,6 @@ An example AppArmor profile:
 =head1 FILES
 
 =over 4
-
-=item F</etc/init.d/boot.apparmor>
 
 =item F</etc/apparmor.d/>
 

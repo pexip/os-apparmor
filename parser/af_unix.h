@@ -24,7 +24,7 @@
 #include "profile.h"
 #include "af_rule.h"
 
-int parse_unix_mode(const char *str_mode, int *mode, int fail);
+int parse_unix_perms(const char *str_mode, perm32_t *perms, int fail);
 
 class unix_rule: public af_rule {
 	void write_to_prot(std::ostringstream &buffer);
@@ -36,12 +36,10 @@ class unix_rule: public af_rule {
 public:
 	char *addr;
 	char *peer_addr;
-	int mode;
-	int audit;
-	bool deny;
+	bool downgrade = true;
 
-	unix_rule(unsigned int type_p, bool audit_p, bool denied);
-	unix_rule(int mode, struct cond_entry *conds,
+	unix_rule(unsigned int type_p, audit_t audit_p, rule_mode_t rule_mode_p);
+	unix_rule(perm32_t perms, struct cond_entry *conds,
 		  struct cond_entry *peer_conds);
 	virtual ~unix_rule()
 	{
@@ -49,6 +47,16 @@ public:
 		free(peer_addr);
 	};
 
+	virtual bool valid_prefix(const prefixes &p, const char *&error) {
+		// priority is partially supported for unix rules
+		// rules that get downgraded to just network socket
+		// won't support them but the fine grained do.
+		if (p.owner) {
+			error = "owner prefix not allowed on unix rules";
+			return false;
+		}
+		return true;
+	};
 	virtual bool has_peer_conds(void) {
 		return af_rule::has_peer_conds() || peer_addr;
 	}
@@ -57,7 +65,19 @@ public:
 	virtual ostream &dump_peer(ostream &os);
 	virtual int expand_variables(void);
 	virtual int gen_policy_re(Profile &prof);
-	virtual void post_process(Profile &prof unused) { };
+
+	// inherit is_mergable() from af_rule
+	virtual int cmp(rule_t const &rhs) const
+	{
+		int res = af_rule::cmp(rhs);
+		if (res)
+			return res;
+		unix_rule const &trhs = (rule_cast<unix_rule const &>(rhs));
+		res = null_strcmp(addr, trhs.addr);
+		if (res)
+			return res;
+		return null_strcmp(peer_addr, trhs.peer_addr);
+	};
 
 protected:
 	virtual void warn_once(const char *name) override;

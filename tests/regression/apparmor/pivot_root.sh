@@ -17,7 +17,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 disk_img=$tmpdir/disk_img
 new_root=$tmpdir/new_root/
@@ -25,7 +25,8 @@ put_old=${new_root}put_old/
 bad=$tmpdir/BAD/
 proc=$new_root/proc
 fstype="ext2"
-root_was_shared="no"
+
+. "$bin/mount.inc"
 
 pivot_root_cleanup() {
 	mountpoint -q "$proc"
@@ -38,29 +39,13 @@ pivot_root_cleanup() {
 		umount "$new_root"
 	fi
 
-	if [ "${root_was_shared}" = "yes" ] ; then
-		[ -n "$VERBOSE" ] && echo 'notice: re-mounting / as shared'
-		mount --make-shared /
-	fi
+	prop_cleanup
 }
 do_onexit="pivot_root_cleanup"
 
-# systemd mounts / and everything under it MS_SHARED. This breaks
-# pivot_root entirely, so attempt to detect it, and remount /
-# MS_PRIVATE temporarily.
-FINDMNT=/bin/findmnt
-if [ -x "${FINDMNT}" ] && ${FINDMNT} -no PROPAGATION / > /dev/null 2>&1 ; then
-	if [ "$(${FINDMNT} -no PROPAGATION /)" == "shared" ] ; then
-		root_was_shared="yes"
-	fi
-elif [ "$(ps hp1  -ocomm)" = "systemd" ] ; then
-	# no findmnt or findmnt doesn't know the PROPAGATION column,
-	# but init is systemd so assume rootfs is shared
-	root_was_shared="yes"
-fi
-if [ "${root_was_shared}" = "yes" ] ; then
-	[ -n "$VERBOSE" ] && echo 'notice: re-mounting / as private'
-	mount --make-private /
+# loopback module must be loaded for mount -o loop to work
+if [ ! -b /dev/loop0 ] ; then
+	modprobe loop
 fi
 
 # Create disk image since pivot_root doesn't allow old root and new root to be
@@ -113,6 +98,11 @@ if [ "$(kernel_features mount)" != "true" -o "$(parser_supports 'mount,')" != "t
 	do_test "cap" pass "$put_old" "$new_root" "$test"
 
 	exit
+fi
+
+if [ "$(parser_supports 'all,')" = "true" ]; then
+	genprofile "all"
+	do_test "allow all rule" pass "$put_old" "$new_root" "$test"
 fi
 
 # Ensure failure when no pivot_root perms are granted

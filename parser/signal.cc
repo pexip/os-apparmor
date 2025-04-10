@@ -112,16 +112,16 @@ static const char *const sig_names[MAXMAPPED_SIG + 1] = {
 	"lost",
 	"unused",
 
-	"exists",	/* always last existance test mapped to MAXMAPPED_SIG */
+	"exists",	/* always last existence test mapped to MAXMAPPED_SIG */
 };
 
 
-int parse_signal_mode(const char *str_mode, int *mode, int fail)
+int parse_signal_perms(const char *str_perms, perm32_t *perms, int fail)
 {
-	return parse_X_mode("signal", AA_VALID_SIGNAL_PERMS, str_mode, mode, fail);
+	return parse_X_perms("signal", AA_VALID_SIGNAL_PERMS, str_perms, perms, fail);
 }
 
-static int find_signal_mapping(const char *sig)
+int find_signal_mapping(const char *sig)
 {
 	if (strncmp("rtmin+", sig, 6) == 0) {
 		char *end;
@@ -173,15 +173,15 @@ void signal_rule::move_conditionals(struct cond_entry *conds)
 	}
 }
 
-signal_rule::signal_rule(int mode_p, struct cond_entry *conds):
-	signals(), peer_label(NULL), audit(0), deny(0)
+signal_rule::signal_rule(perm32_t perms_p, struct cond_entry *conds):
+	perms_rule_t(AA_CLASS_SIGNAL), signals(), peer_label(NULL)
 {
-	if (mode_p) {
-		mode = mode_p;
-		if (mode & ~AA_VALID_SIGNAL_PERMS)
-			yyerror("mode contains invalid permission for signals\n");
+	if (perms_p) {
+		perms = perms_p;
+		if (perms & ~AA_VALID_SIGNAL_PERMS)
+			yyerror("perms contains invalid permission for signals\n");
 	} else {
-		mode = AA_VALID_SIGNAL_PERMS;
+		perms = AA_VALID_SIGNAL_PERMS;
 	}
 
 	move_conditionals(conds);
@@ -191,19 +191,14 @@ signal_rule::signal_rule(int mode_p, struct cond_entry *conds):
 
 ostream &signal_rule::dump(ostream &os)
 {
-	if (audit)
-		os << "audit ";
-	if (deny)
-		os << "deny ";
+	class_rule_t::dump(os);
 
-	os << "signal";
-
-	if (mode != AA_VALID_SIGNAL_PERMS) {
+	if (perms != AA_VALID_SIGNAL_PERMS) {
 		os << " (";
 
-		if (mode & AA_MAY_SEND)
+		if (perms & AA_MAY_SEND)
 			os << "send ";
-		if (mode & AA_MAY_RECEIVE)
+		if (perms & AA_MAY_RECEIVE)
 			os << "receive ";
 		os << ")";
 	}
@@ -233,6 +228,35 @@ ostream &signal_rule::dump(ostream &os)
 int signal_rule::expand_variables(void)
 {
 	return expand_entry_variables(&peer_label);
+}
+
+static int cmp_set_int(Signals const &lhs, Signals const &rhs)
+{
+	int res = lhs.size() - rhs.size();
+	if (res)
+		return res;
+
+	for (Signals::iterator i = lhs.begin(),
+			       j = rhs.begin();
+	     i != lhs.end(); i++, j++) {
+		res = *i - *j;
+		if (res)
+			return res;
+	}
+
+	return 0;
+}
+
+int signal_rule::cmp(rule_t const &rhs) const
+{
+	int res = perms_rule_t::cmp(rhs);
+	if (res)
+		return res;
+	signal_rule const &trhs = rule_cast<signal_rule const &>(rhs);
+	res = null_strcmp(peer_label, trhs.peer_label);
+	if (res)
+		return res;
+	return cmp_set_int(signals, trhs.signals);
 }
 
 void signal_rule::warn_once(const char *name)
@@ -291,9 +315,11 @@ int signal_rule::gen_policy_re(Profile &prof)
 	}
 
 	buf = buffer.str();
-	if (mode & (AA_MAY_SEND | AA_MAY_RECEIVE)) {
-		if (!prof.policy.rules->add_rule(buf.c_str(), deny, mode, audit,
-						 dfaflags))
+	if (perms & (AA_MAY_SEND | AA_MAY_RECEIVE)) {
+		if (!prof.policy.rules->add_rule(buf.c_str(), priority,
+					rule_mode,
+					perms, audit == AUDIT_FORCE ? perms : 0,
+					parseopts))
 			goto fail;
 	}
 

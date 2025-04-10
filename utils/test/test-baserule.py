@@ -9,79 +9,103 @@
 #
 # ------------------------------------------------------------------
 
+import re
 import unittest
+
+import apparmor.severity as severity
+from apparmor.common import AppArmorBug, hasher
+from apparmor.rule import BaseRule, parse_modifiers
 from common_test import AATest, setup_all_loops
 
-from apparmor.common import AppArmorBug
-from apparmor.rule import BaseRule, parse_modifiers
-import apparmor.severity as severity
-
-import re
 
 class TestBaserule(AATest):
-    def test_abstract__parse(self):
-        with self.assertRaises(NotImplementedError):
-            BaseRule._parse('foo')
 
-    def test_abstract__parse_2(self):
+    class ValidSubclass(BaseRule):
+        @classmethod
+        def _create_instance(cls, raw_rule, matches):
+            pass
+
+        def get_clean(self, depth=0):
+            pass
+
+        def _is_covered_localvars(self, other_rule):
+            pass
+
+        def _is_equal_localvars(self, other_rule, strict):
+            pass
+
+        def _logprof_header_localvars(self):
+            pass
+
+    def test_implemented_abstract_methods(self):
+        self.ValidSubclass()
+
+    def test_unimplemented_abstract_methods(self):
+        with self.assertRaises(TypeError):
+            BaseRule()
+
+        class InvalidSubclass(BaseRule):
+            pass
+
+        with self.assertRaises(TypeError):
+            InvalidSubclass()
+
+    def test_abstract__create_instance(self):
         with self.assertRaises(NotImplementedError):
-            BaseRule.parse('foo')
+            BaseRule._create_instance('foo', None)
+
+    def test_abstract__create_instance_2(self):
+        with self.assertRaises(AppArmorBug):
+            BaseRule.create_instance('foo')
 
     def test_abstract__match(self):
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(AppArmorBug):
             BaseRule._match('foo')
 
     def test_abstract__match2(self):
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(AppArmorBug):
             BaseRule.match('foo')
 
-    def test_abstract_get_clean(self):
-        obj = BaseRule()
+    def test_abstract__match3(self):
         with self.assertRaises(NotImplementedError):
-            obj.get_clean()
-
-    def test_is_equal_localvars(self):
-        obj = BaseRule()
-        with self.assertRaises(NotImplementedError):
-            obj.is_equal_localvars(BaseRule(), False)
-
-    def test_is_covered_localvars(self):
-        obj = BaseRule()
-        with self.assertRaises(NotImplementedError):
-            obj.is_covered_localvars(None)
+            self.ValidSubclass.match('foo')
 
     def test_parse_modifiers_invalid(self):
-        regex = re.compile('^\s*(?P<audit>audit\s+)?(?P<allow>allow\s+|deny\s+|invalid\s+)?')
+        regex = re.compile(r'^\s*(?P<audit>audit\s+)?(?P<allow>allow\s+|deny\s+|invalid\s+)?')
         matches = regex.search('audit invalid ')
 
         with self.assertRaises(AppArmorBug):
             parse_modifiers(matches)
 
     def test_default_severity(self):
-        sev_db = severity.Severity('severity.db', 'unknown')
-        obj = BaseRule()
+        sev_db = severity.Severity('../severity.db', 'unknown')
+        obj = self.ValidSubclass()
         rank = obj.severity(sev_db)
         self.assertEqual(rank, sev_db.NOT_IMPLEMENTED)
 
-    def test_logprof_header_localvars(self):
-        obj = BaseRule()
-        with self.assertRaises(NotImplementedError):
-            obj.logprof_header_localvars()
-
     def test_edit_header_localvars(self):
-        obj = BaseRule()
+        obj = self.ValidSubclass()
         with self.assertRaises(NotImplementedError):
             obj.edit_header()
 
     def test_validate_edit_localvars(self):
-        obj = BaseRule()
+        obj = self.ValidSubclass()
         with self.assertRaises(NotImplementedError):
             obj.validate_edit('/foo')
 
     def test_store_edit_localvars(self):
-        obj = BaseRule()
+        obj = self.ValidSubclass()
         with self.assertRaises(NotImplementedError):
             obj.store_edit('/foo')
+
+    def test_from_hashlog(self):
+        obj = self.ValidSubclass()
+        with self.assertRaises(NotImplementedError):
+            obj.from_hashlog(hasher())
+
+    def test_hashlog_from_event(self):
+        with self.assertRaises(NotImplementedError):
+            BaseRule.hashlog_from_event(None, None)
 
 
 setup_all_loops(__name__)

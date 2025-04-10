@@ -1,3 +1,167 @@
+apparmor (4.1.0-1) unstable; urgency=medium
+
+  * Import new upstream release
+  * Drop backported patches that are now obsolete.
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 10 Apr 2025 15:06:25 +0000
+
+apparmor (4.1.0~beta5-6) unstable; urgency=medium
+
+  [ Alban Browaeys ]
+  * Fix usr.bin.chromium-browser rm_conffile versioning (Closes: #1101071)
+  * Fix zgrep rm_conffile versioning (Closes: #1100007)
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 02 Apr 2025 16:15:24 +0000
+
+apparmor (4.1.0~beta5-5) unstable; urgency=medium
+
+  * Cleanup obsolete /etc/apparmor.d/usr.bin.chromium-browser conffile
+    (Closes: #1100546)
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 20 Mar 2025 11:00:01 +0000
+
+apparmor (4.1.0~beta5-4) unstable; urgency=medium
+
+  * Remove obsolete /etc/apparmor.d/zgrep conffile (Closes: #1100007)
+  * Don't ship the podman stub profile (Closes: #1100135)
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 17 Mar 2025 11:15:38 +0000
+
+apparmor (4.1.0~beta5-3) unstable; urgency=medium
+
+  * upstream-mr-1558-avoid-blhc-false-positive.patch: new patch
+  * upstream-mr-1567-fix-riscv64.patch: new patch (Closes: #1099085).
+    Thanks to Bo YU for the patch.
+
+ -- intrigeri <intrigeri@debian.org>  Tue, 04 Mar 2025 10:52:41 +0000
+
+apparmor (4.1.0~beta5-2) unstable; urgency=medium
+
+  * Revert "gbp.conf: set debian-branch to debian/experimental"
+  * Add test-only build-dep on net-tools: utils test needs netstat
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 20 Feb 2025 20:41:37 +0000
+
+apparmor (4.1.0~beta5-1) unstable; urgency=medium
+
+  * Import new upstream release
+  * gbp.conf: set debian-branch to debian/experimental
+  * debian/watch: track all releases, not only 3.x
+  * Drop backported patches that are now obsolete
+  * Refresh remaining patches
+  * Install aa-load and its man page
+  * Install new profiles and abstractions
+  * Stop installing etc/apparmor.d/local/usr.sbin.apache2, no longer needed;
+    accordingly, remove this obsolete conffile on upgrades
+  * d/control: add build-dependency on autoconf-archive
+  * d/apparmor-notify.install: install etc/apparmor/default_unconfined.template
+    and usr/share/polkit-1/actions/com.ubuntu.pkexec.aa-notify.policy
+  * apparmor-notify: add new dependencies on python3-tk, python3-ttkthemes,
+    and python3-gi
+  * Test libapparmor in override_dh-auto-test before the parser and binutils
+  * Run utils upstream tests during build and add the corresponding
+    build-dependencies annotated with !nocheck
+  * Add new symbols
+  * Remove obsolete Lintian overrides for false positives
+  * put-all-profiles-in-complain-mode.sh: skip profiles that have
+    the unconfined flag
+  * put-all-profiles-in-complain-mode.sh: improve code robustness
+  * put-all-profiles-in-complain-mode.sh, autopkgtests: use consistent
+    4-spaces indentation
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 20 Feb 2025 16:18:31 +0000
+
+apparmor (3.1.7-4) unstable; urgency=medium
+
+  * Remove obsolete conffile
+    /etc/apparmor.d/abstractions/ubuntu-browsers.d/chromium-browser
+    (Closes: #1074408)
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 17 Feb 2025 14:27:37 +0000
+
+apparmor (3.1.7-3) unstable; urgency=medium
+
+  * Pin the Linux 6.12 feature set
+  * autopkgtests:
+    - warn if a rule is not enforced or downgraded
+    - update list of tested profiles
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 17 Feb 2025 11:38:56 +0000
+
+apparmor (3.1.7-2) unstable; urgency=medium
+
+  [ Carles Pina i Estany ]
+  * Update Catalan translation (Closes: #1094958)
+
+  [ intrigeri ]
+  * Make cgitb optional; cherry-picked from upstream
+    (Closes: #1084647, #1095405)
+  * Add upstream-commit-a84bcec4b5600b0fef28bb196e5150874029f58f-fix-ping.patch
+    (Closes: #1082190)
+  * Declare compliance with Policy 4.7.0
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 10 Feb 2025 11:36:39 +0000
+
+apparmor (3.1.7-1) unstable; urgency=medium
+
+  * Import new upstream release (Closes: #988204, #1057787, #1003158)
+  * debian/watch: track any 3.x release
+  * Fix DEP-3 metadata syntax on 2 patches
+  * Only include /usr/share/dpkg/architecture.mk once
+  * New patch: honor global CFLAGS when building Python library.
+    - This fixes missing hardening flags, spotted by blhc.
+    - Accordingly, refresh context of another patch.
+  * GitLab CI: don't vary the build path in reprotest
+
+ -- intrigeri <intrigeri@debian.org>  Thu, 13 Jun 2024 16:18:06 +0000
+
+apparmor (3.0.13-2) unstable; urgency=medium
+
+  * Revert "Vcs-* control fields: track the debian/experimental branch"
+  * Revert "gbp.conf: set debian-branch to debian/experimental"
+  * Upload to unstable
+
+ -- intrigeri <intrigeri@debian.org>  Mon, 25 Mar 2024 10:52:20 +0000
+
+apparmor (3.0.13-1) experimental; urgency=medium
+
+  [ intrigeri ]
+  * Don't install
+    /etc/apparmor.d/abstractions/ubuntu-browsers.d/chromium-browser
+    (Closes: #1039668)
+  * Declare compliance with Policy 4.6.2
+  * Update build dependency: pkg-config → pkgconf
+  * Fix spelling error in README.source
+  * autopkgtests: enforce "set -u" in scripts
+  * autopkgtests: make scripts ShellCheck-compliant
+  * Import new upstream release (Closes: #1057453)
+
+  [ Helmut Grohne ]
+  * Fix FTCBFS: Fix confusion of compiler flags for python extension
+    (Closes: #1057188)
+
+  [ Michael Biebl ]
+  * Install PAM module, binaries and helper scripts into /usr.
+    (Closes: #1064151)
+
+  [ Remus-Gabriel Chelu ]
+  * Add Romanian translation of debconf templates (Closes: #1031142)
+
+ -- intrigeri <intrigeri@debian.org>  Wed, 28 Feb 2024 17:21:10 +0000
+
+apparmor (3.0.12-1) unstable; urgency=medium
+
+  * New upstream releases: 3.0.9, 3.0.10, 3.0.11, and 3.0.12
+    (Closes: #929990, #1037578, #1040481)
+  * Drop patches that are part of new upstream releases
+  * Adjust to profiles renamed upstream
+  * Refresh remaining patches
+  * Install new profiles
+  * Don't install new clamd profile: clamav-daemon ships one
+  * Adjust to profile renamed upstream
+
+ -- intrigeri <intrigeri@debian.org>  Sun, 16 Jul 2023 14:39:37 +0000
+
 apparmor (3.0.8-3) unstable; urgency=medium
 
   * Cherry-pick a few small, targeted fixes from upstream 3.0 branch

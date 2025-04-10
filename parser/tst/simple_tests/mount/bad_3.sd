@@ -1,0 +1,7 @@
+#
+#=Description basic mount rule with incompatible options
+#=EXRESULT FAIL
+#
+/usr/bin/foo {
+  mount options=(rw ro) fstype=procfs -> /foo,
+}

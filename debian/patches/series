@@ -1,11 +1,3 @@
-fix-expected-library-version.patch
-Merge-lsb_release-allow-cat-and-cut.patch
-Merge-abstractions-nvidia-allow-reading-pid-comm.patch
-Merge-aa-status-Fix-malformed-json-output-with-unconfined.patch
-Merge-regression-tests-fix-bogon-patch-characters-in-Make.patch
-Merge-Add-pipewire-client.conf-to-audio-abstractions.patch
-Merge-Extend-crypto-and-ssl_certs-abstractions.patch
-Merge-Fix-Opening-links-with-Brave.patch
 debian/add-debian-integration-to-lighttpd.patch
 debian/libapparmor-layout-deb.patch
 debian/etc-writable.patch

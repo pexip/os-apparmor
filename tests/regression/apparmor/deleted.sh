@@ -20,7 +20,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 file=$tmpdir/file
 file2="$tmpdir/file (deleted)"
@@ -65,7 +65,9 @@ okperm=rwl
 badperm=wl
 af_unix=""
 
-if [ "$(kernel_features network/af_unix)" == "true" -a "$(parser_supports 'unix,')" == "true" ]; then
+if [ "$(kernel_features network_v8)" = "true" -a "$(parser_supports 'unix,')" = "true" ]; then
+	af_unix="unix:create"
+elif [ "$(kernel_features network/af_unix)" = "true" -a "$(parser_supports 'unix,')" = "true" ]; then
 	af_unix="unix:create"
 fi
 
@@ -85,11 +87,13 @@ EOM
 # lets just be on the safe side
 rm -f ${socket}
 
+# these tests require af_unix support
+if [ "$(kernel_features network/af_unix)" = "true" -a "$(parser_supports 'unix,')" = "true" ]; then
 # PASS - unconfined client
 
 genprofile $af_unix $file:$okperm $socket:rw $fd_client:ux
 
-runchecktest "fd passing; unconfined client" pass $file $socket $fd_client "delete_file"
+runchecktest "fd passing; unconfined client" pass $file $fd_client $socket "delete_file"
 
 sleep 1
 cat > ${file} << EOM
@@ -106,7 +110,7 @@ rm -f ${socket}
 
 # PASS - confined client, rw access to the file
 genprofile $af_unix $file:$okperm $socket:rw $fd_client:px -- image=$fd_client $af_unix $file:$okperm $socket:rw
-runchecktest "fd passing; confined client w/ rw" pass $file $socket $fd_client "delete_file"
+runchecktest "fd passing; confined client w/ rw" pass $file $fd_client $socket "delete_file"
 
 sleep 1
 cat > ${file} << EOM
@@ -123,8 +127,11 @@ rm -f ${socket}
 # FAIL - confined client, w access to the file
 
 genprofile $af_unix $file:$okperm $socket:rw $fd_client:px -- image=$fd_client $af_unix $file:$badperm $socket:rw
-runchecktest "fd passing; confined client w/ w only" fail $file $socket $fd_client "delete_file"
+runchecktest "fd passing; confined client w/ w only" fail $file $fd_client $socket "delete_file"
 
 sleep 1
 rm -f ${socket}
 
+else
+    echo "    Required feature 'network/af_unix' not available. Skipping subset of tests that require network/af_unix ..."
+fi

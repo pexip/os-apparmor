@@ -19,6 +19,10 @@
 #ifndef __LIBAALOGPARSE_H_
 #define __LIBAALOGPARSE_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define AA_RECORD_EXEC_MMAP	1
 #define AA_RECORD_READ		2
 #define AA_RECORD_WRITE		4
@@ -26,10 +30,10 @@
 #define AA_RECORD_LINK		16
 
 /**
- * This is just for convenience now that we have two 
- * wildly different grammars.
+ * Enum representing which syntax version the log entry used.
+ * Support for V1 parsing was completely removed in 2011 and that enum entry
+ * is only still there for API compatibility reasons.
  */
-
 typedef enum
 {
 	AA_RECORD_SYNTAX_V1,
@@ -48,70 +52,23 @@ typedef enum
 	AA_RECORD_STATUS	/* Configuration change */
 } aa_record_event_type;
 
-/**
- * With the sole exception of active_hat, this is a 1:1
- * mapping from the keys that the new syntax uses.
+/*
+ * Use this preprocessor dance to maintain backcompat for field names
+ * This will break C code that used the C++ reserved keywords "namespace"
+ * and "class" as identifiers, but this is bad practice anyways, and we
+ * hope that we are the only ones in a given C file that messed up this way
  *
- * Some examples of the old syntax and how they're mapped with the aa_log_record struct:
- *
- * "PERMITTING r access to /path (program_name(12345) profile /profile active hat)"
- * - operation: access
- * - requested_mask: r
- * - pid: 12345
- * - profile: /profile
- * - name: /path
- * - info: program_name
- * - active_hat: hat
- *
- * "REJECTING mkdir on /path/to/something (bash(23415) profile /bin/freak-aa-out active /bin/freak-aa-out"
- * - operation: mkdir
- * - name: /path/to/something
- * - info: bash
- * - pid: 23415
- * - profile: /bin/freak-aa-out 
- * - active_hat: /bin/freak-aa-out 
- * 
- * "REJECTING xattr set on /path/to/something (bash(23415) profile /bin/freak-aa-out active /bin/freak-aa-out)"
- * - operation: xattr
- * - attribute: set
- * - name: /path/to/something
- * - info: bash
- * - pid: 23415
- * - profile: /bin/freak-aa-out
- * - active_hat: /bin/freak-aa-out
- *
- * "PERMITTING attribute (something) change to /else (bash(23415) profile /bin/freak-aa-out active /bin/freak-aa-out)"
- * - operation: setattr
- * - attribute: something
- * - name: /else
- * - info: bash
- * - pid: 23415
- * - profile: /bin/freak-aa-out
- * - active_hat: /bin/freak-aa-out
- * 
- * "PERMITTING access to capability 'cap' (bash(23415) profile /bin/freak-aa-out active /bin/freak-aa-out)"
- * - operation: capability
- * - name: cap
- * - info: bash
- * - pid: 23415
- * - profile: /bin/freak-aa-out
- * - active_hat: /bin/freak-aa-out
- * 
- * "LOGPROF-HINT unknown_hat TESTHAT pid=27764 profile=/change_hat_test/test_hat active=/change_hat_test/test_hat"
- * - operation: change_hat
- * - name: TESTHAT
- * - info: unknown_hat
- * - pid: 27764
- * - profile: /change_hat_test/test_hat
- * - active_hat: /change_hat_test/test_hat
- *
- * "LOGPROF-HINT fork pid=27764 child=38229"
- * - operation: clone
- * - task: 38229
- * - pid: 27764
- **/
+ * TODO: document this in a man page for aalogparse?
+ */
+#if defined(SWIG) && defined(__cplusplus)
+#error "SWIG and __cplusplus are defined together"
+#elif !defined(SWIG) && !defined(__cplusplus)
+/* Use SWIG's %rename feature to preserve backcompat */
+#define class rule_class
+#define namespace aa_namespace
+#endif
 
-typedef struct
+typedef struct aa_log_record
 {
 	aa_record_syntax_version version;
 	aa_record_event_type event;	/* Event type */
@@ -134,7 +91,7 @@ typedef struct
 	char *comm;			/* Command that triggered msg */
 	char *name;
 	char *name2;
-	char *namespace;
+	char *aa_namespace;
 	char *attribute;
 	unsigned long parent;	
 	char *info;
@@ -148,6 +105,7 @@ typedef struct
 	unsigned long net_local_port;
 	char *net_foreign_addr;
 	unsigned long net_foreign_port;
+
 	char *dbus_bus;
 	char *dbus_path;
 	char *dbus_interface;
@@ -159,6 +117,12 @@ typedef struct
 	char *fs_type;
 	char *flags;
 	char *src_name;
+
+	char *rule_class;
+
+	char *net_addr;
+	char *peer_addr;
+	char *execpath;
 } aa_log_record;
 
 /**
@@ -169,7 +133,7 @@ typedef struct
  * @return Parsed data.
  */
 aa_log_record *
-parse_record(char *str);
+parse_record(const char *str);
 
 /**
  * Frees all struct data.
@@ -177,6 +141,10 @@ parse_record(char *str);
  */
 void
 free_record(aa_log_record *record);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

@@ -41,6 +41,7 @@
 
 #include <stdint.h>
 
+#include "../perms.h"
 #include "apparmor_re.h"
 
 using namespace std;
@@ -222,16 +223,44 @@ typedef struct Cases {
 
 ostream &operator<<(ostream &os, Node &node);
 
+#define NODE_TYPE_NODE			0
+#define NODE_TYPE_INNER			(1 << 0)
+#define NODE_TYPE_ONECHILD		(1 << 1)
+#define NODE_TYPE_TWOCHILD		(1 << 2)
+#define NODE_TYPE_LEAF			(1 << 3)
+#define NODE_TYPE_EPS			(1 << 4)
+#define NODE_TYPE_IMPORTANT		(1 << 5)
+#define NODE_TYPE_C			(1 << 6)
+#define NODE_TYPE_CHAR			(1 << 7)
+#define NODE_TYPE_CHARSET		(1 << 8)
+#define NODE_TYPE_NOTCHARSET		(1 << 9)
+#define NODE_TYPE_ANYCHAR		(1 << 10)
+#define NODE_TYPE_STAR			(1 << 11)
+#define NODE_TYPE_OPTIONAL		(1 << 12)
+#define NODE_TYPE_PLUS			(1 << 13)
+#define NODE_TYPE_CAT			(1 << 14)
+#define NODE_TYPE_ALT			(1 << 15)
+#define NODE_TYPE_SHARED		(1 << 16)
+#define NODE_TYPE_ACCEPT		(1 << 17)
+#define NODE_TYPE_MATCHFLAG		(1 << 18)
+#define NODE_TYPE_EXACTMATCHFLAG	(1 << 19)
+#define NODE_TYPE_DENYMATCHFLAG		(1 << 20)
+#define NODE_TYPE_PROMPTMATCHFLAG	(1 << 21)
+
 /* An abstract node in the syntax tree. */
 class Node {
 public:
-	Node(): nullable(false), label(0) { child[0] = child[1] = 0; }
-	Node(Node *left): nullable(false), label(0)
+	Node(): nullable(false), type_flags(NODE_TYPE_NODE), label(0)
+	{
+		child[0] = child[1] = 0;
+	}
+	Node(Node *left): nullable(false), type_flags(NODE_TYPE_NODE), label(0)
 	{
 		child[0] = left;
 		child[1] = 0;
 	}
-	Node(Node *left, Node *right): nullable(false), label(0)
+	Node(Node *left, Node *right): nullable(false),
+		type_flags(NODE_TYPE_NODE), label(0)
 	{
 		child[0] = left;
 		child[1] = right;
@@ -302,6 +331,13 @@ public:
 	NodeSet firstpos, lastpos, followpos;
 	/* child 0 is left, child 1 is right */
 	Node *child[2];
+	/*
+	 * Bitmap that stores supported pointer casts for the Node, composed
+	 * by the NODE_TYPE_* flags. This is used by is_type() as a substitute
+	 * of costly dynamic_cast calls.
+	 */
+	unsigned type_flags;
+	bool is_type(unsigned type) { return type_flags & type; }
 
 	unsigned int label;	/* unique number for debug etc */
 	/**
@@ -315,25 +351,34 @@ public:
 
 class InnerNode: public Node {
 public:
-	InnerNode(): Node() { };
-	InnerNode(Node *left): Node(left) { };
-	InnerNode(Node *left, Node *right): Node(left, right) { };
+	InnerNode(): Node() { type_flags |= NODE_TYPE_INNER; };
+	InnerNode(Node *left): Node(left) { type_flags |= NODE_TYPE_INNER; };
+	InnerNode(Node *left, Node *right): Node(left, right)
+	{
+		type_flags |= NODE_TYPE_INNER;
+	};
 };
 
 class OneChildNode: public InnerNode {
 public:
-	OneChildNode(Node *left): InnerNode(left) { };
+	OneChildNode(Node *left): InnerNode(left)
+	{
+		type_flags |= NODE_TYPE_ONECHILD;
+	};
 };
 
 class TwoChildNode: public InnerNode {
 public:
-	TwoChildNode(Node *left, Node *right): InnerNode(left, right) { };
+	TwoChildNode(Node *left, Node *right): InnerNode(left, right)
+	{
+		type_flags |= NODE_TYPE_TWOCHILD;
+	};
 	virtual int normalize_eps(int dir);
 };
 
 class LeafNode: public Node {
 public:
-	LeafNode(): Node() { };
+	LeafNode(): Node() { type_flags |= NODE_TYPE_LEAF; };
 	virtual void normalize(int dir __attribute__((unused))) { return; }
 };
 
@@ -342,6 +387,7 @@ class EpsNode: public LeafNode {
 public:
 	EpsNode(): LeafNode()
 	{
+		type_flags |= NODE_TYPE_EPS;
 		nullable = true;
 		label = 0;
 	}
@@ -356,7 +402,7 @@ public:
 	void compute_lastpos() { }
 	int eq(Node *other)
 	{
-		if (dynamic_cast<EpsNode *>(other))
+		if (other->is_type(NODE_TYPE_EPS))
 			return 1;
 		return 0;
 	}
@@ -373,7 +419,7 @@ public:
  */
 class ImportantNode: public LeafNode {
 public:
-	ImportantNode(): LeafNode() { }
+	ImportantNode(): LeafNode() { type_flags |= NODE_TYPE_IMPORTANT; }
 	void compute_firstpos() { firstpos.insert(this); }
 	void compute_lastpos() { lastpos.insert(this); }
 	virtual void follow(Cases &cases) = 0;
@@ -386,7 +432,7 @@ public:
  */
 class CNode: public ImportantNode {
 public:
-	CNode(): ImportantNode() { }
+	CNode(): ImportantNode() { type_flags |= NODE_TYPE_C; }
 	int is_accept(void) { return false; }
 	int is_postprocess(void) { return false; }
 };
@@ -394,7 +440,7 @@ public:
 /* Match one specific character (/c/). */
 class CharNode: public CNode {
 public:
-	CharNode(transchar c): c(c) { }
+	CharNode(transchar c): c(c) { type_flags |= NODE_TYPE_CHAR; }
 	void follow(Cases &cases)
 	{
 		NodeSet **x = &cases.cases[c];
@@ -408,8 +454,8 @@ public:
 	}
 	int eq(Node *other)
 	{
-		CharNode *o = dynamic_cast<CharNode *>(other);
-		if (o) {
+		if (other->is_type(NODE_TYPE_CHAR)) {
+			CharNode *o = static_cast<CharNode *>(other);
 			return c == o->c;
 		}
 		return 0;
@@ -439,7 +485,10 @@ public:
 /* Match a set of characters (/[abc]/). */
 class CharSetNode: public CNode {
 public:
-	CharSetNode(Chars &chars): chars(chars) { }
+	CharSetNode(Chars &chars): chars(chars)
+	{
+		type_flags |= NODE_TYPE_CHARSET;
+	}
 	void follow(Cases &cases)
 	{
 		for (Chars::iterator i = chars.begin(); i != chars.end(); i++) {
@@ -455,8 +504,11 @@ public:
 	}
 	int eq(Node *other)
 	{
-		CharSetNode *o = dynamic_cast<CharSetNode *>(other);
-		if (!o || chars.size() != o->chars.size())
+		if (!other->is_type(NODE_TYPE_CHARSET))
+			return 0;
+
+		CharSetNode *o = static_cast<CharSetNode *>(other);
+		if (chars.size() != o->chars.size())
 			return 0;
 
 		for (Chars::iterator i = chars.begin(), j = o->chars.begin();
@@ -498,7 +550,10 @@ public:
 /* Match all except one character (/[^abc]/). */
 class NotCharSetNode: public CNode {
 public:
-	NotCharSetNode(Chars &chars): chars(chars) { }
+	NotCharSetNode(Chars &chars): chars(chars)
+	{
+		type_flags |= NODE_TYPE_NOTCHARSET;
+	}
 	void follow(Cases &cases)
 	{
 		if (!cases.otherwise)
@@ -522,8 +577,11 @@ public:
 	}
 	int eq(Node *other)
 	{
-		NotCharSetNode *o = dynamic_cast<NotCharSetNode *>(other);
-		if (!o || chars.size() != o->chars.size())
+		if (!other->is_type(NODE_TYPE_NOTCHARSET))
+			return 0;
+
+		NotCharSetNode *o = static_cast<NotCharSetNode *>(other);
+		if (chars.size() != o->chars.size())
 			return 0;
 
 		for (Chars::iterator i = chars.begin(), j = o->chars.begin();
@@ -565,7 +623,7 @@ public:
 /* Match any character (/./). */
 class AnyCharNode: public CNode {
 public:
-	AnyCharNode() { }
+	AnyCharNode() { type_flags |= NODE_TYPE_ANYCHAR; }
 	void follow(Cases &cases)
 	{
 		if (!cases.otherwise)
@@ -579,7 +637,7 @@ public:
 	}
 	int eq(Node *other)
 	{
-		if (dynamic_cast<AnyCharNode *>(other))
+		if (other->is_type(NODE_TYPE_ANYCHAR))
 			return 1;
 		return 0;
 	}
@@ -589,7 +647,11 @@ public:
 /* Match a node zero or more times. (This is a unary operator.) */
 class StarNode: public OneChildNode {
 public:
-	StarNode(Node *left): OneChildNode(left) { nullable = true; }
+	StarNode(Node *left): OneChildNode(left)
+	{
+		type_flags |= NODE_TYPE_STAR;
+		nullable = true;
+	}
 	void compute_firstpos() { firstpos = child[0]->firstpos; }
 	void compute_lastpos() { lastpos = child[0]->lastpos; }
 	void compute_followpos()
@@ -601,7 +663,7 @@ public:
 	}
 	int eq(Node *other)
 	{
-		if (dynamic_cast<StarNode *>(other))
+		if (other->is_type(NODE_TYPE_STAR))
 			return child[0]->eq(other->child[0]);
 		return 0;
 	}
@@ -618,12 +680,16 @@ public:
 /* Match a node zero or one times. */
 class OptionalNode: public OneChildNode {
 public:
-	OptionalNode(Node *left): OneChildNode(left) { nullable = true; }
+	OptionalNode(Node *left): OneChildNode(left)
+	{
+		type_flags |= NODE_TYPE_OPTIONAL;
+		nullable = true;
+	}
 	void compute_firstpos() { firstpos = child[0]->firstpos; }
 	void compute_lastpos() { lastpos = child[0]->lastpos; }
 	int eq(Node *other)
 	{
-		if (dynamic_cast<OptionalNode *>(other))
+		if (other->is_type(NODE_TYPE_OPTIONAL))
 			return child[0]->eq(other->child[0]);
 		return 0;
 	}
@@ -638,7 +704,9 @@ public:
 /* Match a node one or more times. (This is a unary operator.) */
 class PlusNode: public OneChildNode {
 public:
-	PlusNode(Node *left): OneChildNode(left) {
+	PlusNode(Node *left): OneChildNode(left)
+	{
+		type_flags |= NODE_TYPE_PLUS;
 	}
 	void compute_nullable() { nullable = child[0]->nullable; }
 	void compute_firstpos() { firstpos = child[0]->firstpos; }
@@ -651,7 +719,7 @@ public:
 		}
 	}
 	int eq(Node *other) {
-		if (dynamic_cast<PlusNode *>(other))
+		if (other->is_type(NODE_TYPE_PLUS))
 			return child[0]->eq(other->child[0]);
 		return 0;
 	}
@@ -667,7 +735,10 @@ public:
 /* Match a pair of consecutive nodes. */
 class CatNode: public TwoChildNode {
 public:
-	CatNode(Node *left, Node *right): TwoChildNode(left, right) { }
+	CatNode(Node *left, Node *right): TwoChildNode(left, right)
+	{
+		type_flags |= NODE_TYPE_CAT;
+	}
 	void compute_nullable()
 	{
 		nullable = child[0]->nullable && child[1]->nullable;
@@ -695,7 +766,7 @@ public:
 	}
 	int eq(Node *other)
 	{
-		if (dynamic_cast<CatNode *>(other)) {
+		if (other->is_type(NODE_TYPE_CAT)) {
 			if (!child[0]->eq(other->child[0]))
 				return 0;
 			return child[1]->eq(other->child[1]);
@@ -730,7 +801,10 @@ public:
 /* Match one of two alternative nodes. */
 class AltNode: public TwoChildNode {
 public:
-	AltNode(Node *left, Node *right): TwoChildNode(left, right) { }
+	AltNode(Node *left, Node *right): TwoChildNode(left, right)
+	{
+		type_flags |= NODE_TYPE_ALT;
+	}
 	void compute_nullable()
 	{
 		nullable = child[0]->nullable || child[1]->nullable;
@@ -745,7 +819,7 @@ public:
 	}
 	int eq(Node *other)
 	{
-		if (dynamic_cast<AltNode *>(other)) {
+		if (other->is_type(NODE_TYPE_ALT)) {
 			if (!child[0]->eq(other->child[0]))
 				return 0;
 			return child[1]->eq(other->child[1]);
@@ -780,7 +854,10 @@ public:
 
 class SharedNode: public ImportantNode {
 public:
-	SharedNode() { }
+	SharedNode()
+	{
+		type_flags |= NODE_TYPE_SHARED;
+	}
 	void release(void)
 	{
 		/* don't delete SharedNodes via release as they are shared, and
@@ -803,29 +880,48 @@ public:
  */
 class AcceptNode: public SharedNode {
 public:
-	AcceptNode() { }
+	AcceptNode() { type_flags |= NODE_TYPE_ACCEPT; }
 	int is_accept(void) { return true; }
 	int is_postprocess(void) { return false; }
 };
 
 class MatchFlag: public AcceptNode {
 public:
-	MatchFlag(uint32_t flag, uint32_t audit): flag(flag), audit(audit) { }
-	ostream &dump(ostream &os) { return os << "< 0x" << hex << flag << '>'; }
+	MatchFlag(int priority, perm32_t perms, perm32_t audit): priority(priority), perms(perms), audit(audit)
+	{
+		type_flags |= NODE_TYPE_MATCHFLAG;
+	}
+	ostream &dump(ostream &os) { return os << "< 0x" << hex << perms << std::dec << '>'; }
 
-	uint32_t flag;
-	uint32_t audit;
+	int priority;
+	perm32_t perms;
+	perm32_t audit;
 };
 
 class ExactMatchFlag: public MatchFlag {
 public:
-	ExactMatchFlag(uint32_t flag, uint32_t audit): MatchFlag(flag, audit) {}
+	ExactMatchFlag(int priority, perm32_t perms, perm32_t audit): MatchFlag(priority, perms, audit)
+	{
+		type_flags |= NODE_TYPE_EXACTMATCHFLAG;
+	}
 };
 
 class DenyMatchFlag: public MatchFlag {
 public:
-	DenyMatchFlag(uint32_t flag, uint32_t quiet): MatchFlag(flag, quiet) {}
+	DenyMatchFlag(int priority, perm32_t perms, perm32_t quiet): MatchFlag(priority, perms, quiet)
+	{
+		type_flags |= NODE_TYPE_DENYMATCHFLAG;
+	}
 };
+
+class PromptMatchFlag: public MatchFlag {
+public:
+	PromptMatchFlag(int priority, perm32_t prompt, perm32_t audit): MatchFlag(priority, prompt, audit)
+	{
+		type_flags |= NODE_TYPE_PROMPTMATCHFLAG;
+	}
+};
+
 
 /* Traverse the syntax tree depth-first in an iterator-like manner. */
 class depth_first_traversal {
@@ -833,7 +929,7 @@ class depth_first_traversal {
 	void push_left(Node *node) {
 		pos.push(node);
 
-		while (dynamic_cast<InnerNode *>(node)) {
+		while (node->is_type(NODE_TYPE_INNER)) {
 			pos.push(node->child[0]);
 			node = node->child[0];
 		}
@@ -874,41 +970,13 @@ struct node_counts {
 extern EpsNode epsnode;
 
 int debug_tree(Node *t);
-Node *simplify_tree(Node *t, dfaflags_t flags);
+Node *simplify_tree(Node *t, optflags const &opts);
 void label_nodes(Node *root);
 unsigned long hash_NodeSet(NodeSet *ns);
 void flip_tree(Node *node);
 
 
-
-/*
- * hashedNodes - for efficient set comparison
- */
-class hashedNodeSet {
-public:
-	unsigned long hash;
-	NodeSet *nodes;
-
-	hashedNodeSet(NodeSet *n): nodes(n)
-	{
-		hash = hash_NodeSet(n);
-	}
-
-	bool operator<(hashedNodeSet const &rhs)const
-	{
-		if (hash == rhs.hash) {
-			if (nodes->size() == rhs.nodes->size())
-				return *nodes < *(rhs.nodes);
-			else
-				return nodes->size() < rhs.nodes->size();
-		} else {
-			return hash < rhs.hash;
-		}
-	}
-};
-
-
-class hashedNodeVec {
+class NodeVec {
 public:
 	typedef ImportantNode ** iterator;
 	iterator begin() { return nodes; }
@@ -918,7 +986,7 @@ public:
 	unsigned long len;
 	ImportantNode **nodes;
 
-	hashedNodeVec(NodeSet *n)
+	NodeVec(NodeSet *n)
 	{
 		hash = hash_NodeSet(n);
 		len = n->size();
@@ -930,7 +998,7 @@ public:
 		}
 	}
 
-	hashedNodeVec(NodeSet *n, unsigned long h): hash(h)
+	NodeVec(NodeSet *n, unsigned long h): hash(h)
 	{
 		len = n->size();
 		nodes = new ImportantNode *[n->size()];
@@ -940,14 +1008,14 @@ public:
 		}
 	}
 
-	~hashedNodeVec()
+	~NodeVec()
 	{
 		delete [] nodes;
 	}
 
 	unsigned long size()const { return len; }
 
-	bool operator<(hashedNodeVec const &rhs)const
+	bool operator<(NodeVec const &rhs)const
 	{
 		if (hash == rhs.hash) {
 			if (len == rhs.size()) {
@@ -973,45 +1041,8 @@ public:
 	virtual unsigned long size(void) const = 0;
 };
 
-class NodeCache: public CacheStats {
-public:
-	set<hashedNodeSet> cache;
-
-	NodeCache(void): cache() { };
-	~NodeCache() { clear(); };
-
-	virtual unsigned long size(void) const { return cache.size(); }
-
-	void clear()
-	{
-		for (set<hashedNodeSet>::iterator i = cache.begin();
-		     i != cache.end(); i++) {
-			delete i->nodes;
-		}
-		cache.clear();
-		CacheStats::clear();
-	}
-
-	NodeSet *insert(NodeSet *nodes)
-	{
-		if (!nodes)
-			return NULL;
-		pair<set<hashedNodeSet>::iterator,bool> uniq;
-		uniq = cache.insert(hashedNodeSet(nodes));
-		if (uniq.second == false) {
-			delete(nodes);
-			dup++;
-		} else {
-			sum += nodes->size();
-			if (nodes->size() > max)
-				max = nodes->size();
-		}
-		return uniq.first->nodes;
-	}
-};
-
 struct deref_less_than {
-       bool operator()(hashedNodeVec * const &lhs, hashedNodeVec * const &rhs)const
+       bool operator()(NodeVec * const &lhs, NodeVec * const &rhs)const
 		{
 			return *lhs < *rhs;
 		}
@@ -1019,7 +1050,7 @@ struct deref_less_than {
 
 class NodeVecCache: public CacheStats {
 public:
-	set<hashedNodeVec *, deref_less_than> cache;
+	set<NodeVec *, deref_less_than> cache;
 
 	NodeVecCache(void): cache() { };
 	~NodeVecCache() { clear(); };
@@ -1028,7 +1059,7 @@ public:
 
 	void clear()
 	{
-		for (set<hashedNodeVec *>::iterator i = cache.begin();
+		for (set<NodeVec *>::iterator i = cache.begin();
 		     i != cache.end(); i++) {
 			delete *i;
 		}
@@ -1036,12 +1067,12 @@ public:
 		CacheStats::clear();
 	}
 
-	hashedNodeVec *insert(NodeSet *nodes)
+	NodeVec *insert(NodeSet *nodes)
 	{
 		if (!nodes)
 			return NULL;
-		pair<set<hashedNodeVec *>::iterator,bool> uniq;
-		hashedNodeVec *nv = new hashedNodeVec(nodes);
+		pair<set<NodeVec *>::iterator,bool> uniq;
+		NodeVec *nv = new NodeVec(nodes);
 		uniq = cache.insert(nv);
 		if (uniq.second == false) {
 			delete nv;

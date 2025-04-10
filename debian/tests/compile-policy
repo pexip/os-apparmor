@@ -1,13 +1,20 @@
 #!/bin/sh
 
 set -e
+set -u
 
-PROFILES_NAMES="lsb_release \
+PROFILES_NAMES="guestfs-tools \
+                lsb_release \
                 nvidia_modprobe \
                 system_tor \
                 usr.bin.evince \
+                usr.bin.freshclam \
                 usr.bin.man \
+                usr.bin.msmtp \
                 usr.bin.onioncircuits \
+                usr.bin.papers \
+                usr.bin.passt \
+                usr.bin.pasta \
                 usr.bin.pidgin \
                 usr.bin.tcpdump \
                 usr.bin.totem \
@@ -17,20 +24,28 @@ PROFILES_NAMES="lsb_release \
                 usr.lib.libreoffice.program.soffice.bin \
                 usr.lib.libreoffice.program.xpdfimport \
                 usr.lib.libvirt.virt-aa-helper \
+                usr.libexec.geoclue \
+                usr.libexec.ibus-engine-hangul \
+                usr.libexec.ibus-setup-hangul \
                 usr.sbin.apt-cacher-ng \
+                usr.sbin.clamd \
+                usr.sbin.chronyd \
                 usr.sbin.cupsd \
                 usr.sbin.cups-browsed \
                 usr.sbin.haveged \
                 usr.sbin.libvirtd \
+                usr.sbin.mariadbd \
                 usr.sbin.named \
-                usr.sbin.ntpd"
+                usr.sbin.unbound"
 
-for profile_name in $PROFILES_NAMES ; do
-   echo "Testing $profile_name"
-   /sbin/apparmor_parser \
-       --add \
-       --skip-cache \
-       --skip-kernel-load \
-       --verbose \
-       "/etc/apparmor.d/$profile_name"
+for profile_name in $PROFILES_NAMES; do
+    echo "Testing $profile_name"
+    /sbin/apparmor_parser \
+        --add \
+        --skip-cache \
+        --skip-kernel-load \
+        --verbose \
+        --warn=rule-downgraded \
+        --warn=rule-not-enforced \
+        "/etc/apparmor.d/$profile_name"
 done

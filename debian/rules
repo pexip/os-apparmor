@@ -1,15 +1,17 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/pkg-info.mk
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+bindnow optimize=+lto
-
-export DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 
 export PERL_VENDORARCH := $(shell perl -MConfig -e 'print substr($$Config{vendorarch},1)' )
 export PYTHON=/usr/bin/python3
 export PYTHON_VERSION=3
 export PYTHON_VERSIONS=python3
+ifneq ($(DEB_BUILD_ARCH),$(DEB_HOST_ARCH))
+export _PYTHON_SYSCONFIGDATA_NAME=_sysconfigdata__$(DEB_HOST_ARCH_OS)_$(DEB_HOST_MULTIARCH)
+endif
 
 %:
 	dh $@ --with=python3,apache2
@@ -57,15 +59,27 @@ endif
 
 override_dh_auto_test:
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	dh_auto_test -Dlibraries/libapparmor -- V=1
+	# Doesn't make sense to run utils tests without Python version
+	#dh_auto_test -Dutils -- V=1
+
+	# Utils test needs to set PYTHON_VERSIONS and PYTHON
+	# Hacky workaround since utils make check uses a version of pyalldo
+	# and we need to specify a different libapparmor CPython module for each
+	# Also set APPARMOR_NOTIFY to use our Python version
+	set -e; for py in $(shell py3versions -s) ; do \
+		PYTHON=/usr/bin/$$py dh_auto_test \
+			-D libraries/libapparmor.$$py -- PYTHON=/usr/bin/$$py; \
+		LIBAPPARMOR_BASEDIR=../../libraries/libapparmor.$$py\
+			PYTHON_VERSIONS=$$py PYTHON=/usr/bin/$$py\
+			dh_auto_test \
+			-D utils.$$py/ -- LIBAPPARMOR_BASEDIR=../../libraries/libapparmor.$$py\
+			PYTHON_VERSIONS=$$py PYTHON=/usr/bin/$$py;\
+	done
 ifeq (,$(filter $(DEB_HOST_ARCH_OS), kfreebsd knetbsd hurd ))
 	dh_auto_test -Dbinutils -- V=1
 	dh_auto_test -Dparser -- V=1
 endif
-	dh_auto_test -Dlibraries/libapparmor -- V=1
-	set -e; for py in $(shell py3versions -s) ; do \
-		PYTHON=/usr/bin/$$py dh_auto_test \
-			-D libraries/libapparmor.$$py -- PYTHON=/usr/bin/$$py; \
-	done
 endif
 
 
@@ -108,7 +122,7 @@ ifneq (,$(filter $(DEB_HOST_ARCH_OS), kfreebsd knetbsd hurd ))
 	    install-indep
 
 	install -D -m 755 $(CURDIR)/debian/non-linux/fake_apparmor_util \
-		$(CURDIR)/debian/tmp/sbin/apparmor_parser
+		$(CURDIR)/debian/tmp/usr/sbin/apparmor_parser
 	install -D -m 755 $(CURDIR)/debian/non-linux/fake_apparmor_util \
 		$(CURDIR)/debian/tmp/usr/bin/aa-enabled
 	install -D -m 755 $(CURDIR)/debian/non-linux/fake_apparmor_util \
@@ -123,6 +137,8 @@ else
 
 	cd parser && $(MAKE) \
 	    DESTDIR=$(CURDIR)/debian/tmp \
+	    SBINDIR=$(CURDIR)/debian/tmp/usr/sbin \
+	    APPARMOR_BIN_PREFIX=$(CURDIR)/debian/tmp/usr/lib/apparmor \
 	    install
 endif
 
@@ -148,9 +164,10 @@ endif
 	# Changehat via libpam-apparmor
 	cd changehat/pam_apparmor && $(MAKE) \
 	    DESTDIR=$(CURDIR)/debian/tmp \
+	    SECDIR=$(CURDIR)/debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/security \
 	    install
 	# Fix rpath in pam_apparmor.so
-	chrpath -d $(CURDIR)/debian/tmp/lib/security/pam_apparmor.so
+	chrpath -d $(CURDIR)/debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/security/pam_apparmor.so
 
 	# Profiles
 	# We'd like to keep site.local from being a conffile
@@ -190,6 +207,8 @@ override_dh_install-arch:
 	set -e; for profile in lsb_release nvidia_modprobe; do \
 	    DH_AUTOSCRIPTDIR=debian/debhelper/ perl debian/debhelper/dh_apparmor --profile-name=$$profile -papparmor; \
 	done
+	# See #1039668
+	rm $(CURDIR)/debian/tmp/etc/apparmor.d/abstractions/ubuntu-browsers.d/chromium-browser
 	dh_install
 	# Fix permissions so that aa-teardown can execute this file
-	chmod 0755 $(CURDIR)/debian/apparmor/lib/apparmor/apparmor.systemd
+	chmod 0755 $(CURDIR)/debian/apparmor/usr/lib/apparmor/apparmor.systemd

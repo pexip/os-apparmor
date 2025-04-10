@@ -88,7 +88,7 @@ Importing a new upstream release from the tarball
                          -m "$(echo "Update debian/changelog.\n\nGbp-Dch: Ignore\n")"
 
 6. Build, test, run QA checks (Lintian, autopkgtest, etc.).
-   Fix problems, rince and repeat.
+   Fix problems, rinse and repeat.
 
 7. Mark changelog entry as released and tag:
 
