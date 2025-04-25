@@ -33,7 +33,7 @@ Vcs-Browser: https://salsa.debian.org/apparmor-team/apparmor/tree/debian/unstabl
 Vcs-Git: https://salsa.debian.org/apparmor-team/apparmor.git -b debian/unstable
 Homepage: https://apparmor.net/
 Rules-Requires-Root: no
-XS-Pexip-Upstream: http://deb.debian.org/debian/ bookworm
+XS-Pexip-Upstream: http://deb.debian.org/debian/ trixie
 
 Package: apparmor
 Architecture: linux-any
