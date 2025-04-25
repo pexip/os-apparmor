@@ -9,7 +9,7 @@ Forwarded: not-needed
  1 file changed, 12 insertions(+)
 
 diff --git a/parser/apparmor.d.pod b/parser/apparmor.d.pod
-index c4ba078..39a86bb 100644
+index 0d2625d..d46f693 100644
 --- a/parser/apparmor.d.pod
 +++ b/parser/apparmor.d.pod
 @@ -33,6 +33,18 @@ programs and are fed to the AppArmor policy enforcement module using

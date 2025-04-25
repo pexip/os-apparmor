@@ -4,5 +4,4 @@
 /etc/apparmor.d/tunables/home.d
 /etc/apparmor.d/tunables/multiarch.d
 /etc/apparmor.d/tunables/xdg-user-dirs.d
-/lib/apparmor/
 /var/cache/apparmor

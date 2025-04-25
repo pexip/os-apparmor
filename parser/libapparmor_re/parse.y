@@ -72,11 +72,12 @@ static inline Chars* insert_char_range(Chars* cset, transchar a, transchar b)
  * parsing succeeds!
  */
 %destructor { $$->release(); } expr terms0 terms qterm term
+%destructor { delete $$; } charset cset_chars
 
 %%
 
 /* FIXME: Does not parse "[--]", "[---]", "[^^-x]". I don't actually know
-          which precise grammer Perl regexs use, and rediscovering that
+          which precise grammar Perl regexs use, and rediscovering that
 	  is proving to be painful. */
 
 regex	    : /* empty */	{ *root = $$ = &epsnode; }

@@ -11,17 +11,17 @@
 #
 # This file should be included by each test case
 # It does a lot of hidden 'magic',  Downside is that
-# this magic makes debugging fauling tests more difficult.
+# this magic makes debugging failing tests more difficult.
 # Running the test with the '-r' option can help.
 #
-# Userchangeable variables (tmpdir etc) should be specified in
+# User changeable variables (tmpdir etc) should be specified in
 # uservars.inc
 # 
 # Cleanup is automatically performed by epilogue.inc
 #
 # For this file, functions are first, entry point code is at end, see "MAIN"
 
-#use $() to retreive the failure message or "true" if success
+#use $() to retrieve the failure message or "true" if success
 
 # kernel_features_istrue() - test whether boolean files are true
 # $@: path(s) to test if true
@@ -59,15 +59,26 @@ kernel_features_istrue()
 #          2 and error message if path does not exist
 kernel_features()
 {
-	if [ ! -e "/sys/kernel/security/apparmor/features/" ] ; then
+	features_dir="/sys/kernel/security/apparmor/features/"
+	if [ ! -e "$features_dir" ] ; then
 		echo "Kernel feature masks not supported."
 		return 1;
 	fi
 
 	for f in $@ ; do
-		if [ ! -e "/sys/kernel/security/apparmor/features/$f" ] ; then
-			echo "Required feature '$f' not available."
-			return 2;
+		if [ ! -e "$features_dir/$f" ] ; then
+			# check if feature is in file
+			feature=$(basename "$features_dir/$f")
+			file=$(dirname "$features_dir/$f")
+			if [ -f $file ]; then
+				if ! grep -q $feature $file; then
+					echo "Required feature '$f' not available."
+					return 2;
+				fi
+			else
+				echo "Required feature '$f' not available."
+				return 3;
+			fi
 		fi
 	done
 
@@ -84,6 +95,19 @@ requires_kernel_features()
 		echo "$res. Skipping tests ..."
 		exit 0
 	fi
+}
+
+requires_any_of_kernel_features()
+{
+	while [ $# -gt 0 ]; do
+		local res=$(kernel_features "$1")
+		if [ "$res" = "true" ] ; then
+			return 0;
+		fi
+		shift
+	done
+	echo "$res. Skipping tests ..."
+	exit 0
 }
 
 # requires_namespace_interface() - exit if namespace interface is not available
@@ -128,7 +152,7 @@ parser_supports()
 # $@: rules to test
 requires_parser_support()
 {
-	local res=$(parser_supports $@)
+	local res=$(parser_supports "$@")
 	if [ "$res" != "true" ] ; then
 		echo "$res. Skipping tests ..."
 		exit 0
@@ -177,7 +201,7 @@ exit_handler()
 	# global bin
 	if [ -d "$bin" ]
 	then
-		. $bin/epilogue.inc
+		. "$bin/epilogue.inc"
 	fi
 }
 
@@ -276,46 +300,48 @@ checktestfg()
 
 	ret=`cat $outfile 2>/dev/null`
 	teststatus=pass
-	
-	case "$ret" in
-		PASS)	if [ "$_pfmode" != "pass" -a -z "${_known}" ]
-			then
-				echo "Error: ${testname} passed. Test '${_testdesc}' was expected to '${_pfmode}'"
-				testfailed
-				return
-			elif [ "$_pfmode" == "pass" -a -n "${_known}" ]
-			then
-				echo "Alert: ${testname} passed. Test '${_testdesc}' was marked as expected pass but known problem (xpass)"
-			fi
-			;;
-		FAIL*)  if [ "$_pfmode" != "fail" -a -z "${_known}" ]
-			then
-				echo "Error: ${testname} failed. Test '${_testdesc}' was expected to '${_pfmode}'. Reason for failure '${ret}'"
-				testfailed
-				return
-			elif [ "$_pfmode" == "fail" -a -n "${_known}" ]
-			then
-				echo "Alert: ${testname} failed. Test '${_testdesc}' was marked as expected fail but known problem (xfail)."
-			fi
-			;;
-		SIGNAL*) killedsig=`echo $ret | sed 's/SIGNAL//'`
-			case "$_pfmode" in
-			signal*) expectedsig=`echo ${_pfmode} | sed 's/signal//'`
-				if [ -n "${expectedsig}" -a ${expectedsig} != ${killedsig} ]
-				then
-					echo "Error: ${testname} failed. Test '${_testdesc}' was expected to terminate with signal ${expectedsig}${_known}. Instead it terminated with signal ${killedsig}"
+	testresult=pass
+	failurereason=""
+	while IFS= read -r line; do
+		case "$line" in
+			PASS)	;;
+			FAIL*)  testresult=fail
+				failurereason=". Reason for failure '${line}'"
+				break
+				;;
+			SIGNAL*) killedsig=`echo $line | sed 's/SIGNAL//'`
+				 case "$_pfmode" in
+				 signal*) expectedsig=`echo ${_pfmode} | sed 's/signal//'`
+					if [ -n "${expectedsig}" -a ${expectedsig} != ${killedsig} ]
+					then
+						echo "Error: ${testname} failed. Test '${_testdesc}' was expected to terminate with signal ${expectedsig}${_known}. Instead it terminated with signal ${killedsig}"
+						testfailed
+						return
+					fi
+					;;
+				 *)	echo "Error: ${testname} failed. Test '${_testdesc}' was expected to '${_pfmode}'${_known}. Reason for failure 'killed by signal ${killedsig}'"
 					testfailed
 					return
-				fi
+					;;
+				 esac
+				 ;;
+			*)	testerror
+				return
 				;;
-			*) 	echo "Error: ${testname} failed. Test '${_testdesc}' was expected to '${_pfmode}'${_known}. Reason for failure 'killed by signal ${killedsig}'"
+		esac
+	done <<< "$ret"
+
+	case "$_pfmode" in
+		signal*) ;;
+		*)	 if [ "$_pfmode" != "$testresult" -a -z "${_known}" ]
+			 then
+				echo "Error: ${testname} ${testresult}ed. Test '${_testdesc}' was expected to '${_pfmode}'$failurereason"
 				testfailed
 				return
-				;;	
-			esac
-			;;
-		*)	testerror
-			return
+			elif [ "$_pfmode" == "$testresult" -a -n "${_known}" ]
+			then
+				echo "Alert: ${testname} ${testresult}ed. Test '${_testdesc}' was marked as expected $_pfmode but known problem (x$_pfmode)"
+			fi
 			;;
 	esac
 
@@ -377,7 +403,7 @@ emit_profile()
 
 	name=$1; shift 1
 
-	$bin/mkprofile.pl ${mkflags} "$name" ${outfile}:w "$@" >> $profile
+	"$bin/mkprofile.pl" ${mkflags} "$name" ${outfile}:w "$@" >> $profile
 
 	echo $name >> $profilenames
 }
@@ -394,6 +420,7 @@ fi
 
 	complainflag=""
 	mkflags=""
+	append="false"
 	while /bin/true
 	do
 		case "$1" in
@@ -405,25 +432,31 @@ fi
 			      ;;
 			"-I") mkflags="${mkflags} -I"
 			      ;;
+			"--append") append="true"
+				    ;;
 			*) break
 			   ;;
 		esac
 		shift
 	done
 
-	# save previous profile
-	if [ -f $profile ]
-	then
-		mv $profile ${profile}.old
-		mv $profilenames ${profilenames}.old
-	fi
+	if [ "$append" = "false" ]; then
+		# save previous profile
+		if [ -f $profile ]
+		then
+			mv $profile ${profile}.old
+			mv $profilenames ${profilenames}.old
+		fi
 
-	echo "abi <kernel>," >$profile
-	num_emitted=0
+		echo "abi <kernel>," >$profile
+		num_emitted=0
+	else
+		num_emmited=$(wc -l < "$profilenames")
+	fi
 
 	while /bin/true
 	do
-		imagename=$test
+		imagename=$testbin
 
 		# image/subhat allows overriding of the default
 		# imagename which is based on the testname
@@ -431,7 +464,7 @@ fi
 		# it is most often used after --, in fact it is basically
 		# mandatory after --
 		case "$1" in
-			image=*) imagename=`echo $1 | sed 's/^image=\([^:]*\).*$/\1/'`
+			image=*) imagename=`echo $1 | sed 's/^image=\(.*\)$/\1/'`
 				 num_emitted=0
 				 shift
 				 ;;
@@ -469,9 +502,12 @@ fi
 		break
 	done
 
+	if [ $append == "true" ]
+	then
+		replaceprofile
 	# if old and new profiles consist of the same entries
 	# we can do a replace, else remove/reload
-	if [ $profileloaded -eq 1 ]
+	elif [ $profileloaded -eq 1 ]
 	then
 		names1=$tmpdir/sorted1
 		names2=$tmpdir/sorted2
@@ -481,13 +517,13 @@ fi
 		if cmp -s $names1 $names2
 		then
 			replaceprofile
-		else	
+		else
 			removeprofile ${profile}.old
 			loadprofile
 		fi
 
 		rm -f $names1 $names2
-	
+
 	else
 		loadprofile
 	fi
@@ -511,7 +547,7 @@ loadprofile()
 {
 	#global complainflaf profile profileloaded
 
-	$subdomain ${parser_args} $complainflag $profile > /dev/null
+	"$subdomain" ${parser_args} $complainflag $profile > /dev/null
 	if [ $? -ne 0 ]
 	then
 		removeprofile
@@ -525,7 +561,7 @@ replaceprofile()
 {
 	#global complainflag profile
 
-	$subdomain ${parser_args} -r $complainflag $profile > /dev/null
+	"$subdomain" ${parser_args} -r $complainflag $profile > /dev/null
 	if [ $? -ne 0 ]
 	then
 		fatalerror "Unable to replace profile $profile"
@@ -544,7 +580,7 @@ removeprofile()
 		remprofile=$profile
 	fi
 
-	$subdomain ${parser_args} -R $remprofile > /dev/null
+	"$subdomain" ${parser_args} -R $remprofile > /dev/null
 	if [ $? -ne 0 ]
 	then
 		fatalerror "Unable to remove profile $remprofile"
@@ -569,6 +605,18 @@ settest()
 	#  will run the test. In this case 'settest <testname> "wrapper {}'
 	#  will result in testexec invoking wrapper. {} will be replaced with 
 	#  $test 
+	#settest can run the test as a different user with:
+	#  settest -u <username> <testname>
+	#  settest -u <username> <testname> "wrapper {}"
+
+	username=''
+	if [ $# -gt 2 -a "$1" == "-u" -a ! -z "$2" ]
+	then
+		username="$2"
+		addtestuser "$username"
+		shift
+		shift
+	fi
 
 	testname=$1
 
@@ -584,12 +632,39 @@ settest()
 		fatalerror "settest, illegal usage"
 	fi
 
+	# store testbin name from testexec so that testexec represents
+	# what will be executed - allowing for a change of username
+	# with sudo -u
+	testbin=$testexec
+
+	if [ ! -z "$username" ]
+	then
+		testexec="sudo -u $username $testexec"
+	fi
+
 	outfile=$tmpdir/output.$1
 
 	# Remove any current profile if loaded
 	if [ $profileloaded -eq 1 ]
 	then
 		removeprofile
+	fi
+}
+
+# Add a temporary user with name=$1 that will be deleted on exit
+addtestuser()
+{
+	#global testusers
+
+	if ! echo "$testusers" | grep -q "$1"
+	then
+		if adduser --gecos "First Last,RoomNumber,WorkPhone,HomePhone" \
+			--no-create-home --disabled-password "$1" >/dev/null
+		then
+			testusers="$testusers $1"
+		else
+			fatalerror "Unable to add user '$1'"
+		fi
 	fi
 }
 
@@ -625,9 +700,9 @@ else
 fi
 
 # load user changeable variables
-. $bin/uservars.inc
+. "$bin/uservars.inc"
 
-if [ ! -x $subdomain ]
+if [ ! -x "$subdomain" ]
 then
 	fatalerror "AppArmor parser '$subdomain' is not executable"
 fi

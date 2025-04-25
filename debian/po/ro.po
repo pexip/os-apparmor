@@ -1,0 +1,56 @@
+# Mesajele în limba română pentru pachetul apparmor.
+# Romanian translation of apparmor.
+# Copyright © 2023 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the apparmor package.
+#
+# Remus-Gabriel Chelu <remusgabriel.chelu@disroot.org>, 2023.
+#
+# Cronologia traducerii fișierului „apparmor”:
+# Traducerea inițială, făcută de R-GC, pentru versiunea apparmor 3.0.8-2.
+# Actualizare a traducerii pentru versiunea Y, făcută de X, Y(anul).
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: apparmor 3.0.8-2\n"
+"Report-Msgid-Bugs-To: apparmor@lists.ubuntu.com\n"
+"POT-Creation-Date: 2010-01-05 17:45-0600\n"
+"PO-Revision-Date: 2023-01-24 12:29+0100\n"
+"Last-Translator: Remus-Gabriel Chelu <remusgabriel.chelu@disroot.org>\n"
+"Language-Team: Romanian <debian-l10n-romanian@lists.debian.org>\n"
+"Language: ro\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n==0 || (n!=1 && n%100>=1 && "
+"n%100<=19) ? 1 : 2);\n"
+"X-Bugs: Report translation errors to the Language-Team address.\n"
+"X-Generator: Poedit 3.2.2\n"
+
+#. Type: string
+#. Description
+#: ../templates:1001
+msgid "Additional home directory locations:"
+msgstr "Locații suplimentare din directorul „Acasă” (directorul personal):"
+
+#. Type: string
+#. Description
+#: ../templates:1001
+msgid ""
+"Please enter a space separated list of any additional locations for user home "
+"directories. These locations are in addition to those specified in /etc/"
+"apparmor.d/tunables/home and must end with a '/'."
+msgstr ""
+"Introduceți o listă separată de spații cu orice locații suplimentare pentru "
+"directoarele „Acasă” ale utilizatorilor. Aceste locații sunt în plus față de "
+"cele specificate în fișierul „/etc/apparmor.d/tunables/home” și trebuie să se "
+"încheie cu un caracter „/”."
+
+#. Type: string
+#. Description
+#: ../templates:1001
+msgid ""
+"Example: if user's directories are stored in /srv/nfs/home and /mnt/homes, you "
+"should enter \"/srv/nfs/home/ /mnt/homes/\"."
+msgstr ""
+"Exemplu: dacă directoarele utilizatorului sunt stocate în „/srv/nfs/home” și „/"
+"mnt/homes”, ar trebui să introduceți „/srv/nfs/home/ /mnt/homes/”."

@@ -18,7 +18,7 @@ cleancorefile()
 checkcorefile()
 {
 	# global _testdesc _pfmode _known outfile
-	if [ ${1:0:1} == "x" ] ; then
+	if [ ${1:0:1} = "x" ] ; then
 		requirement=${1#x}
 		_known=" (known problem)"
         else
@@ -63,7 +63,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 coreperm=r
 nocoreperm=ix

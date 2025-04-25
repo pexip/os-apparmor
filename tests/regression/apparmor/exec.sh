@@ -14,9 +14,10 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
-file=/bin/true
+cp -pL /bin/true ${tmpdir}/true
+file=${tmpdir}/true
 ok_ix_perm=rix
 badperm=r
 ok_ux_perm=ux

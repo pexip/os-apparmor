@@ -8,6 +8,9 @@ include if exists <tunables/nothing>
 @{xy} = x y
 @{asdf} = "" foo
 
+$foo = false
+$bar = true
+
 # A simple test comment which will persist
 
 
@@ -25,14 +28,13 @@ include if exists <tunables/nothing>
 
   dbus send bus=session,
 
-  mount options=(rw,suid) /c -> /3,
+  mount options=(rw, suid) /c -> /3,
 
   signal set=(abrt alrm bus chld fpe hup ill int kill pipe quit segv stkflt term trap usr1 usr2),
 
   pivot_root oldroot=/mnt/root/old/,
 
   unix (receive) type=dgram,
-  unix shutdown addr=@HypotheticalServiceDaemon,
 
   deny owner link /some/thing -> /foo/bar,
 
@@ -43,10 +45,22 @@ include if exists <tunables/nothing>
   change_profile,
 
 
+  hat bar {
+    capability sys_admin,
+
+    /etc/passwd r,
+
+  }
+
   ^foo {
     capability dac_override,
 
     /etc/fstab r,
+
+  }
+
+  profile test_child /foobar {
+    /etc/child rw,
 
   }
 }

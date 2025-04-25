@@ -41,9 +41,9 @@ class AANoCleanupMetaClass(type):
 
     @classmethod
     def keep_on_fail(cls, unittest_func):
-        '''wrapping function for unittest testcases to detect failure
+        """wrapping function for unittest testcases to detect failure
            and leave behind test files in tearDown(); to be used as
-           a decorator'''
+           a decorator"""
 
         def new_unittest_func(self):
             try:
@@ -58,52 +58,52 @@ class AANoCleanupMetaClass(type):
 
 
 class AATestTemplate(unittest.TestCase, metaclass=AANoCleanupMetaClass):
-    '''Stub class for use by test scripts'''
+    """Stub class for use by test scripts"""
     debug = False
     do_cleanup = True
 
     def run_cmd_check(self, command, input=None, stderr=subprocess.STDOUT, stdout=subprocess.PIPE,
                       stdin=None, timeout=120, expected_rc=0, expected_string=None):
-        '''Wrapper around run_cmd that checks the rc code against
+        """Wrapper around run_cmd that checks the rc code against
            expected_rc and for expected strings in the output if
            passed. The valgrind tests generally don't care what the
            rc is as long as it's not a specific set of return codes,
-           so can't push the check directly into run_cmd().'''
+           so can't push the check directly into run_cmd()."""
         rc, report = self.run_cmd(command, input, stderr, stdout, stdin, timeout)
-        self.assertEqual(rc, expected_rc, "Got return code %d, expected %d\nCommand run: %s\nOutput: %s" % (rc, expected_rc, (' '.join(command)), report))
+        self.assertEqual(rc, expected_rc, "Got return code {}, expected {}\nCommand run: {}\nOutput: {}".format(rc, expected_rc, ' '.join(command), report))
         if expected_string:
-            self.assertIn(expected_string, report, 'Expected message "%s", got: \n%s' % (expected_string, report))
+            self.assertIn(expected_string, report, 'Expected message "{}", got: \n{}'.format(expected_string, report))
         return report
 
     def run_cmd(self, command, input=None, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                 stdin=None, timeout=120):
-        '''Try to execute given command (array) and return its stdout, or
-           return a textual error if it failed.'''
+        """Try to execute given command (array) and return its stdout, or
+           return a textual error if it failed."""
 
         if self.debug:
-            print('\n===> Running command: \'%s\'' % (' '.join(command)))
+            print("\n===> Running command: '{}'".format(' '.join(command)))
 
         (rc, out, outerr) = self._run_cmd(command, input, stderr, stdout, stdin, timeout)
         report = out + outerr
 
-        return [rc, report]
+        return rc, report
 
     def _run_cmd(self, command, input=None, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                  stdin=None, timeout=120):
-        '''Try to execute given command (array) and return its rc, stdout, and stderr as a tuple'''
+        """Try to execute given command (array) and return its rc, stdout, and stderr as a tuple"""
 
         try:
             sp = subprocess.Popen(command, stdin=stdin, stdout=stdout, stderr=stderr,
                                   close_fds=True, preexec_fn=subprocess_setup, universal_newlines=True)
         except OSError as e:
-            return [127, str(e), '']
+            return 127, str(e), ''
 
         timeout_communicate = TimeoutFunction(sp.communicate, timeout)
         out, outerr = (None, None)
         try:
             out, outerr = timeout_communicate(input)
             rc = sp.returncode
-        except TimeoutFunctionException as e:
+        except TimeoutFunctionException:
             sp.terminate()
             outerr = 'test timed out, killed'
             rc = TIMEOUT_ERROR_CODE
@@ -115,13 +115,12 @@ class AATestTemplate(unittest.TestCase, metaclass=AANoCleanupMetaClass):
         if outerr is None:
             outerr = ''
 
-        return (rc, out, outerr)
+        return rc, out, outerr
 
 
 # Timeout handler using alarm() from John P. Speno's Pythonic Avocado
 class TimeoutFunctionException(Exception):
     """Exception to raise on a timeout"""
-    pass
 
 
 class TimeoutFunction:
@@ -144,7 +143,7 @@ class TimeoutFunction:
 
 
 def filesystem_time_resolution():
-    '''detect whether the filesystem stores subsecond timestamps'''
+    """detect whether the filesystem stores subsecond timestamps"""
 
     default_diff = 0.1
     result = (True, default_diff)
@@ -155,7 +154,7 @@ def filesystem_time_resolution():
         for i in range(10):
             s = None
 
-            with open(os.path.join(tmp_dir, 'test.%d' % i), 'w+') as f:
+            with open(os.path.join(tmp_dir, 'test.{}'.format(i)), 'w+') as f:
                 s = os.fstat(f.fileno())
 
             if (s.st_mtime == last_stamp):
@@ -165,7 +164,7 @@ def filesystem_time_resolution():
 
             last_stamp = s.st_mtime
             time.sleep(default_diff)
-    except:
+    except Exception:
         pass
     finally:
         if os.path.exists(tmp_dir):
@@ -182,13 +181,13 @@ def read_features_dir(path):
 
     for name in sorted(os.listdir(path)):
         entry = os.path.join(path, name)
-        result += '%s {' % name
+        result += name + ' {'
         if os.path.isfile(entry):
             with open(entry, 'r') as f:
                 # don't need extra '\n' here as features file contains it
-                result += '%s' % (f.read())
+                result += f.read()
         elif os.path.isdir(entry):
-            result += '%s' % (read_features_dir(entry))
+            result += read_features_dir(entry)
         result += '}\n'
 
     return result
@@ -199,7 +198,7 @@ def touch(path):
 
 
 def write_file(directory, file, contents):
-    '''construct path, write contents to it, and return the constructed path'''
+    """construct path, write contents to it, and return the constructed path"""
     path = os.path.join(directory, file)
     with open(path, 'w+') as f:
         f.write(contents)

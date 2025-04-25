@@ -16,7 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *
- * Create a compressed hfa (chfa) from and hfa
+ * Create a compressed hfa (chfa) from an hfa
  */
 #ifndef __LIBAA_RE_CHFA_H
 #define __LIBAA_RE_CHFA_H
@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "hfa.h"
+#include "../perms.h"
 
 #define BASE32_FLAGS 0xff000000
 #define DiffEncodeBit32 0x80000000
@@ -33,30 +34,41 @@
 
 using namespace std;
 
+typedef vector<pair<const State *, size_t> > DefaultBase;
+typedef vector<pair<const State *, const State *> > NextCheck;
+
 class CHFA {
-	typedef vector<pair<const State *, size_t> > DefaultBase;
-	typedef vector<pair<const State *, const State *> > NextCheck;
       public:
-	CHFA(DFA &dfa, map<transchar, transchar> &eq, dfaflags_t flags);
+	CHFA(void);
+	CHFA(DFA &dfa, map<transchar, transchar> &eq, optflags const &opts,
+	     bool permindex, bool prompt);
 	void dump(ostream & os);
-	void flex_table(ostream &os, const char *name);
+	void flex_table(ostream &os, optflags const &opts);
 	void init_free_list(vector<pair<size_t, size_t> > &free_list,
 			    size_t prev, size_t start);
 	bool fits_in(vector<pair<size_t, size_t> > &free_list, size_t base,
 		     StateTrans &cases);
 	void insert_state(vector<pair<size_t, size_t> > &free_list,
 			  State *state, DFA &dfa);
+	void weld_file_to_policy(CHFA &file_chfa, size_t &new_start,
+				 bool accept_idx, bool prompt,
+				 vector <aa_perms>  &policy_perms,
+				 vector <aa_perms> &file_perms);
 
-      private:
+	// private:
+	// sigh templates suck, friend declaration does not work so for now
+	// make these public
 	vector<uint32_t> accept;
 	vector<uint32_t> accept2;
 	DefaultBase default_base;
 	NextCheck next_check;
-	map<const State *, size_t> num;
-	map<transchar, transchar> &eq;
+	const State *start;
+	Renumber_Map num;
+	map<transchar, transchar> eq;
+	unsigned int chfaflags;
+      private:
 	transchar max_eq;
 	ssize_t first_free;
-	unsigned int chfaflags;
 };
 
 #endif /* __LIBAA_RE_CHFA_H */

@@ -19,7 +19,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 file=/etc/group
 
@@ -57,7 +57,7 @@ local_runchecktest()
 
 	checktestbg
 
-	if [ "$teststatus" == "pass" -a -n "$actual_confinement" -a "$actual_confinement" != "$expected_confinement" ]
+	if [ "$teststatus" = "pass" -a -n "$actual_confinement" -a "$actual_confinement" != "$expected_confinement" ]
 	then
 		 echo "Error: ${testname} failed. Test '${_testdesc}' actual confinement '$actual_confinement' differed from expected confinement '$expected_confinement'"
 		testfailed
@@ -72,99 +72,99 @@ local_runchecktest()
 #	  child profile grants access
 #	  expected behaviour: child should be able to access resource
 
-genprofile $test2:px $file:$fileperm signal:receive:peer=unconfined -- image=$test2 $file:$fileperm signal:receive
-local_runchecktest "enforce px case1" pass $test2 $test2 $file
+genprofile "$test2:px" $file:$fileperm signal:receive:peer=unconfined -- "image=$test2" $file:$fileperm signal:receive
+local_runchecktest "enforce px case1" pass "$test2" "$test2" $file
 
 # case 2: parent profile grants access (should be irrelevant)
 #	  child profile disallows access
 #	  expected behaviour: child should be unable to access resource
 
-genprofile $test2:px $file:$fileperm signal:receive:peer=unconfined -- image=$test2 signal:receive
-local_runchecktest "enforce px case2" fail $test2 $test2 $file
+genprofile "$test2:px" $file:$fileperm signal:receive:peer=unconfined -- "image=$test2" signal:receive
+local_runchecktest "enforce px case2" fail "$test2" "$test2" $file
 
 # case 3: parent profile disallows access (should be irrelevant)
 #	  child profile allows access
 #	  expected behaviour: child should be able to access resource
 
-genprofile $test2:px signal:receive:peer=unconfined -- image=$test2 $file:$fileperm signal:receive
-local_runchecktest "enforce px case3" pass $test2 $test2 $file
+genprofile "$test2:px" signal:receive:peer=unconfined -- "image=$test2" $file:$fileperm signal:receive
+local_runchecktest "enforce px case3" pass "$test2" "$test2" $file
 
 # case 4: parent profile grants access (should be irrelevant)
 #	  missing child profile
 #	  expected behaviour: exec of child fails
 
-genprofile $test2:px $file:$fileperm signal:receive:peer=unconfined
-local_runchecktest "enforce px case4" fail "n/a" $test2 $file
+genprofile "$test2:px" $file:$fileperm signal:receive:peer=unconfined
+local_runchecktest "enforce px case4" fail "n/a" "$test2" $file
 
 # confined parent, exec child with 'ix'
 # case 1: parent profile grants access
 #	  child profile grants access (should be irrelevant)
 #	  expected behaviour: child should be able to access resource
 
-genprofile $test2:rix $file:$fileperm signal:receive:peer=unconfined -- image=$test2 $file:$fileperm signal:receive
-local_runchecktest "enforce ix case1" pass $test1 $test2 $file
+genprofile "$test2:rix" $file:$fileperm signal:receive:peer=unconfined -- "image=$test2" $file:$fileperm signal:receive
+local_runchecktest "enforce ix case1" pass "$test1" "$test2" $file
 
 # case 2: parent profile grants access
 #	  child profile disallows access (should be irrelevant)
 #	  expected behaviour: child should be able to access resource
 
-genprofile $test2:rix $file:$fileperm signal:receive:peer=unconfined -- image=$test2 signal:receive
-local_runchecktest "enforce ix case2" pass $test1 $test2 $file
+genprofile "$test2:rix" $file:$fileperm signal:receive:peer=unconfined -- "image=$test2" signal:receive
+local_runchecktest "enforce ix case2" pass "$test1" "$test2" $file
 
 # case 3: parent profile disallows access
 #	  child profile allows access (should be irrelevant)
 #	  expected behaviour: child should be unable to access resource
 
-genprofile $test2:rix signal:receive:peer=unconfined -- image=$test2 $file:$fileperm signal:receive
-local_runchecktest "enforce ix case3" fail $test1 $test2 $file
+genprofile "$test2:rix" signal:receive:peer=unconfined -- "image=$test2" $file:$fileperm signal:receive
+local_runchecktest "enforce ix case3" fail "$test1" "$test2" $file
 
 # case 4: parent profile grants access
-#	  missing child profile (irrelvant)
+#	  missing child profile (irrelevant)
 #	  expected behaviour: child should be able to access resource
 
-genprofile $test2:rix $file:$fileperm signal:receive:peer=unconfined
-local_runchecktest "enforce ix case4" pass $test1 $test2 $file
+genprofile "$test2:rix" $file:$fileperm signal:receive:peer=unconfined
+local_runchecktest "enforce ix case4" pass "$test1" "$test2" $file
 
 # confined parent, exec child with 'ux'
 # case 1: parent profile grants access (should be irrelevant)
 #	  expected behaviour, child should be able to access resource
 
 genprofile $test2:ux $file:$fileperm signal:receive:peer=unconfined
-local_runchecktest "enforce ux case1" pass "unconfined" $test2 $file
+local_runchecktest "enforce ux case1" pass "unconfined" "$test2" $file
 
 # case 2: parent profile denies access (should be irrelevant)
 #	  expected behaviour, child should be able to access resource
 
 genprofile $test2:ux signal:receive:peer=unconfined
-local_runchecktest "enforce ux case1" pass "unconfined" $test2 $file
+local_runchecktest "enforce ux case1" pass "unconfined" "$test2" $file
 
 # confined parent, exec child with conflicting exec qualifiers
-# that overlap in such away that px is prefered (ix is glob, px is exact
+# that overlap in such away that px is preferred (ix is glob, px is exact
 # match).  Other overlap tests should be in the parser.
 # case 1: 
 #	  expected behaviour: exec of child passes
 
-genprofile $test2:px $test2_rex1:ix signal:receive:peer=unconfined -- image=$test2 $file:$fileperm signal:receive
-local_runchecktest "enforce conflicting exec qual" pass $test2 $test2 $file
+genprofile "$test2:px" "$test2_rex1:ix" signal:receive:peer=unconfined -- "image=$test2" $file:$fileperm signal:receive
+local_runchecktest "enforce conflicting exec qual" pass "$test2" "$test2" $file
 
 # unconfined parent
 # case 1: child profile exists, child profile grants access
 #	  expected behaviour: child should be able to access resource
 
-genprofile image=$test2 $file:$fileperm signal:receive:peer=unconfined
-local_runchecktest "enforce unconfined case1" pass $test2 $test2 $file
+genprofile "image=$test2" $file:$fileperm signal:receive:peer=unconfined
+local_runchecktest "enforce unconfined case1" pass "$test2" "$test2" $file
 
 # case 2: child profile exists, child profile denies access
 #	  expected behaviour: child should be unable to access resource
 
-genprofile image=$test2 signal:receive:peer=unconfined
-local_runchecktest "enforce unconfined case2" fail $test2 $test2 $file
+genprofile "image=$test2" signal:receive:peer=unconfined
+local_runchecktest "enforce unconfined case2" fail "$test2" "$test2" $file
 
 # case 3: no child profile exists, unconfined
 #	  expected behaviour: child should be able to access resource
 
 removeprofile
-local_runchecktest "enforce unconfined case3" pass "unconfined" $test2 $file
+local_runchecktest "enforce unconfined case3" pass "unconfined" "$test2" $file
 
 # -----------------------------------------------------------------------
 

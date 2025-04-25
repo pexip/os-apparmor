@@ -181,6 +181,9 @@ $ make check	# depends on the parser having been built first
 $ make install
 ```
 
+Note that the empty local/* profile sniplets no longer get created by default.
+If you want them, run `make local` before running `make check`.
+
 [Note that for the parser, binutils, and utils, if you only wish to build/use
  some of the locale languages, you can override the default by passing
  the LANGS arguments to make; e.g. make all install "LANGS=en_US fr".]
@@ -193,6 +196,46 @@ A number of testsuites are in the AppArmor sources. Most have documentation on
 usage and how to update and add tests. Below is a quick overview of their
 location and how to run them.
 
+
+Using spread with local virtual machines
+----------------------------------------
+
+It may be convenient to use the spread tool to provision and run the test suite
+in an ephemeral virtual machine. This allows testing in isolation from the
+host, as well as testing across different commonly used distributions and their
+real kernels.
+
+Image Garden is available as a snap. If you wish to use it this way then snap
+then install the snap with:
+
+```sh
+sudo snap install image-garden
+```
+
+If you need to install snapd first, see https://snapcraft.io/docs/installing-snapd
+
+Alternatively you may build image-garden and spread from source, and install
+dependencies manually.
+
+```sh
+sudo apt install git golang whois ovmf genisoimage qemu-utils qemu-system
+go install github.com/snapcore/spread/cmd/spread@latest
+git clone https://gitlab.com/zygoon/image-garden
+make -C image-garden
+sudo make -C image-garden install
+image-garden make ubuntu-cloud-24.10.x86_64.run
+cd $APPARMOR_PATH
+git clean -xdf
+~/go/bin/spread -artifacts ./spread-artifacts -v ubuntu-cloud-24.10
+# or ~/go/bin/spread -v garden:ubuntu-cloud-24.04:tests/regression/apparmor:at_secure
+```
+
+Running the `run_spread.sh` script, with `image-garden` snap installed or with
+`spread` on `PATH` will run all the tests across several supported systems
+(Debian, Ubuntu and openSUSE).
+
+If you include a `bzImage` file in the root of the repository then that kernel
+will be used in the integration test. Please look at `spread.yaml` for details.
 
 Regression tests
 ----------------
@@ -351,6 +394,10 @@ The aa-notify tool's Python dependencies can be satisfied by installing the
 following packages (Debian package names, other distros may vary):
 * python3-notify2
 * python3-psutil
+* python3-sqlite (part of the python3.NN-stdlib package)
+* python3-tk
+* python3-ttkthemes
+* python3-gi
 
 Perl is no longer needed since none of the utilities shipped to end users depend
 on it anymore.

@@ -124,6 +124,14 @@ APPARMOR_3.0 {
 	*;
 } APPARMOR_2.13.1;
 
+APPARMOR_3.1 {
+  global:
+	aa_features_check;
+	aa_split_overlay_str;
+  local:
+	*;
+} APPARMOR_3.0;
+
 PRIVATE {
 	global:
 		_aa_is_blacklisted;

@@ -167,10 +167,10 @@ void include_filename(char *filename, int search, bool if_exists)
 		include_file = search_path(filename, &fullpath, &cached);
 		if (!include_file && cached) {
 			goto skip;
-		} else if (preprocess_only) {
-			fprintf(yyout, "\n\n##included <%s>\n", filename);
 		} else if (!include_file && preprocess_only) {
 			fprintf(yyout, "\n\n##failed include <%s>\n", filename);
+		} else if (preprocess_only) {
+			fprintf(yyout, "\n\n##included <%s>\n", filename);
 		}
 
 	} else if (g_includecache->find(filename)) {
@@ -255,9 +255,11 @@ MODES		{MODE_CHARS}+
 WS		[[:blank:]]
 NUMBER		[[:digit:]]+
 
+ID_FIRST_CHARS	[^ \t\r\n"!,#]
+ID_FIRST	{ID_CHARS}|(,{ID_CHARS}|\\[ ]|\\\t|\\\"|\\!|\\,|\\#)
 ID_CHARS	[^ \t\r\n"!,]
 ID 		{ID_CHARS}|(,{ID_CHARS}|\\[ ]|\\\t|\\\"|\\!|\\,)
-IDS		{ID}+
+IDS		{ID_FIRST}{ID}*
 INC_ID 		[^ \t\r\n"!,<>]|(,[^ \t\r\n"!,<>]|\\[ ]|\\\t|\\\"|\\!|\\,)
 INC_IDS		{INC_ID}+
 POST_VAR_ID_CHARS	[^ \t\n"!,]{-}[=\+]
@@ -275,6 +277,7 @@ QUOTED_ID	\"{ALLOWED_QUOTED_ID}*\"
 
 IP		{NUMBER}\.{NUMBER}\.{NUMBER}\.{NUMBER}
 
+INTEGER		[+-]?{NUMBER}
 HAT		hat{WS}*
 PROFILE		profile{WS}*
 KEYWORD         [[:alpha:]_]+
@@ -327,7 +330,10 @@ GT		>
 %x INCLUDE
 %x INCLUDE_EXISTS
 %x ABI_MODE
-
+%x USERNS_MODE
+%x MQUEUE_MODE
+%x IOURING_MODE
+%x INTEGER_MODE
 %%
 
 %{
@@ -339,7 +345,7 @@ GT		>
 	}
 %}
 
-<INITIAL,SUB_ID_WS,INCLUDE,INCLUDE_EXISTS,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,ASSIGN_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,RLIMIT_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,ABI_MODE>{
+<INITIAL,SUB_ID_WS,INCLUDE,INCLUDE_EXISTS,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,ASSIGN_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,RLIMIT_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,ABI_MODE,USERNS_MODE,MQUEUE_MODE,IOURING_MODE,INTEGER_MODE>{
 	{WS}+	{  DUMP_PREPROCESS; /* Ignoring whitespace */ }
 }
 
@@ -375,7 +381,7 @@ GT		>
 		yyterminate();
 }
 
-<INITIAL,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE>{
+<INITIAL,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,MQUEUE_MODE,NETWORK_MODE>{
 	(peer|xattrs)/{WS}*={WS}*\(	{
 		/* we match to the = in the lexer so that we can switch scanner
 		 * state.  By the time the parser see the = it may be too late
@@ -383,6 +389,11 @@ GT		>
 		 */
 		yylval.id = processid(yytext, yyleng);
 		PUSH_AND_RETURN(EXTCONDLIST_MODE, TOK_CONDLISTID);
+	}
+	priority/{WS}*= {
+		/* has to be before {VARIABLE_NAME} matches below */
+		PUSH_AND_RETURN(INTEGER_MODE, TOK_PRIORITY);
+
 	}
 	{VARIABLE_NAME}/{WS}*=	{
 		/* we match to the = in the lexer so that we can switch scanner
@@ -504,6 +515,12 @@ GT		>
 		yyerror(_("Variable declarations do not accept trailing commas"));
 	}
 
+	#.*\r?\n	{ /* normal comment */
+		DUMP_AND_DEBUG("comment(%d): %s\n", current_lineno, yytext);
+		current_lineno++;
+		POP();
+	}
+
 	\\\n	{ DUMP_PREPROCESS; current_lineno++ ; }
 
 	\r?\n	{
@@ -514,12 +531,6 @@ GT		>
 	}
 }
 
-<NETWORK_MODE>{
-	{IDS} {
-		yylval.id = strdup(yytext);
-		RETURN_TOKEN(TOK_ID);
-	}
-}
 
 <CHANGE_PROFILE_MODE>{
 	safe		{ RETURN_TOKEN(TOK_SAFE); }
@@ -555,19 +566,30 @@ GT		>
 	{LT_EQUAL}	{ RETURN_TOKEN(TOK_LE); }
 }
 
-<UNIX_MODE>{
-	create	{ RETURN_TOKEN(TOK_CREATE); }
+<UNIX_MODE,NETWORK_MODE>{
 	listen	{ RETURN_TOKEN(TOK_LISTEN); }
 	accept	{ RETURN_TOKEN(TOK_ACCEPT); }
 	connect	{ RETURN_TOKEN(TOK_CONNECT); }
-	getattr	{ RETURN_TOKEN(TOK_GETATTR); }
-	setattr	{ RETURN_TOKEN(TOK_SETATTR); }
 	getopt	{ RETURN_TOKEN(TOK_GETOPT); }
 	setopt	{ RETURN_TOKEN(TOK_SETOPT); }
 	shutdown	{ RETURN_TOKEN(TOK_SHUTDOWN); }
 }
 
-<DBUS_MODE,UNIX_MODE>{
+<UNIX_MODE,USERNS_MODE,MQUEUE_MODE,NETWORK_MODE>{
+	create	{ RETURN_TOKEN(TOK_CREATE); }
+}
+
+<MQUEUE_MODE>{
+	open		{ RETURN_TOKEN(TOK_OPEN); }
+	delete		{ RETURN_TOKEN(TOK_DELETE); }
+}
+
+<UNIX_MODE,MQUEUE_MODE,NETWORK_MODE>{
+	getattr	{ RETURN_TOKEN(TOK_GETATTR); }
+	setattr	{ RETURN_TOKEN(TOK_SETATTR); }
+}
+
+<DBUS_MODE,UNIX_MODE,NETWORK_MODE>{
 	bind		{ RETURN_TOKEN(TOK_BIND); }
 }
 
@@ -575,7 +597,7 @@ GT		>
 	eavesdrop	{ RETURN_TOKEN(TOK_EAVESDROP); }
 }
 
-<DBUS_MODE,SIGNAL_MODE,UNIX_MODE>{
+<DBUS_MODE,SIGNAL_MODE,UNIX_MODE,NETWORK_MODE>{
 	send		{ RETURN_TOKEN(TOK_SEND); }
 	receive		{ RETURN_TOKEN(TOK_RECEIVE); }
 }
@@ -586,7 +608,7 @@ GT		>
 	tracedby	{ RETURN_TOKEN(TOK_TRACEDBY); }
 }
 
-<DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE>{
+<DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,MQUEUE_MODE,NETWORK_MODE>{
 	read		{ RETURN_TOKEN(TOK_READ); }
 	write		{ RETURN_TOKEN(TOK_WRITE); }
 	{OPEN_PAREN}	{
@@ -602,10 +624,24 @@ GT		>
 	{ARROW}		{ RETURN_TOKEN(TOK_ARROW); }
 }
 
-<MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE>{
+<IOURING_MODE>{
+	override_creds { RETURN_TOKEN(TOK_OVERRIDE_CREDS); }
+	sqpoll { RETURN_TOKEN(TOK_SQPOLL); }
+}
+
+<MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,MQUEUE_MODE,IOURING_MODE,NETWORK_MODE>{
 	({IDS_NOEQ}|{LABEL}|{QUOTED_ID}) {
 		yylval.id = processid(yytext, yyleng);
 		RETURN_TOKEN(TOK_ID);
+	}
+}
+
+<INTEGER_MODE>{
+	{EQUALS}	{ RETURN_TOKEN(TOK_EQUALS); }
+
+	{INTEGER}	{
+		yylval.mode = strdup(yytext);
+		POP_AND_RETURN(TOK_VALUE);
 	}
 }
 
@@ -613,6 +649,7 @@ GT		>
 	/* Don't use PUSH() macro here as we don't want #include echoed out.
 	 * It needs to be handled specially
 	 */
+	pwarn(WARN_INCLUDE, _("deprecated use of '#include'\n"));
 	yy_push_state(INCLUDE_EXISTS);
 }
 
@@ -627,6 +664,7 @@ include{WS}+if{WS}+exists/{WS}	{
 	/* Don't use PUSH() macro here as we don't want #include echoed out.
 	 * It needs to be handled specially
 	 */
+	pwarn(WARN_INCLUDE, _("deprecated use of '#include'\n"));
 	yy_push_state(INCLUDE);
 }
 
@@ -635,6 +673,10 @@ include/{WS}	{
 	 * It needs to be handled specially
 	 */
 	yy_push_state(INCLUDE);
+}
+
+all/({WS}|[^[:alnum:]_]) {
+	RETURN_TOKEN(TOK_ALL);
 }
 
 #.*\r?\n	{ /* normal comment */
@@ -722,13 +764,19 @@ include/{WS}	{
 	case TOK_ABI:
 		state = ABI_MODE;
 		break;
+	case TOK_USERNS:
+		state = USERNS_MODE;
+		break;
+	case TOK_MQUEUE:
+		state = MQUEUE_MODE;
+		break;
 	default: /* nothing */
 		break;
 	}
 	PUSH_AND_RETURN(state, token);
 }
 
-<INITIAL,NETWORK_MODE,RLIMIT_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,ABI_MODE>{
+<INITIAL,NETWORK_MODE,RLIMIT_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,ABI_MODE,USERNS_MODE,MQUEUE_MODE,IOURING_MODE>{
 	{END_OF_RULE}	{
 		if (YY_START != INITIAL)
 			POP_NODUMP();
@@ -736,14 +784,14 @@ include/{WS}	{
 	}
 }
 
-<INITIAL,SUB_ID_WS,INCLUDE,INCLUDE_EXISTS,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,RLIMIT_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,ABI_MODE>{
+<INITIAL,SUB_ID_WS,INCLUDE,INCLUDE_EXISTS,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,RLIMIT_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,ABI_MODE,USERNS_MODE,MQUEUE_MODE,IOURING_MODE>{
 	\r?\n	{
 		DUMP_PREPROCESS;
 		current_lineno++;
 	}
 }
 
-<INITIAL,SUB_ID,SUB_ID_WS,SUB_VALUE,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,ASSIGN_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,RLIMIT_MODE,INCLUDE,INCLUDE_EXISTS,ABI_MODE>{
+<INITIAL,SUB_ID,SUB_ID_WS,SUB_VALUE,LIST_VAL_MODE,EXTCOND_MODE,LIST_COND_VAL,LIST_COND_PAREN_VAL,LIST_COND_MODE,EXTCONDLIST_MODE,ASSIGN_MODE,NETWORK_MODE,CHANGE_PROFILE_MODE,MOUNT_MODE,DBUS_MODE,SIGNAL_MODE,PTRACE_MODE,UNIX_MODE,RLIMIT_MODE,INCLUDE,INCLUDE_EXISTS,ABI_MODE,USERNS_MODE,MQUEUE_MODE,IOURING_MODE>{
 	(.|\n)	{
 		DUMP_PREPROCESS;
 		/* Something we didn't expect */
@@ -778,4 +826,8 @@ unordered_map<int, string> state_names = {
 	STATE_TABLE_ENT(INCLUDE),
 	STATE_TABLE_ENT(INCLUDE_EXISTS),
 	STATE_TABLE_ENT(ABI_MODE),
+	STATE_TABLE_ENT(USERNS_MODE),
+	STATE_TABLE_ENT(MQUEUE_MODE),
+	STATE_TABLE_ENT(IOURING_MODE),
+	STATE_TABLE_ENT(INTEGER_MODE),
 };

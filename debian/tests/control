@@ -1,5 +1,28 @@
 Tests: compile-policy
-Depends: apparmor, apparmor-profiles-extra, bind9, cups-browsed, cups-daemon, evince, haveged, libreoffice-common, libvirt-daemon-system, man-db, ntp, onioncircuits, tcpdump, tor
+Depends: apparmor,
+ apparmor-profiles-extra,
+ bind9,
+ chrony,
+ clamav-daemon,
+ clamav-freshclam,
+ cups-browsed,
+ cups-daemon,
+ evince,
+ geoclue-2.0,
+ guestfs-tools,
+ haveged,
+ ibus-hangul,
+ libreoffice-common,
+ libvirt-daemon-system,
+ man-db,
+ mariadb-server,
+ msmtp,
+ onioncircuits,
+ papers,
+ passt,
+ tcpdump,
+ tor,
+ unbound
 Restrictions: allow-stderr
 
 Tests: test-installed

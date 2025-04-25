@@ -12,7 +12,7 @@ Forwarded: not-needed
  1 file changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/parser/parser.conf b/parser/parser.conf
-index 1d1c0da..43598d4 100644
+index 1d1c0da..d88009b 100644
 --- a/parser/parser.conf
 +++ b/parser/parser.conf
 @@ -76,4 +76,8 @@

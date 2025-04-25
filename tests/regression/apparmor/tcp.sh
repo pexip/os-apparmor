@@ -14,8 +14,14 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
-requires_kernel_features network
+# TODO:
+# need to update so we can run the test for ech supported
+# need to be able to modify the compile features to choose the
+# kernel feature supported
+# need to be able to query the parser if it supports the
+# kernel feature
+. "$bin/prologue.inc"
+requires_any_of_kernel_features network network_v8
 
 port=34567
 ip="127.0.0.1"
@@ -28,6 +34,12 @@ runchecktest "TCP (no apparmor)" pass $port
 # FAIL TEST - no network rules
 genprofile 
 runchecktest "TCP (accept, connect) no network rules" fail $port
+
+if [ "$(parser_supports 'all,')" = "true" ]; then
+	# PASS TEST - allow all
+	genprofile "all"
+	runchecktest "TCP (allow all)" pass $port
+fi
 
 # PASS TEST - allow tcp
 genprofile network:tcp

@@ -7,4 +7,5 @@ reprotest:
   allow_failure: true
 
 variables:
+  SALSA_CI_REPROTEST_ARGS: --vary=-build_path
   SALSA_CI_REPROTEST_ENABLE_DIFFOSCOPE: 1

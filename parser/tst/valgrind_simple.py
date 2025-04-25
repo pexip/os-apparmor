@@ -13,16 +13,19 @@
 # TODO
 # - finish adding suppressions for valgrind false positives
 
-from argparse import ArgumentParser  # requires python 2.7 or newer
 import os
 import sys
-import tempfile
 import unittest
+from argparse import ArgumentParser
+from tempfile import NamedTemporaryFile
+
 import testlib
 
 DEFAULT_TESTDIR = "./simple_tests/vars"
 VALGRIND_ERROR_CODE = 151
-VALGRIND_ARGS = ['--leak-check=full', '--error-exitcode=%d' % (VALGRIND_ERROR_CODE)]
+VALGRIND_ARGS = [
+    '--leak-check=full', '--error-exitcode={}'.format(VALGRIND_ERROR_CODE)
+]
 
 VALGRIND_SUPPRESSIONS = '''
 {
@@ -42,20 +45,22 @@ class AAParserValgrindTests(testlib.AATestTemplate):
         self.maxDiff = None
 
     def _runtest(self, testname, config):
-        parser_args = ['-Q', '-I', config.testdir, '-M', './features_files/features.all']
-        failure_rc = [VALGRIND_ERROR_CODE, testlib.TIMEOUT_ERROR_CODE]
+        parser_args = ('-Q', '-I', config.testdir, '-M', './features_files/features.all')
+        failure_rc = (VALGRIND_ERROR_CODE, testlib.TIMEOUT_ERROR_CODE)
         command = [config.valgrind]
         command.extend(VALGRIND_ARGS)
         command.append(config.parser)
         command.extend(parser_args)
         command.append(testname)
         rc, output = self.run_cmd(command, timeout=120)
-        self.assertNotIn(rc, failure_rc,
-                    "valgrind returned error code %d, gave the following output\n%s\ncommand run: %s" % (rc, output, " ".join(command)))
+        self.assertNotIn(
+            rc, failure_rc,
+            "valgrind returned error code {}, gave the following output\n{}\ncommand run: {}".format(
+                rc, output, " ".join(command)))
 
 
 def find_testcases(testdir):
-    '''dig testcases out of passed directory'''
+    """dig testcases out of passed directory"""
 
     for (fdir, direntries, files) in os.walk(testdir):
         for f in files:
@@ -64,14 +69,11 @@ def find_testcases(testdir):
 
 
 def create_suppressions():
-    '''generate valgrind suppressions file'''
+    """generate valgrind suppressions file"""
+    with NamedTemporaryFile("w+", suffix='.suppressions', prefix='aa-parser-valgrind', delete=False) as temp_file:
+        temp_file.write(VALGRIND_SUPPRESSIONS)
+    return temp_file.name
 
-    handle, name = tempfile.mkstemp(suffix='.suppressions', prefix='aa-parser-valgrind')
-    os.close(handle)
-    handle = open(name,"w+")
-    handle.write(VALGRIND_SUPPRESSIONS)
-    handle.close()
-    return name
 
 def main():
     rc = 0
@@ -94,37 +96,43 @@ def main():
         return rc
 
     if not os.path.exists(config.valgrind):
-        print("Unable to find valgrind at '%s', ensure that it is installed" % (config.valgrind),
-              file=sys.stderr)
-        exit(1)
+        print(
+            "Unable to find valgrind at '{}', ensure that it is installed".format(config.valgrind),
+            file=sys.stderr
+        )
+        sys.exit(1)
 
     verbosity = 1
     if config.verbose:
         verbosity = 2
 
-    if not config.skip_suppressions:
+    if config.skip_suppressions:
+        suppression_file = None
+    else:
         suppression_file = create_suppressions()
-        VALGRIND_ARGS.append('--suppressions=%s' % (suppression_file))
+        VALGRIND_ARGS.append('--suppressions=' + suppression_file)
 
     for f in find_testcases(config.testdir):
         def stub_test(self, testname=f):
             self._runtest(testname, config)
-        stub_test.__doc__ = "test %s" % (f)
-        setattr(AAParserValgrindTests, 'test_%s' % (f), stub_test)
+        stub_test.__doc__ = "test " + f
+        setattr(AAParserValgrindTests, 'test_' + f, stub_test)
     test_suite = unittest.TestSuite()
     test_suite.addTest(unittest.TestLoader().loadTestsFromTestCase(AAParserValgrindTests))
 
     try:
         result = unittest.TextTestRunner(verbosity=verbosity).run(test_suite)
+    except Exception:
+        rc = 1
+    else:
         if not result.wasSuccessful():
             rc = 1
-    except:
-        rc = 1
     finally:
-        os.remove(suppression_file)
+        if suppression_file:
+            os.remove(suppression_file)
 
     return rc
 
+
 if __name__ == "__main__":
-    rc = main()
-    exit(rc)
+    sys.exit(main())

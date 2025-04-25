@@ -1,0 +1,46 @@
+# Catalan translation of apparmor's debconf messages
+# Copyright © 2024 Free Software Foundation, Inc.
+# This file is distributed under the same license as the apparmor package.
+# poc senderi <pocsenderi@protonmail.com>, 2024.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: apparmor\n"
+"Report-Msgid-Bugs-To: apparmor@lists.ubuntu.com\n"
+"POT-Creation-Date: 2010-01-05 17:45-0600\n"
+"PO-Revision-Date: 2024-11-04 21:31+0100\n"
+"Last-Translator: poc senderi <pocsenderi@protonmail.com>\n"
+"Language-Team: Catalan <debian-l10n-catalan@lists.debian.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 2.4.2\n"
+
+#. Type: string
+#. Description
+#: ../templates:1001
+msgid "Additional home directory locations:"
+msgstr "Ubicacions addicionals de directoris d'usuari:"
+
+#. Type: string
+#. Description
+#: ../templates:1001
+msgid ""
+"Please enter a space separated list of any additional locations for user "
+"home directories. These locations are in addition to those specified in /etc/"
+"apparmor.d/tunables/home and must end with a '/'."
+msgstr ""
+"Introduïu una llista separada per espais de qualsevol ubicació addicional "
+"per als directoris d'usuari. Aquestes ubicacions s'afegiran a les "
+"especificades a «/etc/apparmor.d/tunables/home» i han d'acabar amb una «/»."
+
+#. Type: string
+#. Description
+#: ../templates:1001
+msgid ""
+"Example: if user's directories are stored in /srv/nfs/home and /mnt/homes, "
+"you should enter \"/srv/nfs/home/ /mnt/homes/\"."
+msgstr ""
+"Exemple: si els directoris d'usuari s'emmagatzemen a «/srv/nfs/home» i a «/"
+"mnt/homes», caldria introduir «/srv/nfs/home/ /mnt/homes/»."

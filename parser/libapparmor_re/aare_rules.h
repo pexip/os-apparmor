@@ -21,21 +21,31 @@
 #ifndef __LIBAA_RE_RULES_H
 #define __LIBAA_RE_RULES_H
 
+#include <vector>
+
 #include <stdint.h>
 
+#include "../common_optarg.h"
 #include "apparmor_re.h"
+#include "chfa.h"
 #include "expr-tree.h"
+#include "../immunix.h"
+#include "../perms.h"
+#include "../rule.h"
 
 class UniquePerm {
 public:
-	bool deny;
+	int priority;
+	rule_mode_t mode;
 	bool exact_match;
 	uint32_t perms;
 	uint32_t audit;
 
 	bool operator<(UniquePerm const &rhs)const
 	{
-		if (deny == rhs.deny) {
+		if (priority < rhs.priority)
+			return priority < rhs.priority;
+		if (mode >= rhs.mode) {
 			if (exact_match == rhs.exact_match) {
 				if (perms == rhs.perms)
 					return audit < rhs.audit;
@@ -43,7 +53,7 @@ public:
 			}
 			return exact_match;
 		}
-		return deny;
+		return true;  // mode < rhs.mode
 	}
 };
 
@@ -64,22 +74,26 @@ public:
 		nodes.clear();
 	}
 
-	Node *insert(bool deny, uint32_t perms, uint32_t audit,
-		     bool exact_match)
+	Node *insert(int priority, rule_mode_t mode, uint32_t perms,
+		     uint32_t audit, bool exact_match)
 	{
-		UniquePerm tmp = { deny, exact_match, perms, audit };
+		UniquePerm tmp = { priority, mode, exact_match, perms, audit };
 		iterator res = nodes.find(tmp);
 		if (res == nodes.end()) {
 			Node *node;
-			if (deny)
-				node = new DenyMatchFlag(perms, audit);
+			if (mode == RULE_DENY)
+				node = new DenyMatchFlag(priority, perms, audit);
+			else if (mode == RULE_PROMPT)
+				node = new PromptMatchFlag(priority, perms, audit);
 			else if (exact_match)
-				node = new ExactMatchFlag(perms, audit);
+				node = new ExactMatchFlag(priority, perms, audit);
 			else
-				node = new MatchFlag(perms, audit);
+				node = new MatchFlag(priority, perms, audit);
 			pair<iterator, bool> val = nodes.insert(make_pair(tmp, node));
-			if (val.second == false)
+			if (val.second == false) {
+				delete node;
 				return val.first->second;
+			}
 			return node;
 		}
 		return res->second;
@@ -100,13 +114,26 @@ class aare_rules {
 	aare_rules(int reverse): root(NULL), unique_perms(), expr_map(), reverse(reverse), rule_count(0) { };
 	~aare_rules();
 
-	bool add_rule(const char *rule, int deny, uint32_t perms,
-		      uint32_t audit, dfaflags_t flags);
-	bool add_rule_vec(int deny, uint32_t perms, uint32_t audit, int count,
-			  const char **rulev, dfaflags_t flags, bool oob);
-	bool append_rule(const char *rule, bool oob, bool with_perm, dfaflags_t flags);
-	void *create_dfa(size_t *size, int *min_match_len, dfaflags_t flags,
-			 bool filedfa);
+	bool add_rule(const char *rule, int priority, rule_mode_t mode,
+		      perm32_t perms, perm32_t audit, optflags const &opts);
+	bool add_rule_vec(int priority, rule_mode_t mode, perm32_t perms,
+			  perm32_t audit, int count, const char **rulev,
+			  optflags const &opts, bool oob);
+	bool append_rule(const char *rule, bool oob, bool with_perm, optflags const &opts);
+	CHFA *create_chfa(int *min_match_len,
+			  vector <aa_perms> &perms_table,
+			  optflags const &opts, bool filedfa,
+			  bool extended_perms, bool prompt);
+	void *create_dfablob(size_t *size, int *min_match_len,
+			 vector <aa_perms> &perms_table,
+			 optflags const &opts,
+			 bool filedfa, bool extended_perms, bool prompt);
+	void *create_welded_dfablob(aare_rules *file_rules,
+				    size_t *size, int *min_match_len,
+				    size_t *new_start,
+				    vector <aa_perms> &perms_table,
+				    optflags const &opts,
+				    bool extended_perms, bool prompt);
 };
 
 #endif				/* __LIBAA_RE_RULES_H */

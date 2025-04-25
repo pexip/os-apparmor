@@ -1,3 +1,4 @@
+rm_conffile /etc/apparmor.d/usr.bin.chromium-browser 4.1.0~beta5-6~
 rm_conffile /etc/apparmor.d/usr.lib.dovecot.anvil 2.13-3~
 rm_conffile /etc/apparmor.d/usr.lib.dovecot.auth 2.13-3~
 rm_conffile /etc/apparmor.d/usr.lib.dovecot.config 2.13-3~
@@ -15,3 +16,4 @@ rm_conffile /etc/apparmor.d/usr.lib.dovecot.pop3 2.13-3~
 rm_conffile /etc/apparmor.d/usr.lib.dovecot.pop3-login 2.13-3~
 rm_conffile /etc/apparmor.d/usr.lib.dovecot.ssl-params 2.13-3~
 rm_conffile /etc/apparmor.d/usr.sbin.dovecot 2.13-3~
+rm_conffile /etc/apparmor.d/zgrep 4.1.0~beta5-6~

@@ -16,7 +16,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 requires_query_interface
 
 settest query_label
@@ -40,11 +40,12 @@ dbus_svc_query="session com.foo.baz"
 # granting anything specified in $@.
 genqueryprofile()
 {
-	genprofile --stdin <<EOF
+	genprofile image=$test --stdin <<EOF
 $test {
   file,
 }
-
+EOF
+	genprofile --append image=$qprof --stdin <<EOF
 $qprof {
   $@
 }
@@ -93,7 +94,7 @@ querytest()
 	runchecktest "$desc" "$pf" "$expect" "$label" "$perms" $*
 }
 
-if [ "$(kernel_features dbus)" == "true" ]; then
+if [ "$(kernel_features dbus)" = "true" ]; then
     # Check querying of a label that the kernel doesn't know about
     # aa_query_label() should return an error
     expect anything
@@ -214,10 +215,20 @@ else
     echo "	required feature dbus missing, skipping dbus queries ..."
 fi
 
+CURRENT_VERSION=$(uname -r | cut -d'.' -f-2)
+if (( $(echo $CURRENT_VERSION 4.4 | awk '{if ($1 < $2) print 1;}') )); then
+    # The AppArmor query interface did not originally support queries for file
+    # rules. That support was added on version 4.4 but there is no feature file
+    # to examine in apparmorfs to determine if the current kernel supports queries
+    # for file rules.
+    echo "      WARNING: kernel does not support file queries, skipping tests ..."
+    exit
+fi
+
 genqueryprofile "file,"
 expect allow
 perms file exec,write,read,append,create,delete,setattr,getattr,chmod,chown,link,linksubset,lock,exec_mmap
-if [ "$(kernel_features query/label/multi_transaction)" == "true" ] ; then
+if [ "$(kernel_features query/label/multi_transaction)" = "true" ] ; then
     querytest "QUERY file (all base perms #1)" pass /anything
     querytest "QUERY file (all base perms #2)" pass /everything
 else

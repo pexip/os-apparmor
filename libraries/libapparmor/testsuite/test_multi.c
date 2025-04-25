@@ -1,11 +1,15 @@
-#define _GNU_SOURCE /* for glibc's basename version */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 
 #include <aalogparse.h>
+
+static const char *basename(const char *path)
+{
+	const char *p = strrchr(path, '/');
+	return p ? p + 1 : path;
+}
 
 int print_results(aa_log_record *record);
 
@@ -103,7 +107,7 @@ int print_results(aa_log_record *record)
 		print_string("Name", record->name);
 		print_string("Command", record->comm);
 		print_string("Name2", record->name2);
-		print_string("Namespace", record->namespace);
+		print_string("Namespace", record->aa_namespace);
 		print_string("Attribute", record->attribute);
 		print_long("Task", record->task, 0);
 		print_long("Parent", record->parent, 0);
@@ -115,6 +119,8 @@ int print_results(aa_log_record *record)
 		print_long("Peer PID", record->peer_pid, 0);
 		print_string("Active hat", record->active_hat);
 
+		print_string("Net Addr", record->net_addr);
+		print_string("Peer Addr", record->peer_addr);
 		print_string("Network family", record->net_family);
 		print_string("Socket type", record->net_sock_type);
 		print_string("Protocol", record->net_protocol);
@@ -133,6 +139,10 @@ int print_results(aa_log_record *record)
 		print_string("FS Type", record->fs_type);
 		print_string("Flags", record->flags);
 		print_string("Src name", record->src_name);
+
+		print_string("Execpath", record->execpath);
+
+		print_string("Class", record->rule_class);
 
 		print_long("Epoch", record->epoch, 0);
 		print_long("Audit subid", (long) record->audit_sub_id, 0);

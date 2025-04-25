@@ -34,13 +34,42 @@
 #include <aalogparse.h>
 #include "parser.h"
 
+#include "grammar.h"
+#include "scanner.h"
+
 /* This is mostly just a wrapper around the code in grammar.y */
-aa_log_record *parse_record(char *str)
+aa_log_record *parse_record(const char *str)
 {
+	YY_BUFFER_STATE lex_buf;
+	yyscan_t scanner;
+	aa_log_record *ret_record;
+
 	if (str == NULL)
 		return NULL;
 
-	return _parse_yacc(str);
+	ret_record = malloc(sizeof(aa_log_record));
+
+	_init_log_record(ret_record);
+
+	if (ret_record == NULL)
+		return NULL;
+
+	struct string_buf string_buf = {.buf = NULL, .buf_len = 0, .buf_alloc = 0};
+
+#if (YYDEBUG != 0)
+	/* Warning: this is still a global even in reentrant parsers */
+	aalogparse_debug = 1;
+#endif
+
+	aalogparse_lex_init_extra(&string_buf, &scanner);
+	lex_buf = aalogparse__scan_string(str, scanner);
+	/* Ignore return value to return an AA_RECORD_INVALID event */
+	(void)aalogparse_parse(scanner, ret_record);
+	aalogparse__delete_buffer(lex_buf, scanner);
+	aalogparse_lex_destroy(scanner);
+	/* free(NULL) is a no-op */
+	free(string_buf.buf);
+	return ret_record;
 }
 
 void free_record(aa_log_record *record)
@@ -63,8 +92,8 @@ void free_record(aa_log_record *record)
 			free(record->name);
 		if (record->name2 != NULL)
 			free(record->name2);
-		if (record->namespace != NULL)
-			free(record->namespace);
+		if (record->aa_namespace != NULL)
+			free(record->aa_namespace);
 		if (record->attribute != NULL)
 			free(record->attribute);
 		if (record->info != NULL)
@@ -103,6 +132,15 @@ void free_record(aa_log_record *record)
 			free(record->flags);
 		if (record->src_name != NULL)
 			free(record->src_name);
+		if (record->net_addr != NULL)
+			free(record->net_addr);
+		if (record->peer_addr != NULL)
+			free(record->peer_addr);
+		if (record->execpath != NULL)
+			free(record->execpath);
+
+		if (record->rule_class != NULL)
+			free(record->rule_class);
 
 		free(record);
 	}

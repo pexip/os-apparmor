@@ -24,23 +24,24 @@
 #include <string>
 #include <sstream>
 
+#include "common_optarg.h"
 #include "network.h"
 #include "parser.h"
 #include "profile.h"
 #include "af_unix.h"
 
-/* See unix(7) for autobind address definiation */
+/* See unix(7) for autobind address definition */
 #define autobind_address_pattern "\\x00[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]";
 
-int parse_unix_mode(const char *str_mode, int *mode, int fail)
+int parse_unix_perms(const char *str_perms, perm32_t *perms, int fail)
 {
-	return parse_X_mode("unix", AA_VALID_NET_PERMS, str_mode, mode, fail);
+	return parse_X_perms("unix", AA_VALID_NET_PERMS, str_perms, perms, fail);
 }
 
 
 static struct supported_cond supported_conds[] = {
 	{ "addr", true, false, false, either_cond },
-	{ NULL, false, false, false, local_cond },	/* sentinal */
+	{ NULL, false, false, false, local_cond },	/* sentinel */
 };
 
 void unix_rule::move_conditionals(struct cond_entry *conds)
@@ -95,8 +96,8 @@ void unix_rule::move_peer_conditionals(struct cond_entry *conds)
 	}
 }
 
-unix_rule::unix_rule(unsigned int type_p, bool audit_p, bool denied):
-	af_rule("unix"), addr(NULL), peer_addr(NULL)
+unix_rule::unix_rule(unsigned int type_p, audit_t audit_p, rule_mode_t rule_mode_p):
+	af_rule(AF_UNIX), addr(NULL), peer_addr(NULL)
 {
 	if (type_p != 0xffffffff) {
 		sock_type_n = type_p;
@@ -104,27 +105,29 @@ unix_rule::unix_rule(unsigned int type_p, bool audit_p, bool denied):
 		if (!sock_type)
 			yyerror("socket rule: invalid socket type '%d'", type_p);
 	}
-	mode = AA_VALID_NET_PERMS;
-	audit = audit_p ? AA_VALID_NET_PERMS : 0;
-	deny = denied;
+	perms = AA_VALID_NET_PERMS;
+	audit = audit_p;
+	rule_mode = rule_mode_p;
+	/* if this constructor is used, then there's already a
+	 * downgraded network_rule in profile */
+	downgrade = false;
 }
 
-unix_rule::unix_rule(int mode_p, struct cond_entry *conds,
+unix_rule::unix_rule(perm32_t perms_p, struct cond_entry *conds,
 		     struct cond_entry *peer_conds):
-	af_rule("unix"), addr(NULL), peer_addr(NULL),
-	audit(0), deny(0)
+	af_rule(AF_UNIX), addr(NULL), peer_addr(NULL)
 {
 	move_conditionals(conds);
 	move_peer_conditionals(peer_conds);
 
-	if (mode_p) {
-		mode = mode_p;
-		if (mode & ~AA_VALID_NET_PERMS)
-			yyerror("mode contains invalid permissions for unix socket rules\n");
-		else if ((mode & ~AA_PEER_NET_PERMS) && has_peer_conds())
+	if (perms_p) {
+		perms = perms_p;
+		if (perms & ~AA_VALID_NET_PERMS)
+			yyerror("perms contains invalid permissions for unix socket rules\n");
+		else if ((perms & ~AA_PEER_NET_PERMS) && has_peer_conds())
 			yyerror("unix socket 'create', 'shutdown', 'setattr', 'getattr', 'bind', 'listen', 'setopt', and/or 'getopt' accesses cannot be used with peer socket conditionals\n");
 	} else {
-		mode = AA_VALID_NET_PERMS;
+		perms = AA_VALID_NET_PERMS;
 	}
 
 	free_cond_list(conds);
@@ -136,7 +139,7 @@ ostream &unix_rule::dump_local(ostream &os)
 {
 	af_rule::dump_local(os);
 	if (addr)
-		os << "addr='" << addr << "'";
+		os << " addr='" << addr << "'";
 	return os;
 }
 
@@ -144,7 +147,7 @@ ostream &unix_rule::dump_peer(ostream &os)
 {
 	af_rule::dump_peer(os);
 	if (peer_addr)
-		os << "addr='" << peer_addr << "'";
+		os << " addr='" << peer_addr << "'";
 	return os;
 }
 
@@ -188,23 +191,28 @@ static void writeu16(std::ostringstream &o, int v)
 #define CMD_OPT		4
 
 void unix_rule::downgrade_rule(Profile &prof) {
-	unsigned int mask = (unsigned int) -1;
+	perm32_t mask = (perm32_t) -1;
 
-	if (!prof.net.allow && !prof.alloc_net_table())
+	if (!prof.net.allow && !prof.net.alloc_net_table())
 		yyerror(_("Memory allocation error."));
 	if (sock_type_n != -1)
 		mask = 1 << sock_type_n;
-	if (!deny) {
+	if (rule_mode != RULE_DENY) {
 		prof.net.allow[AF_UNIX] |= mask;
-		if (audit)
+		if (audit == AUDIT_FORCE)
 			prof.net.audit[AF_UNIX] |= mask;
+		const char *error;
+		network_rule *netv8 = new network_rule(perms, AF_UNIX, sock_type_n);
+		if(!netv8->add_prefix({0, audit, rule_mode, owner}, error))
+			yyerror(error);
+		prof.rule_ents.push_back(netv8);
 	} else {
 		/* deny rules have to be dropped because the downgrade makes
 		 * the rule less specific meaning it will make the profile more
 		 * restrictive and may end up denying accesses that might be
 		 * allowed by the profile.
 		 */
-		if (warnflags & WARN_RULE_NOT_ENFORCED)
+		if (parseopts.warn & WARN_RULE_NOT_ENFORCED)
 			rule_t::warn_once(prof.name, "deny unix socket rule not enforced, can't be downgraded to generic network rule\n");
 	}
 }
@@ -310,34 +318,37 @@ int unix_rule::gen_policy_re(Profile &prof)
 	std::ostringstream buffer;
 	std::string buf;
 
-	int mask = mode;
+	perm32_t mask = perms;
 
 	/* always generate a downgraded rule. This doesn't change generated
 	 * policy size and allows the binary policy to be loaded against
 	 * older kernels and be enforced to the best of the old network
 	 * rules ability
 	 */
-	downgrade_rule(prof);
+	if (downgrade)
+		downgrade_rule(prof);
 	if (!features_supports_unix) {
 		if (features_supports_network || features_supports_networkv8) {
 			/* only warn if we are building against a kernel
 			 * that requires downgrading */
-			if (warnflags & WARN_RULE_DOWNGRADED)
+			if (parseopts.warn & WARN_RULE_DOWNGRADED)
 				rule_t::warn_once(prof.name, "downgrading extended network unix socket rule to generic network rule\n");
 			/* TODO: add ability to abort instead of downgrade */
 			return RULE_OK;
+		} else {
+			warn_once(prof.name);
 		}
-		warn_once(prof.name);
 		return RULE_NOT_SUPPORTED;
 	}
 
 	write_to_prot(buffer);
 	if ((mask & AA_NET_CREATE) && !has_peer_conds()) {
 		buf = buffer.str();
-		if (!prof.policy.rules->add_rule(buf.c_str(), deny,
+		if (!prof.policy.rules->add_rule(buf.c_str(), priority,
+						 rule_mode,
 						 map_perms(AA_NET_CREATE),
-						 map_perms(audit & AA_NET_CREATE),
-						 dfaflags))
+						 map_perms(audit == AUDIT_FORCE ? AA_NET_CREATE : 0),
+						 parseopts))
 			goto fail;
 		mask &= ~AA_NET_CREATE;
 	}
@@ -355,14 +366,15 @@ int unix_rule::gen_policy_re(Profile &prof)
 		/* local label option */
 		if (!write_label(tmp, label))
 			goto fail;
-		/* seperator */
+		/* separator */
 		tmp << "\\x00";
 
 		buf = tmp.str();
-		if (!prof.policy.rules->add_rule(buf.c_str(), deny,
+		if (!prof.policy.rules->add_rule(buf.c_str(), priority,
+						 rule_mode,
 						 map_perms(AA_NET_BIND),
-						 map_perms(audit & AA_NET_BIND),
-						 dfaflags))
+						 map_perms(audit == AUDIT_FORCE ? AA_NET_BIND : 0),
+						 parseopts))
 			goto fail;
 		/* clear if auto, else generic need to generate addr below */
 		if (addr)
@@ -376,7 +388,7 @@ int unix_rule::gen_policy_re(Profile &prof)
 		/* local label option */
 		if (!write_label(buffer, label))
 			goto fail;
-		/* seperator */
+		/* separator */
 		buffer << "\\x00";
 
 		/* create already masked off */
@@ -384,10 +396,11 @@ int unix_rule::gen_policy_re(Profile &prof)
 					AA_LOCAL_NET_PERMS & ~AA_LOCAL_NET_CMD;
 		if (mask & local_mask) {
 			buf = buffer.str();
-			if (!prof.policy.rules->add_rule(buf.c_str(), deny,
+			if (!prof.policy.rules->add_rule(buf.c_str(), priority,
+							 rule_mode,
 							 map_perms(mask & local_mask),
-							 map_perms(audit & local_mask),
-							 dfaflags))
+							 map_perms(audit == AUDIT_FORCE ? mask & local_mask : 0),
+							 parseopts))
 				goto fail;
 		}
 
@@ -398,10 +411,12 @@ int unix_rule::gen_policy_re(Profile &prof)
 			/* TODO: backlog conditional: for now match anything*/
 			tmp << "..";
 			buf = tmp.str();
-			if (!prof.policy.rules->add_rule(buf.c_str(), deny,
+			if (!prof.policy.rules->add_rule(buf.c_str(),
+							 priority,
+							 rule_mode,
 							 map_perms(AA_NET_LISTEN),
-							 map_perms(audit & AA_NET_LISTEN),
-							 dfaflags))
+							 map_perms(audit == AUDIT_FORCE ? AA_NET_LISTEN : 0),
+							 parseopts))
 				goto fail;
 		}
 		if ((mask & AA_NET_OPT) && !has_peer_conds()) {
@@ -411,10 +426,13 @@ int unix_rule::gen_policy_re(Profile &prof)
 			/* TODO: sockopt conditional: for now match anything */
 			tmp << "..";
 			buf = tmp.str();
-			if (!prof.policy.rules->add_rule(buf.c_str(), deny,
-							 map_perms(mask & AA_NET_OPT),
-							 map_perms(audit & AA_NET_OPT),
-							 dfaflags))
+			if (!prof.policy.rules->add_rule(buf.c_str(),
+						priority,
+						rule_mode,
+						map_perms(mask & AA_NET_OPT),
+						map_perms(audit == AUDIT_FORCE ?
+							  AA_NET_OPT : 0),
+						parseopts))
 				goto fail;
 		}
 		mask &= ~AA_LOCAL_NET_PERMS | AA_NET_ACCEPT;
@@ -432,7 +450,10 @@ int unix_rule::gen_policy_re(Profile &prof)
 			goto fail;
 
 		buf = buffer.str();
-		if (!prof.policy.rules->add_rule(buf.c_str(), deny, map_perms(mode & AA_PEER_NET_PERMS), map_perms(audit), dfaflags))
+		if (!prof.policy.rules->add_rule(buf.c_str(), priority,
+				rule_mode, map_perms(perms & AA_PEER_NET_PERMS),
+				map_perms(audit == AUDIT_FORCE ? perms & AA_PEER_NET_PERMS : 0),
+				parseopts))
 			goto fail;
 	}
 

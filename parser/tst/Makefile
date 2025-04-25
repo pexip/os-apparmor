@@ -23,13 +23,13 @@ tests: error_output caching minimize equality dirtest parser_sanity
 GEN_TRANS_DIRS=simple_tests/generated_x/ simple_tests/generated_perms_leading/ simple_tests/generated_perms_safe/ simple_tests/generated_dbus
 
 gen_xtrans: $(GEN_TRANS_DIRS)
-	./gen-xtrans.pl
+	./gen-xtrans.py
 
 $(GEN_TRANS_DIRS):
 	mkdir $@
 
 gen_dbus: $(GEN_TRANS_DIRS)
-	./gen-dbus.pl
+	./gen-dbus.py
 
 error_output: $(PARSER)
 	LANG=C ./errors.py -p "$(PARSER)" $(PYTEST_ARG)
