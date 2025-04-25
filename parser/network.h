@@ -26,9 +26,12 @@
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <list>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <unordered_map>
+#include <vector>
 
 #include "parser.h"
 #include "rule.h"
@@ -73,6 +76,14 @@
 #define AA_PEER_NET_PERMS (AA_VALID_NET_PERMS & (~AA_LOCAL_NET_PERMS | \
 						 AA_NET_ACCEPT))
 
+#define CMD_ADDR	1
+#define CMD_LISTEN	2
+#define CMD_OPT		4
+
+#define NONE_SIZE	0
+#define IPV4_SIZE	1
+#define IPV6_SIZE	2
+
 struct network_tuple {
 	const char *family_name;
 	unsigned int family;
@@ -82,13 +93,10 @@ struct network_tuple {
 	unsigned int protocol;
 };
 
-/* supported AF protocols */
 struct aa_network_entry {
-	unsigned int family;
+	long unsigned int family;
 	unsigned int type;
 	unsigned int protocol;
-
-	struct aa_network_entry *next;
 };
 
 static inline uint32_t map_perms(uint32_t mask)
@@ -100,44 +108,124 @@ static inline uint32_t map_perms(uint32_t mask)
 };
 
 
-int parse_net_mode(const char *str_mode, int *mode, int fail);
-extern struct aa_network_entry *new_network_ent(unsigned int family,
-						unsigned int type,
-						unsigned int protocol);
-extern struct aa_network_entry *network_entry(const char *family,
-					      const char *type,
-					      const char *protocol);
-extern size_t get_af_max(void);
-
-void __debug_network(unsigned int *array, const char *name);
-
-struct network {
-	unsigned int *allow;		/* array of type masks
-						 * indexed by AF_FAMILY */
-	unsigned int *audit;
-	unsigned int *deny;
-	unsigned int *quiet;
-
-	network(void) { allow = audit = deny = quiet = NULL; }
-
-	void dump(void) {
-		if (allow)
-			__debug_network(allow, "Network");
-		if (audit)
-			__debug_network(audit, "Audit Net");
-		if (deny)
-			__debug_network(deny, "Deny Net");
-		if (quiet)
-			__debug_network(quiet, "Quiet Net");
-	}
-};
-
+size_t get_af_max();
+int parse_net_perms(const char *str_mode, perm32_t *perms, int fail);
 int net_find_type_val(const char *type);
 const char *net_find_type_name(int type);
 const char *net_find_af_name(unsigned int af);
-const struct network_tuple *net_find_mapping(const struct network_tuple *map,
-					     const char *family,
-					     const char *type,
-					     const char *protocol);
+
+struct ip_address {
+	union {
+		uint8_t address_v6[16];
+		uint32_t address_v4;
+	} address;
+	uint16_t family;
+};
+
+class ip_conds {
+public:
+	char *sip = NULL;
+	char *sport = NULL;
+
+	bool is_ip = false;
+	bool is_port = false;
+
+	uint16_t from_port = 0;
+	uint16_t to_port = 0;
+
+	struct ip_address ip;
+
+	bool is_none = false;
+
+	void free_conds() {
+		if (sip)
+			free(sip);
+		if (sport)
+			free(sport);
+	}
+};
+
+class network_rule: public dedup_perms_rule_t {
+	void move_conditionals(struct cond_entry *conds, ip_conds &ip_cond);
+public:
+	std::unordered_map<unsigned int, std::vector<struct aa_network_entry>> network_map;
+	std::unordered_map<unsigned int, std::pair<unsigned int, unsigned int>> network_perms;
+
+	ip_conds peer;
+	ip_conds local;
+	char *label;
+
+	bool has_local_conds(void) { return local.sip || local.sport; }
+	bool has_peer_conds(void) { return peer.sip || peer.sport; }
+	/* empty constructor used only for the profile to access
+	 * static elements to maintain compatibility with
+	 * AA_CLASS_NET */
+	network_rule(): dedup_perms_rule_t(AA_CLASS_NETV8), label(NULL) { }
+	network_rule(perm32_t perms_p, struct cond_entry *conds,
+		     struct cond_entry *peer_conds);
+	network_rule(perm32_t perms_p, const char *family, const char *type,
+		     const char *protocol, struct cond_entry *conds,
+		     struct cond_entry *peer_conds);
+	network_rule(perm32_t perms_p, unsigned int family, unsigned int type);
+	virtual ~network_rule()
+	{
+		peer.free_conds();
+		local.free_conds();
+		if (allow) {
+			free(allow);
+			allow = NULL;
+		}
+		if (audit) {
+			free(audit);
+			audit = NULL;
+		}
+		if (deny) {
+			free(deny);
+			deny = NULL;
+		}
+		if (quiet) {
+			free(quiet);
+			quiet = NULL;
+		}
+	};
+
+	bool gen_ip_conds(Profile &prof, std::list<std::ostringstream> &streams, ip_conds &entry, bool is_peer, uint16_t port, bool is_port, bool is_cmd);
+	bool gen_net_rule(Profile &prof, u16 family, unsigned int type_mask, unsigned int protocol);
+	void set_netperm(unsigned int family, unsigned int type, unsigned int protocol);
+	void update_compat_net(void);
+	bool parse_address(ip_conds &entry);
+	bool parse_port(ip_conds &entry);
+
+	// update TODO: in equality.sh when priority is a valid prefix
+	virtual bool valid_prefix(const prefixes &p, const char *&error) {
+		if (p.priority != 0) {
+			error = _("priority prefix not allowed on network rules");
+			return false;
+		}
+		if (p.owner) {
+			error = _("owner prefix not allowed on network rules");
+			return false;
+		}
+		return true;
+	};
+	virtual ostream &dump(ostream &os);
+	virtual int expand_variables(void);
+	virtual int gen_policy_re(Profile &prof);
+
+	virtual bool is_mergeable(void) { return true; }
+	virtual int cmp(rule_t const &rhs) const;
+
+	/* array of type masks indexed by AF_FAMILY */
+	/* allow, audit, deny and quiet are used for compatibility with AA_CLASS_NET */
+	static unsigned int *allow;
+	static unsigned int *audit;
+	static unsigned int *deny;
+	static unsigned int *quiet;
+
+	bool alloc_net_table(void);
+
+protected:
+	virtual void warn_once(const char *name) override;
+};
 
 #endif /* __AA_NETWORK_H */

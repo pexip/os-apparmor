@@ -8,7 +8,7 @@
 
 #=NAME at_secure
 #=DESCRIPTION
-# Verifies the AT_SECURE flag in the auxillary vector after an exec transition
+# Verifies the AT_SECURE flag in the auxiliary vector after an exec transition
 #=END
 
 pwd=`dirname $0`
@@ -16,7 +16,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 settest transition
 at_secure=$pwd/at_secure

@@ -67,13 +67,32 @@ system aa-exec by adding USE_SYSTEM=1 to your make command.${nl}\
   LDLIBS += -Wl,-Bstatic -lapparmor -Wl,-Bdynamic -lpthread
 endif # USE_SYSTEM
 
-+SYSCTL_INCLUDE="\#include <sys/sysctl.h>"
-+USE_SYSCTL:=$(shell echo $(SYSCTL_INCLUDE) | cpp -dM >/dev/null 2>/dev/null && echo true)
+# the test suite is run as root but many of the tests restrict root
+# capabilities like dac_override and dac_readsearch so the test
+# suite needs recursive other rx perms from / on all dirs not owned by
+# root
+DIRCHECK_MESSAGE = $(shell ./check_dac_perms.sh)
+ifneq ($(strip $(DIRCHECK_MESSAGE)),)
+    DIR_PERM_ERROR_MESSAGE = $(error ${nl}\
+************************************************************************${nl}\
+The regression test suite at times is run as root but with restricted${nl}\
+capabilities. In these situations it needs to be able to still access${nl}\
+the test suite files.${nl}\
+${DIRCHECK_MESSAGE}${nl}\
+************************************************************************${nl})
+endif
+
+SYSCTL_INCLUDE="\#include <sys/sysctl.h>"
+USE_SYSCTL:=$(shell echo $(SYSCTL_INCLUDE) | cpp -dM >/dev/null 2>/dev/null && echo true)
+
+LINUX_MOUNT_INCLUDE="\#include <linux/mount.h>"
+HAVE_LINUX_MOUNT_H:=$(shell echo $(LINUX_MOUNT_INCLUDE) | cpp -dM >/dev/null 2>/dev/null && echo true)
 
 CFLAGS += -g -O0 $(EXTRA_WARNINGS)
 
 SRC=access.c \
     at_secure.c \
+    attach_disconnected.c \
     introspect.c \
     changeprofile.c \
     changehat.c \
@@ -89,6 +108,7 @@ SRC=access.c \
     chmod.c \
     chown.c \
     clone.c \
+    complain.c \
     coredump.c \
     deleted.c \
     environ.c \
@@ -109,11 +129,15 @@ SRC=access.c \
     mkdir.c \
     mount.c \
     named_pipe.c \
+    net_inet_rcv.c \
+    net_inet_snd.c \
     net_raw.c \
     open.c \
     openat.c \
     pipe.c \
     pivot_root.c \
+    posix_mq_rcv.c \
+    posix_mq_snd.c \
     ptrace.c \
     ptrace_helper.c \
     pwrite.c \
@@ -134,6 +158,8 @@ SRC=access.c \
     syscall_setdomainname.c \
     syscall_setscheduler.c \
     sysctl_proc.c \
+    sysv_mq_rcv.c \
+    sysv_mq_snd.c \
     tcp.c \
     transition.c \
     unix_fd_client.c \
@@ -141,18 +167,44 @@ SRC=access.c \
     unix_socket.c \
     unix_socket_client.c \
     unlink.c \
-    xattrs.c \
-    xattrs_profile.c
+    userns.c \
+    userns_setns.c \
+    xattrs.c
 
 #only do the ioperm/iopl tests for x86 derived architectures
 ifneq (,$(findstring $(shell uname -i),i386 i486 i586 i686 x86 x86_64))
 SRC+=syscall_ioperm.c syscall_iopl.c
 endif
 
+#only do move_mount test if we have linux/mount.h
+ifeq ($(HAVE_LINUX_MOUNT_H),true)
+SRC+=move_mount.c
+endif
+
 #only do sysctl syscall test if defines installed and OR supported by the
 # kernel
 ifeq ($(USE_SYSCTL),true)
 SRC+=syscall_sysctl.c
+endif
+
+# Only do xattrs_profile test if we have the required setfattr binary
+ifneq (,$(shell which setfattr > /dev/null && echo TRUE))
+SRC+=xattrs_profile.c
+else
+$(warning ${nl}\
+************************************************************************${nl}\
+No setfattr skipping xattrs_profile tests ...${nl}\
+Install attr or equivalent package to build and run this test${nl}\
+************************************************************************${nl})
+endif
+
+# Only do overlayfs_fuse test if we have the required fuse-overlayfs binary
+ifeq (,$(shell which fuse-overlayfs > /dev/null && echo TRUE))
+$(warning ${nl}\
+************************************************************************${nl}\
+No fuse-overlayfs skipping overlayfs_fuse tests ...${nl}\
+Install fuse-overlayfs or equivalent package to build and run this test${nl}\
+************************************************************************${nl})
 endif
 
 #only do dbus if proper libs are installl
@@ -163,6 +215,17 @@ $(warning ${nl}\
 ************************************************************************${nl}\
 No dbus pkg-config skipping dbus_eavesdrop dbus_message dbus_services tests ...${nl}\
 Install libdbus-1-dev or equivalent package to build and run these tests${nl}\
+************************************************************************${nl})
+endif
+
+#only do io_uring if proper lib is installed
+ifneq (,$(shell pkg-config --exists liburing && echo TRUE))
+SRC+=io_uring.c
+else
+$(warning ${nl}\
+************************************************************************${nl}\
+No liburing pkg-config skipping io_uring tests ...${nl}\
+Install liburing-dev or equivalent package to build and run this test${nl}\
 ************************************************************************${nl})
 endif
 
@@ -200,6 +263,7 @@ EXEC=$(SRC:%.c=%)
 
 TESTS=aa_exec \
       access \
+      attach_disconnected \
       at_secure \
       introspect \
       capabilities \
@@ -210,13 +274,16 @@ TESTS=aa_exec \
       changehat_misc \
       chdir \
       clone \
+      complain \
       coredump \
       deleted \
+      e2e \
       environ \
       exec \
       exec_qual \
       fchdir \
       fd_inheritance \
+      file_unbindable_mount \
       fork \
       i18n \
       link \
@@ -228,10 +295,12 @@ TESTS=aa_exec \
       named_pipe \
       namespaces \
       net_raw \
+      overlayfs_kernel \
       open \
       openat \
       pipe \
       pivot_root \
+      posix_ipc \
       ptrace \
       pwrite \
       query_label \
@@ -245,6 +314,7 @@ TESTS=aa_exec \
       setattr \
       symlink \
       syscall \
+      sysv_ipc \
       tcp \
       unix_fd_server \
       unix_socket_pathname \
@@ -252,13 +322,29 @@ TESTS=aa_exec \
       unix_socket_unnamed \
       unix_socket_autobind \
       unlink\
+      userns\
       xattrs\
-      xattrs_profile\
-      longpath
+      longpath \
+      nfs
+
+# Only do overlayfs_fuse test if we have the required fuse-overlayfs binary
+ifneq (,$(shell which fuse-overlayfs > /dev/null && echo TRUE))
+TESTS+=overlayfs_fuse
+endif
+
+# Only do xattrs_profile test if we have the required setfattr binary
+ifneq (,$(shell which setfattr > /dev/null && echo TRUE))
+TESTS+=xattrs_profile
+endif
 
 #only do dbus if proper libs are installl
 ifneq (,$(shell pkg-config --exists dbus-1 && echo TRUE))
 TESTS+=dbus_eavesdrop dbus_message dbus_service dbus_unrequested_reply
+endif
+
+#only do io_uring if proper lib is installed
+ifneq (,$(shell pkg-config --exists liburing && echo TRUE))
+TESTS+=io_uring
 endif
 
 TESTS+=$(CONDITIONAL_TESTS)
@@ -271,6 +357,9 @@ RISKY_TESTS=
 libapparmor_check: ; $(LIBAPPARMOR_ERROR_MESSAGE)
 
 aa_exec_check: ; $(AA_EXEC_ERROR_MESSAGE)
+
+dirperm_check: ; $(DIR_PERM_ERROR_MESSAGE)
+
 
 all: libapparmor_check aa_exec_check $(EXEC) changehat.h uservars.inc
 
@@ -305,6 +394,12 @@ dbus_service: dbus_message dbus_service.c dbus_common.o
 dbus_unrequested_reply: dbus_service dbus_unrequested_reply.c dbus_common.o
 	${CC} ${CFLAGS} ${LDFLAGS} $(filter-out dbus_service, $^) -o $@ ${LDLIBS} $(shell pkg-config --cflags --libs dbus-1)
 
+posix_mq_rcv: posix_mq_rcv.c
+	${CC} ${CFLAGS} ${LDFLAGS} $< -o $@ ${LDLIBS} -lrt
+
+posix_mq_snd: posix_mq_snd.c
+	${CC} ${CFLAGS} ${LDFLAGS} $< -o $@ ${LDLIBS} -lrt
+
 transition: transition.c
 	${CC} ${CFLAGS} ${TRANSITION_CFLAGS} ${LDFLAGS} $< -o $@ ${LDLIBS}
 
@@ -316,6 +411,27 @@ unix_socket_client: unix_socket_client.c unix_socket_common.o
 
 unix_socket: unix_socket.c unix_socket_common.o unix_socket_client
 	${CC} ${CFLAGS} ${LDFLAGS} $(filter-out unix_socket_client, $^) -o $@ ${LDLIBS}
+
+unix_fd_common.o: unix_fd_common.c unix_fd_common.h
+	${CC} ${CFLAGS} ${LDFLAGS} $< -c ${LDLIBS}
+
+unix_fd_client: unix_fd_client.c unix_fd_common.o
+	${CC} ${CFLAGS} ${LDFLAGS} $^ -o $@ ${LDLIBS}
+
+attach_disconnected: attach_disconnected.c unix_fd_common.o
+	${CC} ${CFLAGS} ${LDFLAGS} $^ -o $@ ${LDLIBS}
+
+userns: userns.c pipe_helper.h
+	${CC} ${CFLAGS} ${LDFLAGS} $^ -o $@ ${LDLIBS}
+
+userns_setns: userns_setns.c pipe_helper.h
+	${CC} ${CFLAGS} ${LDFLAGS} $^ -o $@ ${LDLIBS}
+
+mount: mount.c
+	${CC} ${CFLAGS} -std=gnu99 ${LDFLAGS} $^ -o $@ ${LDLIBS}
+
+io_uring: io_uring.c
+	${CC} ${CFLAGS} ${LDFLAGS} $< -o $@ ${LDLIBS} -luring
 
 build-dep:
 	@if [ `whoami` = "root" ] ;\
@@ -338,29 +454,16 @@ build-dep:
 		exit 1;\
 	fi
 
-tests: all
-	@if [ `whoami` = "root" ] ;\
-	then \
-		rc=0; \
-		for i in $(TESTS) ;\
-		do \
-			echo ;\
-			echo "running $$i" ;\
-			bash $$i.sh ;\
-			if [ $$? -ne 0 ] ; then \
-				rc=1;\
-			fi;\
-		done ;\
-		exit $$rc;\
-	else \
-		echo "must be root to run tests" ;\
-		exit 1;\
-	fi
+# RISKY_TESTS may crash the kernel, so clear it for the normal test target
+tests: RISKY_TESTS=
+tests: alltests
 
-alltests: all
+alltests: all dirperm_check check_dac_perms.sh
 	@if [ `whoami` = "root" ] ;\
 	then \
 		rc=0; \
+		pass="PASSED:";\
+		fail="FAILED:";\
 		for i in $(TESTS) $(RISKY_TESTS) ;\
 		do \
 			echo ;\
@@ -368,8 +471,14 @@ alltests: all
 			bash $$i.sh ;\
 			if [ $$? -ne 0 ] ; then \
 				rc=1;\
+				fail="$$fail $$i";\
+			else\
+				pass="$$pass $$i";\
 			fi;\
 		done ;\
+		echo ;\
+		echo "$$pass";\
+		echo "$$fail";\
 		exit $$rc;\
 	else \
 		echo "must be root to run tests" ;\
@@ -377,6 +486,6 @@ alltests: all
 	fi
 
 clean:
-	rm -f $(EXEC) dbus_common.o unix_socket_common.o uservars.inc
+	rm -f $(EXEC) dbus_common.o unix_socket_common.o uservars.inc unix_fd_common.o
 
 regex.sh: open exec

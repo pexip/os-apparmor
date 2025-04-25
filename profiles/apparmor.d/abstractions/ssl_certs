@@ -9,7 +9,7 @@
 #
 # ------------------------------------------------------------------
 
-  abi <abi/3.0>,
+  abi <abi/4.0>,
 
   /etc/ca-certificates/{,**} r,
   /etc/{,libre}ssl/ r,
@@ -17,7 +17,7 @@
   /etc/{,libre}ssl/certs/{,**} r,
   /{etc,usr/share}/pki/bl[ao]cklist/{,*} r,
   /{etc,usr/share}/pki/trust/{,*} r,
-  /{etc,usr/share}/pki/trust/anchors/{,**} r,
+  /{etc,usr/share}/pki/trust/{bl[oa]cklist,anchors}/{,**} r,
   /usr/share/ca-certificates/{,**} r,
   /usr/share/ssl/certs/ca-bundle.crt          r,
   /usr/local/share/ca-certificates/{,**} r,
@@ -41,10 +41,6 @@
   /etc/certbot/archive/*/cert*.pem r,
   /etc/certbot/archive/*/chain*.pem r,
   /etc/certbot/archive/*/fullchain*.pem r,
-
-  # crypto policies used by various libraries
-  /etc/crypto-policies/*/*.txt r,
-  /usr/share/crypto-policies/*/*.txt r,
 
   # Include additions to the abstraction
   include if exists <abstractions/ssl_certs.d>

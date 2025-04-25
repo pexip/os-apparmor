@@ -44,10 +44,11 @@ aare_rules::~aare_rules(void)
 	expr_map.clear();
 }
 
-bool aare_rules::add_rule(const char *rule, int deny, uint32_t perms,
-			  uint32_t audit, dfaflags_t flags)
+bool aare_rules::add_rule(const char *rule, int priority, rule_mode_t mode,
+			  perm32_t perms, perm32_t audit, optflags const &opts)
 {
-	return add_rule_vec(deny, perms, audit, 1, &rule, flags, false);
+	return add_rule_vec(priority, mode, perms, audit, 1, &rule, opts,
+			    false);
 }
 
 void aare_rules::add_to_rules(Node *tree, Node *perms)
@@ -61,19 +62,19 @@ void aare_rules::add_to_rules(Node *tree, Node *perms)
 		expr_map[perms] = tree;
 }
 
-static Node *cat_with_null_seperator(Node *l, Node *r)
+static Node *cat_with_null_separator(Node *l, Node *r)
 {
 	return new CatNode(new CatNode(l, new CharNode(0)), r);
 }
 
-static Node *cat_with_oob_seperator(Node *l, Node *r)
+static Node *cat_with_oob_separator(Node *l, Node *r)
 {
 	return new CatNode(new CatNode(l, new CharNode(transchar(-1, true))), r);
 }
 
-bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
-			      int count, const char **rulev, dfaflags_t flags,
-			      bool oob)
+bool aare_rules::add_rule_vec(int priority, rule_mode_t mode, perm32_t perms,
+			      perm32_t audit, int count, const char **rulev,
+			      optflags const &opts, bool oob)
 {
 	Node *tree = NULL, *accept;
 	int exact_match;
@@ -85,9 +86,9 @@ bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
 		if (regex_parse(&subtree, rulev[i]))
 			goto err;
 		if (oob)
-			tree = cat_with_oob_seperator(tree, subtree);
+			tree = cat_with_oob_separator(tree, subtree);
 		else
-			tree = cat_with_null_seperator(tree, subtree);
+			tree = cat_with_null_separator(tree, subtree);
 	}
 
 	/*
@@ -97,35 +98,38 @@ bool aare_rules::add_rule_vec(int deny, uint32_t perms, uint32_t audit,
 	 */
 	exact_match = 1;
 	for (depth_first_traversal i(tree); i && exact_match; i++) {
-		if (dynamic_cast<StarNode *>(*i) ||
-		    dynamic_cast<PlusNode *>(*i) ||
-		    dynamic_cast<AnyCharNode *>(*i) ||
-		    dynamic_cast<CharSetNode *>(*i) ||
-		    dynamic_cast<NotCharSetNode *>(*i))
+		if ((*i)->is_type(NODE_TYPE_STAR) ||
+		    (*i)->is_type(NODE_TYPE_PLUS) ||
+		    (*i)->is_type(NODE_TYPE_ANYCHAR) ||
+		    (*i)->is_type(NODE_TYPE_NOTCHARSET))
 			exact_match = 0;
 	}
 
 	if (reverse)
 		flip_tree(tree);
 
-	accept = unique_perms.insert(deny, perms, audit, exact_match);
+	accept = unique_perms.insert(priority, mode, perms, audit, exact_match);
 
-	if (flags & DFA_DUMP_RULE_EXPR) {
-		const char *seperator;
+	if (opts.dump & DUMP_DFA_RULE_EXPR) {
+		const char *separator;
 		if (oob)
-			seperator = "\\-x01";
+			separator = "\\-x01";
 		else
-			seperator = "\\x00";
+			separator = "\\x00";
 		cerr << "rule: ";
 		cerr << rulev[0];
 		for (int i = 1; i < count; i++) {
-			cerr << seperator;
+			cerr << separator;
 			cerr << rulev[i];
 		}
 		cerr << "  ->  ";
 		tree->dump(cerr);
-		if (deny)
+		// TODO: split out from prefixes class
+		cerr << " priority=" << priority;
+		if (mode == RULE_DENY)
 			cerr << " deny";
+		else if (mode == RULE_PROMPT)
+			cerr << " prompt";
 		cerr << " (0x" << hex << perms <<"/" << audit << dec << ")";
 		accept->dump(cerr);
  		cerr << "\n\n";
@@ -152,13 +156,13 @@ err:
  * advanced by a null character for each xattr.
  */
 bool aare_rules::append_rule(const char *rule, bool oob, bool with_perm,
-			     dfaflags_t flags)
+			     optflags const &opts)
 {
 	Node *tree = NULL;
 	if (regex_parse(&tree, rule))
 		return false;
 
-	if (flags & DFA_DUMP_RULE_EXPR) {
+	if (opts.dump & DUMP_DFA_RULE_EXPR) {
 		cerr << "rule: ";
 		cerr << rule;
 		cerr << "  ->  ";
@@ -190,29 +194,29 @@ bool aare_rules::append_rule(const char *rule, bool oob, bool with_perm,
 	return true;
 }
 
-/* create a dfa from the ruleset
+/* create a chfa from the ruleset
  * returns: buffer contain dfa tables, @size set to the size of the tables
  *          else NULL on failure, @min_match_len set to the shortest string
  *          that can match the dfa for determining xmatch priority.
  */
-void *aare_rules::create_dfa(size_t *size, int *min_match_len, dfaflags_t flags,
-			     bool filedfa)
+CHFA *aare_rules::create_chfa(int *min_match_len,
+			      vector <aa_perms> &perms_table,
+			      optflags const &opts, bool filedfa,
+			      bool extended_perms, bool prompt)
 {
-	char *buffer = NULL;
-
 	/* finish constructing the expr tree from the different permission
 	 * set nodes */
 	PermExprMap::iterator i = expr_map.begin();
 	if (i != expr_map.end()) {
-		if (flags & DFA_CONTROL_TREE_SIMPLE) {
-			Node *tmp = simplify_tree(i->second, flags);
+		if (opts.control & CONTROL_DFA_TREE_SIMPLE) {
+			Node *tmp = simplify_tree(i->second, opts);
 			root = new CatNode(tmp, i->first);
 		} else
 			root = new CatNode(i->second, i->first);
 		for (i++; i != expr_map.end(); i++) {
 			Node *tmp;
-			if (flags & DFA_CONTROL_TREE_SIMPLE) {
-				tmp = simplify_tree(i->second, flags);
+			if (opts.control & CONTROL_DFA_TREE_SIMPLE) {
+				tmp = simplify_tree(i->second, opts);
 			} else
 				tmp = i->second;
 			root = new AltNode(root, new CatNode(tmp, i->first));
@@ -226,89 +230,140 @@ void *aare_rules::create_dfa(size_t *size, int *min_match_len, dfaflags_t flags,
 	 * this debug dump.
 	 */
 	label_nodes(root);
-	if (flags & DFA_DUMP_TREE) {
+	if (opts.dump & DUMP_DFA_TREE) {
 		cerr << "\nDFA: Expression Tree\n";
 		root->dump(cerr);
 		cerr << "\n\n";
 	}
 
-	if (flags & DFA_CONTROL_TREE_SIMPLE) {
+	if (opts.control & CONTROL_DFA_TREE_SIMPLE) {
 		/* This is old total tree, simplification point
 		 * For now just do simplification up front. It gets most
 		 * of the benefit running on the smaller chains, and is
 		 * overall faster because there are less nodes. Reevaluate
 		 * once tree simplification is rewritten
 		 */
-		//root = simplify_tree(root, flags);
+		//root = simplify_tree(root, opts);
 
-		if (flags & DFA_DUMP_SIMPLE_TREE) {
+		if (opts.dump & DUMP_DFA_SIMPLE_TREE) {
 			cerr << "\nDFA: Simplified Expression Tree\n";
 			root->dump(cerr);
 			cerr << "\n\n";
 		}
 	}
 
-	stringstream stream;
+	CHFA *chfa = NULL;
 	try {
-		DFA dfa(root, flags, filedfa);
-		if (flags & DFA_DUMP_UNIQ_PERMS)
+		DFA dfa(root, opts, filedfa);
+		if (opts.dump & DUMP_DFA_UNIQ_PERMS)
 			dfa.dump_uniq_perms("dfa");
 
-		if (flags & DFA_CONTROL_MINIMIZE) {
-			dfa.minimize(flags);
+		if (opts.dump & DUMP_DFA_STATES_INIT)
+			dfa.dump(cerr, NULL);
 
-			if (flags & DFA_DUMP_MIN_UNIQ_PERMS)
+		/* since we are building a chfa, use the info about
+		 * whether the chfa supports extended perms to help
+		 * determine whether we clear the deny info.
+		 * This will let us build the minimal dfa for the
+		 * information supported by the backed
+		 */
+		if (!extended_perms ||
+		    ((opts.control & CONTROL_DFA_FILTER_DENY))) {
+			dfa.apply_and_clear_deny();
+			if (opts.dump & DUMP_DFA_STATES_POST_FILTER)
+				dfa.dump(cerr, NULL);
+		}
+		if (opts.control & CONTROL_DFA_MINIMIZE) {
+			dfa.minimize(opts);
+			if (opts.dump & DUMP_DFA_MIN_UNIQ_PERMS)
 				dfa.dump_uniq_perms("minimized dfa");
+			if (opts.dump & DUMP_DFA_STATES_POST_MINIMIZE)
+				dfa.dump(cerr, NULL);
 		}
 
-		if (flags & DFA_CONTROL_FILTER_DENY &&
-		    flags & DFA_CONTROL_MINIMIZE &&
-		    dfa.apply_and_clear_deny()) {
-			/* Do a second minimization pass as removal of deny
-			 * information has moved some states from accepting
-			 * to none accepting partitions
-			 *
-			 * TODO: add this as a tail pass to minimization
-			 *       so we don't need to do a full second pass
-			 */
-			dfa.minimize(flags);
-
-			if (flags & DFA_DUMP_MIN_UNIQ_PERMS)
-				dfa.dump_uniq_perms("minimized dfa");
+		if (opts.control & CONTROL_DFA_REMOVE_UNREACHABLE) {
+			dfa.remove_unreachable(opts);
+			if (opts.dump & DUMP_DFA_STATES_POST_UNREACHABLE)
+				dfa.dump(cerr, NULL);
 		}
+		if (opts.dump & DUMP_DFA_STATES)
+			dfa.dump(cerr, NULL);
 
-		if (flags & DFA_CONTROL_REMOVE_UNREACHABLE)
-			dfa.remove_unreachable(flags);
-
-		if (flags & DFA_DUMP_STATES)
-			dfa.dump(cerr);
-
-		if (flags & DFA_DUMP_GRAPH)
+		if (opts.dump & DUMP_DFA_GRAPH)
 			dfa.dump_dot_graph(cerr);
 
 		map<transchar, transchar> eq;
-		if (flags & DFA_CONTROL_EQUIV) {
-			eq = dfa.equivalence_classes(flags);
+		if (opts.control & CONTROL_DFA_EQUIV) {
+			eq = dfa.equivalence_classes(opts);
 			dfa.apply_equivalence_classes(eq);
 
-			if (flags & DFA_DUMP_EQUIV) {
+			if (opts.dump & DUMP_DFA_EQUIV) {
 				cerr << "\nDFA equivalence class\n";
 				dump_equivalence_classes(cerr, eq);
 			}
-		} else if (flags & DFA_DUMP_EQUIV)
+		} else if (opts.dump & DUMP_DFA_EQUIV)
 			cerr << "\nDFA did not generate an equivalence class\n";
 
-		if (flags & DFA_CONTROL_DIFF_ENCODE) {
-			dfa.diff_encode(flags);
+		if (opts.control & CONTROL_DFA_DIFF_ENCODE) {
+			dfa.diff_encode(opts);
 
-			if (flags & DFA_DUMP_DIFF_ENCODE)
+			if (opts.dump & DUMP_DFA_DIFF_ENCODE)
 				dfa.dump_diff_encode(cerr);
 		}
 
-		CHFA chfa(dfa, eq, flags);
-		if (flags & DFA_DUMP_TRANS_TABLE)
-			chfa.dump(cerr);
-		chfa.flex_table(stream, "");
+		//cerr << "Checking extended perms " << extended_perms << "\n";
+		if (extended_perms) {
+			//cerr << "creating permstable\n";
+			dfa.compute_perms_table(perms_table, prompt);
+			// TODO: move perms table to a class
+			if (opts.dump & DUMP_DFA_TRANS_TABLE && perms_table.size()) {
+				cerr << "Perms Table size: " << perms_table.size() << "\n";
+				perms_table[0].dump_header(cerr);
+				for (size_t i = 0; i < perms_table.size(); i++) {
+					perms_table[i].dump(cerr);
+					cerr << "accept1: 0x";
+					cerr << ", accept2: 0x";
+					cerr << "\n";
+				}
+				cerr << "\n";
+			}
+		}
+		chfa = new CHFA(dfa, eq, opts, extended_perms, prompt);
+		if (opts.dump & DUMP_DFA_TRANS_TABLE)
+			chfa->dump(cerr);
+		if (opts.dump & DUMP_DFA_COMPTRESSED_STATES)
+			dfa.dump(cerr, &chfa->num);
+	}
+	catch(int error) {
+		return NULL;
+	}
+
+	return chfa;
+}
+
+/* create a dfa from the ruleset
+ * returns: buffer contain dfa tables, @size set to the size of the tables
+ *          else NULL on failure, @min_match_len set to the shortest string
+ *          that can match the dfa for determining xmatch priority.
+ */
+void *aare_rules::create_dfablob(size_t *size, int *min_match_len,
+				 vector <aa_perms> &perms_table,
+				 optflags const &opts, bool filedfa,
+				 bool extended_perms, bool prompt)
+{
+	char *buffer = NULL;
+	stringstream stream;
+
+	try {
+		CHFA *chfa = create_chfa(min_match_len, perms_table,
+					 opts, filedfa, extended_perms,
+					 prompt);
+		if (!chfa) {
+			*size = 0;
+			return NULL;
+		}
+		chfa->flex_table(stream, opts);
+		delete (chfa);
 	}
 	catch(int error) {
 		*size = 0;
@@ -324,5 +379,85 @@ void *aare_rules::create_dfa(size_t *size, int *min_match_len, dfaflags_t flags,
 	if (!buffer)
 		return NULL;
 	buf->sgetn(buffer, *size);
+
+	return buffer;
+}
+
+
+/* create a dfa from the ruleset
+ * returns: buffer contain dfa tables, @size set to the size of the tables
+ *          else NULL on failure, @min_match_len set to the shortest string
+ *          that can match the dfa for determining xmatch priority.
+ */
+void *aare_rules::create_welded_dfablob(aare_rules *file_rules,
+					size_t *size, int *min_match_len,
+					size_t *new_start,
+					vector <aa_perms> &perms_table,
+					optflags const &opts,
+					bool extended_perms, bool prompt)
+{
+	int file_min_len;
+	vector <aa_perms> file_perms;
+	CHFA *file_chfa;
+	try {
+		file_chfa = file_rules->create_chfa(&file_min_len,
+						    file_perms, opts,
+						    true, extended_perms, prompt);
+		if (!file_chfa) {
+			*size = 0;
+			return NULL;
+		}
+	}
+	catch(int error) {
+		*size = 0;
+		return NULL;
+	}
+
+	CHFA *policy_chfa;
+	try {
+		policy_chfa = create_chfa(min_match_len,
+					  perms_table, opts,
+					  false, extended_perms, prompt);
+		if (!policy_chfa) {
+			delete file_chfa;
+			*size = 0;
+			return NULL;
+		}
+	}
+	catch(int error) {
+		delete file_chfa;
+		*size = 0;
+		return NULL;
+	}
+
+	stringstream stream;
+	try {
+		policy_chfa->weld_file_to_policy(*file_chfa, *new_start,
+						 extended_perms, prompt,
+						 perms_table, file_perms);
+		policy_chfa->flex_table(stream, opts);
+	}
+	catch(int error) {
+		delete (file_chfa);
+		delete (policy_chfa);
+		*size = 0;
+		return NULL;
+	}
+	delete file_chfa;
+	delete policy_chfa;
+
+	/* write blob to buffer */
+	stringbuf *buf = stream.rdbuf();
+
+	buf->pubseekpos(0);
+	*size = buf->in_avail();
+	if (file_min_len < *min_match_len)
+		*min_match_len = file_min_len;
+
+	char *buffer = (char *)malloc(*size);
+	if (!buffer)
+		return NULL;
+	buf->sgetn(buffer, *size);
+
 	return buffer;
 }

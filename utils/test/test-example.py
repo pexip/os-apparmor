@@ -10,30 +10,34 @@
 # ------------------------------------------------------------------
 
 import unittest
-from common_test import AATest, setup_all_loops # , setup_aa
+
 # import apparmor.aa as aa  # see the setup_aa() call for details
+from common_test import AATest, setup_all_loops  # , setup_aa
+
 
 class TestFoo(AATest):
-    tests = [
-        (0,  0 ),
+    tests = (
+        (0,  0),
         (42, 42),
-    ]
+    )
 
     def _run_test(self, params, expected):
         self.assertEqual(params, expected)
 
+
 class TestBar(AATest):
-    tests = [
+    tests = (
         ('a', 'foo'),
         ('b', 'bar'),
         ('c', 'baz'),
-    ]
+    )
 
     def _run_test(self, params, expected):
         self.assertNotEqual(params, expected)
 
     def testAdditionalBarTest(self):
         self.assertEqual(1, 1)
+
 
 class TestBaz(AATest):
     def AASetup(self):
@@ -46,6 +50,7 @@ class TestBaz(AATest):
 
     def test_Baz_only_one_test(self):
         self.assertEqual("baz", "baz")
+
 
 # if you import apparmor.aa and call init_aa() in your tests, uncomment this
 # setup_aa(aa)

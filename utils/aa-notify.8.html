@@ -105,17 +105,39 @@
 
 <p>System-wide configuration for <b>aa-notify</b> is done via /etc/apparmor/notify.conf:</p>
 
-<pre><code># set to &#39;yes&#39; to enable AppArmor DENIED notifications
+<pre><code># Set to &#39;no&#39; to disable AppArmor notifications globally
 show_notifications=&quot;yes&quot;
 
-# only people in use_group can use aa-notify
-use_group=&quot;admin&quot;
+# Special profiles used to remove privileges for unconfined binaries using user namespaces. If unsure, leave as is.
+userns_special_profiles=&quot;unconfined,unprivileged_userns&quot;
+
+# Theme for aa-notify GUI. See https://ttkthemes.readthedocs.io/en/latest/themes.html for available themes.
+interface_theme=&quot;ubuntu&quot;
+
+# Binaries for which we ignore userns-related capability denials
+ignore_denied_capability=&quot;sudo,su&quot;
+
+# OPTIONAL - kind of operations which display a popup prompt.
+prompt_filter=&quot;userns&quot;
+
+# OPTIONAL - restrict using aa-notify to users in the given group
+# (if not set, everybody who has permissions to read the logfile can use it)
+# use_group=&quot;admin&quot;
 
 # OPTIONAL - custom notification message body
 message_body=&quot;This is a custom notification message.&quot;
 
 # OPTIONAL - custom notification message footer
-message_footer=&quot;For more information visit https://foo.com&quot;</code></pre>
+message_footer=&quot;For more information visit https://foo.com&quot;
+
+# OPTIONAL - custom notification filtering
+# Filters are used to reduce the output of information to only those entries that will match the filter. Filters use Python&#39;s regular expression syntax.
+filter.profile=&quot;^(foo|bar)$&quot;  # Match the profile:            Only shows notifications for profiles &quot;foo&quot; or &quot;bar&quot;
+filter.operation=&quot;^open$&quot;     # Match the operation:          Only shows notifications for &quot;open&quot; operation
+filter.name=&quot;^(?!/usr/lib/)&quot;  # Match the name:               Excludes notifications for names starting by &quot;/usr/lib/&quot;
+filter.denied=&quot;^r$&quot;           # Match the denied_mask:        Only shows notifications where &quot;r&quot;, and only &quot;r&quot;, was denied
+filter.family=&quot;^inet$&quot;        # Match the network family:     Only shows notifications for &quot;inet&quot; family
+filter.socket=&quot;stream&quot;        # Match the network socket type: Only shows notifications for &quot;stream&quot; sockets</code></pre>
 
 <p>Per-user configuration is done via $XDG_CONFIG_HOME/apparmor/notify.conf (or the deprecated ~/.apparmor/notify.conf if it exists):</p>
 

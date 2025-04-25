@@ -20,6 +20,8 @@
 #define __AA_MOUNT_H
 
 #include <ostream>
+#include <vector>
+#include <algorithm>
 
 #include "parser.h"
 #include "rule.h"
@@ -33,12 +35,14 @@
 #define MS_DEV		0
 #define MS_NOEXEC	(1 << 3)
 #define MS_EXEC		0
-#define MS_SYNC		(1 << 4)
+#define MS_SYNCHRONOUS		(1 << 4)
 #define MS_ASYNC	0
 #define MS_REMOUNT	(1 << 5)
 #define MS_MAND		(1 << 6)
 #define MS_NOMAND	0
 #define MS_DIRSYNC	(1 << 7)
+#define MS_SYMFOLLOW	0
+#define MS_NOSYMFOLLOW	(1 << 8)
 #define MS_NODIRSYNC	0
 #define MS_NOATIME	(1 << 10)
 #define MS_ATIME	0
@@ -61,6 +65,7 @@
 #define MS_IVERSION	(1 << 23)
 #define MS_NOIVERSION	0
 #define MS_STRICTATIME	(1 << 24)
+#define MS_LAZYTIME	(1 << 25)
 #define MS_NOUSER	(1 << 31)
 #define MS_USER		0
 
@@ -73,13 +78,15 @@
 #define MS_RSHARED	(MS_SHARED | MS_REC)
 
 #define MS_ALL_FLAGS	(MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC | \
-			 MS_SYNC | MS_REMOUNT | MS_MAND | MS_DIRSYNC | \
+			 MS_SYNCHRONOUS | MS_REMOUNT | MS_MAND | MS_DIRSYNC | \
+			 MS_NOSYMFOLLOW | \
 			 MS_NOATIME | MS_NODIRATIME | MS_BIND | MS_RBIND | \
 			 MS_MOVE | MS_VERBOSE | MS_ACL | \
 			 MS_UNBINDABLE | MS_RUNBINDABLE | \
 			 MS_PRIVATE | MS_RPRIVATE | \
 			 MS_SLAVE | MS_RSLAVE | MS_SHARED | MS_RSHARED | \
-			 MS_RELATIME | MS_IVERSION | MS_STRICTATIME | MS_USER)
+			 MS_RELATIME | MS_IVERSION | MS_STRICTATIME | \
+			 MS_LAZYTIME | MS_USER)
 
 /* set of flags we don't use but define (but not with the kernel values)
  *  for MNT_FLAGS
@@ -94,16 +101,21 @@
 			 MS_KERNMOUNT | MS_STRICTATIME)
 
 #define MS_BIND_FLAGS (MS_BIND | MS_RBIND)
-#define MS_MAKE_FLAGS ((MS_UNBINDABLE | MS_RUNBINDABLE | \
+#define MS_MAKE_CMDS (MS_UNBINDABLE | MS_RUNBINDABLE | \
 			MS_PRIVATE | MS_RPRIVATE | \
-			MS_SLAVE | MS_RSLAVE | MS_SHARED | MS_RSHARED) | \
-		       (MS_ALL_FLAGS & ~(MNT_FLAGS)))
+			MS_SLAVE | MS_RSLAVE | MS_SHARED | MS_RSHARED)
+#define MS_MAKE_FLAGS  (MS_ALL_FLAGS & ~(MNT_FLAGS))
 #define MS_MOVE_FLAGS (MS_MOVE)
 
-#define MS_CMDS (MS_MOVE | MS_REMOUNT | MS_BIND | MS_RBIND | \
-		 MS_UNBINDABLE | MS_RUNBINDABLE | MS_PRIVATE | MS_RPRIVATE | \
-		 MS_SLAVE | MS_RSLAVE | MS_SHARED | MS_RSHARED)
-#define MS_REMOUNT_FLAGS (MS_ALL_FLAGS & ~(MS_CMDS & ~MS_REMOUNT & ~MS_BIND & ~MS_RBIND))
+#define MS_CMDS (MS_MOVE | MS_REMOUNT | MS_BIND | MS_RBIND | MS_MAKE_CMDS)
+/*
+ * This allows MS_MAKE_CMDS, by design: while remount and make-* shouldn't be
+ * used together, real-world applications do use them together, and the Linux
+ * kernel ignores the make-* flags when doing a remount instead of returning
+ * EINVAL. See https://bugs.launchpad.net/apparmor/+bug/2091424 for an example.
+ */
+#define MS_REMOUNT_FLAGS (MS_ALL_FLAGS & ~MS_MOVE_FLAGS)
+#define MS_NEW_FLAGS (MS_ALL_FLAGS & ~MS_CMDS)
 
 #define MNT_SRC_OPT 1
 #define MNT_DST_OPT 2
@@ -120,7 +132,20 @@
 					 * remapped to a mount option*/
 
 
-class mnt_rule: public rule_t {
+class mnt_rule: public perms_rule_t {
+	int gen_policy_remount(Profile &prof, int &count, unsigned int flags,
+			       unsigned int opt_flags);
+	int gen_policy_bind_mount(Profile &prof, int &count, unsigned int flags,
+				  unsigned int opt_flags);
+	int gen_policy_change_mount_type(Profile &prof, int &count,
+					 unsigned int flags,
+					 unsigned int opt_flags);
+	int gen_policy_move_mount(Profile &prof, int &count, unsigned int flags,
+				  unsigned int opt_flags);
+	int gen_policy_new_mount(Profile &prof, int &count, unsigned int flags,
+				 unsigned int opt_flags);
+	int gen_flag_rules(Profile &prof, int &count, unsigned int flags,
+			   unsigned int opt_flags);
 public:
 	char *mnt_point;
 	char *device;
@@ -128,14 +153,12 @@ public:
 	struct value_list *dev_type;
 	struct value_list *opts;
 
-	unsigned int flags, inv_flags;
+	std::vector<unsigned int> flagsv, opt_flagsv;
 
-	int allow, audit;
-	int deny;
 
 	mnt_rule(struct cond_entry *src_conds, char *device_p,
 		   struct cond_entry *dst_conds unused, char *mnt_point_p,
-		   int allow_p);
+		   perm32_t perms_p);
 	virtual ~mnt_rule()
 	{
 		free_value_list(opts);
@@ -145,10 +168,22 @@ public:
 		free(trans);
 	}
 
+	virtual bool valid_prefix(const prefixes &p, const char *&error) {
+		if (p.owner != OWNER_UNSPECIFIED) {
+			error = "owner prefix not allowed on mount rules";
+			return false;
+		}
+		return true;
+	};
 	virtual ostream &dump(ostream &os);
 	virtual int expand_variables(void);
 	virtual int gen_policy_re(Profile &prof);
-	virtual void post_process(Profile &prof unused);
+	virtual void post_parse_profile(Profile &prof unused);
+
+	virtual bool is_mergeable(void) { return true; }
+	virtual int cmp(rule_t const &rhs) const;
+
+	// for now use default merge/dedup
 
 protected:
 	virtual void warn_once(const char *name) override;

@@ -95,10 +95,16 @@
 #define ALL_USER_EXEC			(AA_USER_EXEC | AA_USER_EXEC_TYPE)
 #define ALL_OTHER_EXEC			(AA_OTHER_EXEC | AA_OTHER_EXEC_TYPE)
 
+#define AA_USER_EXEC_INHERIT		(AA_EXEC_INHERIT << AA_USER_SHIFT)
+#define AA_OTHER_EXEC_INHERIT		(AA_EXEC_INHERIT << AA_OTHER_SHIFT)
+
+#define AA_USER_EXEC_MMAP		(AA_OLD_EXEC_MMAP << AA_USER_SHIFT)
+#define AA_OTHER_EXEC_MMAP		(AA_OLD_EXEC_MMAP << AA_OTHER_SHIFT)
+
 #define AA_LINK_BITS			((AA_OLD_MAY_LINK << AA_USER_SHIFT) | \
 					 (AA_OLD_MAY_LINK << AA_OTHER_SHIFT))
 
-#define SHIFT_MODE(MODE, SHIFT)		((((MODE) & AA_BASE_PERMS) << (SHIFT))\
+#define SHIFT_PERMS(MODE, SHIFT)		((((MODE) & AA_BASE_PERMS) << (SHIFT))\
 					 | ((MODE) & ~AA_FILE_PERMS))
 #define SHIFT_TO_BASE(MODE, SHIFT)	((((MODE) & AA_FILE_PERMS) >> (SHIFT))\
 					 | ((MODE) & ~AA_FILE_PERMS))
@@ -174,6 +180,28 @@ static inline int is_merged_x_consistent(int a, int b)
 	}
 	return 1;
 }
+
+/* Arbitrary max and minimum priority that userspace can specify,
+ * internally we handle up to MAX_INTERNAL_PRIORITY and
+ * MIN_INTERNAL_PRIORITY. Do not ever allow INT_MAX, or INT_MIN
+ * because cmp uses subtraction and it can cause overflow.  Ensure we
+ * don't over/underflow make internal max/min one more than allowed on
+ * rules.
+ *
+ * see
+ * note on mediates_priority
+ */
+#define MIN_POLICY_PRIORITY (-1000)
+#define MAX_POLICY_PRIORITY (1000)
+
+/* internally we need a priority that any policy based rule can override
+ * and a priority that no policy based rule can override. These are
+ * used on rules encoding what abi/classes are supported by the
+ * compiled policy.
+ */
+#define MIN_INTERNAL_PRIORITY (MIN_POLICY_PRIORITY - 1)
+#define MAX_INTERNAL_PRIORITY (MAX_POLICY_PRIORITY + 1)
+
 
 #endif				/* ! _IMMUNIX_H */
 

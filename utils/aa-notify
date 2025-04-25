@@ -1,6 +1,6 @@
 #! /usr/bin/python3
 # ----------------------------------------------------------------------
-#    Copyright (C) 2018–2019 Otto Kekäläinen <otto@kekalainen.net>
+#    Copyright (C) 2018–2022 Otto Kekäläinen <otto@kekalainen.net>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -27,31 +27,50 @@
 # In a typical desktop environment one would run as a service the
 # command:
 #   /usr/bin/aa-notify -p -w 10
+#
+"""Show AppArmor events on command line or as desktop notifications."""
 
 import argparse
 import atexit
+import grp
 import os
+import pwd
 import re
 import sys
 import time
+
+import subprocess
+
 import notify2
 import psutil
-import pwd
-import grp
 
 import apparmor.aa as aa
 import apparmor.ui as aaui
 import apparmor.config as aaconfig
+import apparmor.update_profile as update_profile
+import LibAppArmor  # C-library to parse one log line
 from apparmor.common import DebugLogger, open_file_read
 from apparmor.fail import enable_aa_exception_handler
 from apparmor.notify import get_last_login_timestamp
 from apparmor.translations import init_translation
+from apparmor.logparser import ReadLog
+from apparmor.gui import UsernsGUI, ErrorGUI, ShowMoreGUI, set_interface_theme
+from apparmor.rule.file import FileRule
 
-import LibAppArmor  # C-library to parse one log line
+from dbus import DBusException
+import gi
+from gi.repository import GLib
+import threading
+
+gi.require_version('GLib', '2.0')
+
 
 def get_user_login():
-    '''Portable function to get username. Should not trigger any
-    "OSError: [Errno 25] Inappropriate ioctl for device" errors in Giltab-CI'''
+    """Portable function to get username.
+
+    Should not trigger any
+    "OSError: [Errno 25] Inappropriate ioctl for device" errors in Giltab-CI.
+    """
     if os.name == "posix":
         username = pwd.getpwuid(os.geteuid()).pw_name
     else:
@@ -61,8 +80,8 @@ def get_user_login():
     return username
 
 
-
 def format_event(event, logsource):
+    """Generate the notification text contents."""
     output = []
 
     if 'message_body' in config['']:
@@ -85,7 +104,25 @@ def format_event(event, logsource):
     return "\n".join(output)
 
 
-def notify_about_new_entries(logfile, wait=0):
+def is_event_in_filter(event, filters):
+    """Checks if event is in filter"""
+    if filters['profile'] and event.profile and not filters['profile_re'].match(event.profile):
+        return False
+    if filters['operation'] and event.operation and not filters['operation_re'].match(event.operation):
+        return False
+    if filters['name'] and event.name and not filters['name_re'].match(event.name):
+        return False
+    if filters['denied_mask'] and event.denied_mask and not filters['denied_mask_re'].match(event.denied_mask):
+        return False
+    if filters['net_family'] and event.net_family and not filters['net_family_re'].match(event.net_family):
+        return False
+    if filters['net_sock_type'] and event.net_sock_type and not filters['net_sock_type_re'].match(event.net_sock_type):
+        return False
+    return True
+
+
+def notify_about_new_entries(logfile, filters, wait=0):
+    """Run the notification daemon in the background."""
     # Kill other instances of aa-notify if already running
     for process in psutil.process_iter():
         # Find the process that has the same name as this script, e.g. aa-notify.py
@@ -100,11 +137,25 @@ def notify_about_new_entries(logfile, wait=0):
         # Follow the logfile and stream notifications
         # Rate limit to not show too many notifications
         try:
+            # Before use, notify2 must be initialized and the DBUS channel
+            # should be opened using the non-root user. This step needs to
+            # be executed after the drop_privileges().
+            notify2.init('aa-notify', mainloop='glib')
+        except DBusException:
+            sys.exit(_('Cannot initialize notify2. Please check that your terminal can use a graphical interface'))
+
+        try:
+            thread = threading.Thread(target=start_glib_loop)
+            thread.daemon = True
+            thread.start()
+
             for event in follow_apparmor_events(logfile, wait):
+                if not is_event_in_filter(event, filters):
+                    continue
                 debug_logger.info(format_event(event, logfile))
-                yield(format_event(event, logfile))
+                yield event, format_event(event, logfile)
         except PermissionError:
-            sys.exit(_("ERROR: Cannot read {}. Please check permissions.".format(logfile)))
+            sys.exit(_("ERROR: Cannot read {}. Please check permissions.").format(logfile))
 
     else:
         print(_('Notification emitter started in the background'))
@@ -113,21 +164,23 @@ def notify_about_new_entries(logfile, wait=0):
         os._exit(0)  # Exit child without calling exit handlers etc
 
 
-def show_entries_since_epoch(logfile, epoch_since):
+def show_entries_since_epoch(logfile, epoch_since, filters):
+    """Show AppArmor notifications since given timestamp."""
     count = 0
     for event in get_apparmor_events(logfile, epoch_since):
+        if not is_event_in_filter(event, filters):
+            continue
         count += 1
         if args.verbose:
             print(format_event(event, logfile))
             print()  # Print a newline after each entry for better readability
 
     aaui.UI_Info(_('AppArmor denials: {count} (since {date})').format(
-            **{
-                'count': count,
-                'date': time.strftime(timeformat, time.localtime(epoch_since))
-            }
-        )
-    )
+        **{
+            'count': count,
+            'date': time.strftime(timeformat, time.localtime(epoch_since))
+        }
+    ))
 
     if args.verbose:
         if 'message_footer' in config['']:
@@ -136,33 +189,34 @@ def show_entries_since_epoch(logfile, epoch_since):
             print(_('For more information, please see: {}').format(debug_docs_url))
 
 
-def show_entries_since_last_login(logfile, username=get_user_login()):
+def show_entries_since_last_login(logfile, filters, username=get_user_login()):
+    """Show AppArmor notifications since last login of user."""
     # If running as sudo, use username of sudo user instead of root
     if 'SUDO_USER' in os.environ.keys():
         username = os.environ['SUDO_USER']
 
     if args.verbose:
         print(_('Showing entries since {} logged in').format(username))
-        print() # Newline
+        print()  # Newline
     epoch_since = get_last_login_timestamp(username)
     if epoch_since == 0:
         print(_('ERROR: Could not find last login'), file=sys.stderr)
         sys.exit(1)
-    show_entries_since_epoch(logfile, epoch_since)
+    show_entries_since_epoch(logfile, epoch_since, filters)
 
 
-def show_entries_since_days(logfile, since_days):
-    day_in_seconds = 60*60*24
+def show_entries_since_days(logfile, since_days, filters):
+    """Show AppArmor notifications since the given amount of days."""
+    day_in_seconds = 60 * 60 * 24
     epoch_now = int(time.time())
     epoch_since = epoch_now - day_in_seconds * since_days
-    show_entries_since_epoch(logfile, epoch_since)
+    show_entries_since_epoch(logfile, epoch_since, filters)
 
 
 def follow_apparmor_events(logfile, wait=0):
-    '''Follow AppArmor events and yield relevant entries until process stops'''
-
+    """Follow AppArmor events and yield relevant entries until process stops."""
     # If wait was given as argument but was type None (from ArgumentParser)
-    # ensure it type int and zero
+    # ensure it's type int and zero
     if not wait:
         wait = 0
 
@@ -211,7 +265,7 @@ def reopen_logfile_if_needed(logfile, logdata, log_inode, log_size):
 
     while retry:
         try:
-            # Reopen file if inode has chaneged, e.g. rename by logrotate
+            # Reopen file if inode has changed, e.g. rename by logrotate
             if os.stat(logfile).st_ino != log_inode:
                 debug_logger.debug('Logfile was renamed, reload to read the new file.')
                 logdata = open(logfile, 'r')
@@ -239,7 +293,7 @@ def reopen_logfile_if_needed(logfile, logdata, log_inode, log_size):
 
 
 def get_apparmor_events(logfile, since=0):
-    '''Read audit events from log source and yield all relevant events'''
+    """Read audit events from log source and yield all relevant events."""
 
     # Get logdata from file
     # @TODO Implement more log sources in addition to just the logfile
@@ -253,29 +307,37 @@ def get_apparmor_events(logfile, since=0):
 
 
 def parse_logdata(logsource):
-    '''Traverse any iterable log source and extract relevant AppArmor events'''
+    """Traverse any iterable log source and extract relevant AppArmor events.
 
-    RE_audit_time_id = '(msg=)?audit\([\d\.\:]+\):\s+'  # 'audit(1282626827.320:411): '
-    RE_kernel_time = '\[[\d\.\s]+\]'    # '[ 1612.746129]'
-    RE_type_num = '1[45][0-9][0-9]'     # 1400..1599
-    RE_aa_or_op = '(apparmor=|operation=)'
+    Expects log lines like:
+      Feb 16 20:22:28 XPS-13-9370 kernel: [520374.926882] audit: type=1400
+      audit(1581877348.868:657): apparmor="ALLOWED" operation="open"
+      profile="libreoffice-soffice"
+      name="/usr/share/drirc.d/00-mesa-defaults.conf" pid=22690
+      comm="soffice.bin" requested_mask="r" denied_mask="r" fsuid=1001 ouid=0
+    """
 
-    RE_log_parts = [
-        'kernel:\s+(' + RE_kernel_time + '\s+)?(audit:\s+)?type=' + RE_type_num + '\s+' + RE_audit_time_id + RE_aa_or_op,  # v2_6 syslog
-        'kernel:\s+(' + RE_kernel_time + '\s+)?' + RE_audit_time_id + 'type=' + RE_type_num + '\s+' + RE_aa_or_op,
-        'type=(AVC|APPARMOR[_A-Z]*|' + RE_type_num + ')\s+' + RE_audit_time_id + '(type=' + RE_type_num + '\s+)?' + RE_aa_or_op,  # v2_6 audit and dmesg
-        'type=USER_AVC\s+' + RE_audit_time_id + '.*apparmor=',  # dbus
-        'type=UNKNOWN\[' + RE_type_num + '\]\s+' + RE_audit_time_id + RE_aa_or_op,
-        'dbus\[[0-9]+\]:\s+apparmor=',  # dbus
+    re_audit_time_id = r'(msg=)?audit\([\d\.\:]+\):\s+'  # 'audit(1282626827.320:411): '
+    re_kernel_time = r'\[[\d\.\s]+\]'  # '[ 1612.746129]'
+    re_type_num = '1[45][0-9][0-9]'  # 1400..1599
+    re_aa_or_op = '(apparmor=|operation=)'
+
+    re_log_parts = [
+        r'kernel:\s+(' + re_kernel_time + r'\s+)?(audit:\s+)?type=' + re_type_num + r'\s+' + re_audit_time_id + re_aa_or_op,  # v2_6 syslog
+        r'kernel:\s+(' + re_kernel_time + r'\s+)?' + re_audit_time_id + 'type=' + re_type_num + r'\s+' + re_aa_or_op,
+        'type=(AVC|APPARMOR[_A-Z]*|' + re_type_num + r')\s+' + re_audit_time_id + '(type=' + re_type_num + r'\s+)?' + re_aa_or_op,  # v2_6 audit and dmesg
+        r'type=USER_AVC\s+' + re_audit_time_id + '.*apparmor=',  # dbus
+        r'type=UNKNOWN\[' + re_type_num + r'\]\s+' + re_audit_time_id + re_aa_or_op,
+        r'dbus\[[0-9]+\]:\s+apparmor=',  # dbus
     ]
 
     # Pre-filter log lines so that we hand over only relevant lines to LibAppArmor parsing
-    RE_LOG_ALL = re.compile('(' + '|'.join(RE_log_parts) + ')')
+    re_log_all = re.compile('(' + '|'.join(re_log_parts) + ')')
 
     for entry in logsource:
 
         # Check the start of the log line and only process lines from AppArmor
-        apparmor_entry = RE_LOG_ALL.search(entry)
+        apparmor_entry = re_log_all.search(entry)
         if apparmor_entry:
             # Parse the line using LibAppArmor (C library)
             # See aalogparse.h for data structure
@@ -287,8 +349,11 @@ def parse_logdata(logsource):
 
 
 def drop_privileges():
-    '''If running as root, drop privileges to USER if known, or fall-back to nobody_user/group'''
+    """Drop privileges of process.
 
+    If running as root, drop privileges to USER if known, or fall-back to
+    nobody_user/group.
+    """
     if os.geteuid() == 0:
 
         if 'SUDO_USER' in os.environ.keys():
@@ -313,9 +378,12 @@ def drop_privileges():
         os.setegid(int(next_gid))
         os.seteuid(int(next_uid))
 
-def raise_privileges():
-    '''If was running as user with saved user ID 0, raise back to root privileges'''
 
+def raise_privileges():
+    """Raise privileges of process.
+
+    If was running as user with saved user ID 0, raise back to root privileges.
+    """
     if os.geteuid() != 0 and original_effective_user == 0:
 
         debug_logger.debug('Rasing privileges from UID {} back to UID 0 (root)'.format(os.geteuid()))
@@ -323,7 +391,9 @@ def raise_privileges():
         # os.setgid(int(next_gid))
         os.seteuid(original_effective_user)
 
+
 def read_notify_conf(path, shell_config):
+    """Read notify.conf."""
     try:
         shell_config.CONF_DIR = path
         conf_dict = shell_config.read_config('notify.conf')
@@ -332,12 +402,225 @@ def read_notify_conf(path, shell_config):
     except FileNotFoundError:
         return {}
 
-def main():
-    '''
-    Main function of aa-notify that parses command line
-    arguments and starts the requested operations.
-    '''
 
+def compile_filter_regex(filters):
+    """Compile each filter regex and add it to filters"""
+    if filters['profile']:
+        filters['profile_re'] = re.compile(filters['profile'])
+    if filters['operation']:
+        filters['operation_re'] = re.compile(filters['operation'])
+    if filters['name']:
+        filters['name_re'] = re.compile(filters['name'])
+    if filters['denied_mask']:
+        filters['denied_mask_re'] = re.compile(filters['denied_mask'])
+    if filters['net_family']:
+        filters['net_family_re'] = re.compile(filters['net_family'])
+    if filters['net_sock_type']:
+        filters['net_sock_type_re'] = re.compile(filters['net_sock_type'])
+
+    return filters
+
+
+def can_allow_rule(ev, special_profiles):
+    if customized_message['userns']['cond'](ev, special_profiles):
+        return not aa.get_profile_filename_from_profile_name(ev['comm'])
+    else:
+        return aa.get_profile_filename_from_profile_name(ev['profile']) is not None
+
+
+def is_special_profile_userns(ev, special_profiles):
+    if not special_profiles or ev['profile'] not in special_profiles:
+        return False  # We don't use special profiles or there is already a profile defined: we don't ask to add userns
+
+    if 'execpath' not in ev or not ev['execpath']:
+        ev['execpath'] = aa.find_executable(ev['comm'])
+
+    return True
+
+
+def create_userns_profile(name, path, ans):
+    update_profile_path = update_profile.__file__
+
+    local_template_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'default_unconfined.template')
+    if os.path.exists(local_template_path):  # We are using local aa-notify -> we use local template
+        template_path = local_template_path
+    else:
+        template_path = aa.CONFDIR + '/default_unconfined.template'
+
+    if path is None:
+        UsernsGUI.show_error_cannot_find_execpath(name, template_path)
+        return
+
+    profile_path = aa.get_profile_filename_from_profile_name(name, True)
+    if not profile_path:
+        ErrorGUI(_('Cannot get profile path for {}.').format(name), False).show()
+        return
+
+    command = ['pkexec', '--keep-cwd', update_profile_path, 'create_userns', template_path, name, path, profile_path, ans]
+
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 126:  # return code 126 means the user cancelled the request
+            UsernsGUI.show_error_cannot_reload_profile(profile_path, e.returncode)
+
+
+def ask_for_user_ns_denied(path, name, interactive=True):
+    if interactive:
+        gui = UsernsGUI(name, path)
+        ans = gui.show()
+    else:
+        ans = 'allow'
+    if ans in {'allow', 'deny'}:
+        create_userns_profile(name, path, ans)
+    else:
+        debug_logger.debug('No action from the user for {}'.format(path))
+
+
+def prompt_userns(ev, special_profiles):
+    """If the user namespace creation denial was generated by an unconfined binary, displays a graphical notification.
+    Creates a new profile to allow userns if the user wants it. Returns whether a notification was displayed to the user
+    """
+    if not is_special_profile_userns(ev, special_profiles):
+        return False
+
+    if ev['execpath'] is None:
+        UsernsGUI.show_error_cannot_find_execpath(ev['comm'], os.path.dirname(os.path.abspath(__file__)) + '/default_unconfined.template')
+        return True
+
+    aa.update_profiles()
+
+    if aa.get_profile_filename_from_profile_name(ev['comm']):
+        # There is already a profile with this name: we show an error to the user.
+        # We could use the full path as profile name like for the old profiles if we want to handle this case
+        # but if execpath is not supported by the kernel it could also mean that we inferred a bad path
+        # So we do nothing beyond showing this error.
+        ErrorGUI(
+            _('Application {profile} tried to create an user namespace, but a profile already exists with this name.\n'
+              'This is likely because there is several binaries named {profile} thus the path inferred by AppArmor ({inferred_path}) is not correct.\n'
+              'You should review your profiles (in {profile_dir}).').format(profile=ev['comm'], inferred_path=ev['execpath'], profile_dir=aa.profile_dir),
+            False).show()
+        return True
+
+    ask_for_user_ns_denied(ev['execpath'], ev['comm'])
+
+    return True
+
+
+# TODO reuse more code from aa-logprof in callbacks
+def cb_more_info(notification, action, _args):
+    (raw_ev, rl, special_profiles) = _args
+    notification.close()
+
+    parsed_event = rl.parse_record(raw_ev)
+    out = _('Operation denied by AppArmor\n\n')
+
+    for key, value in parsed_event.items():
+        if value:
+            out += '\t{} = {}\n'.format(_(key), value)
+
+    out += _('\nThe software that declined this operation is {}\n').format(parsed_event['profile'])
+
+    rule = rl.create_rule_from_ev(parsed_event)
+
+    # Exec events are created with the default FileRule.ANY_EXEC. We use Pix for actual rules
+    if type(rule) is FileRule and rule.exec_perms == FileRule.ANY_EXEC:
+        rule.exec_perms = 'Pix'
+
+    if rule:
+        aa.update_profiles()
+        if customized_message['userns']['cond'](parsed_event, special_profiles):
+            profile_path = None
+            out += _('You may allow it through a dedicated unconfined profile for {}.').format(parsed_event['comm'])
+        else:
+            profile_path = aa.get_profile_filename_from_profile_name(parsed_event['profile'])
+            if profile_path:
+                out += _('If you want to allow this operation you can add the line below in profile {}\n').format(profile_path)
+                out += rule.get_clean()
+            else:
+                out += _('However {profile} is not in {profile_dir}\nIt is likely that the profile was not stored in {profile_dir} or was removed.\n').format(profile=parsed_event['profile'], profile_dir=aa.profile_dir)
+    else:  # Should not happen
+        out += _('ERROR: Could not create rule from event.')
+        return
+
+    ans = ShowMoreGUI(profile_path, out, rule.get_clean(), parsed_event['profile'], profile_path is not None).show()
+    if ans == 'add_rule':
+        add_to_profile(rule.get_clean(), parsed_event['profile'])
+    elif ans in {'allow', 'deny'}:
+        create_userns_profile(parsed_event['comm'], parsed_event['execpath'], ans)
+
+
+def add_to_profile(rule, profile_name):
+    # We get update_profile.py through this import so that it works in all cases
+    profile_path = aa.get_profile_filename_from_profile_name(profile_name)
+
+    if not profile_path:
+        ErrorGUI(
+            _(
+                'Cannot find profile for {}\n\n'
+                'It is likely that the profile was not stored in {} or was removed.'
+            ).format(profile_name, aa.profile_dir),
+            False
+        ).show()
+        return
+
+    update_profile_path = update_profile.__file__
+    command = ['pkexec', '--keep-cwd', update_profile_path,  'add_rule', rule, profile_name]
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 126:  # return code 126 means the user cancelled the request
+            ErrorGUI(_('Failed to add rule {rule} to {profile}\nError code = {retcode}').format(rule=rule, profile=profile_name, retcode=e.returncode), False).show()
+
+
+def cb_add_to_profile(notification, action, _args):
+    (raw_ev, rl, special_profiles) = _args
+    notification.close()
+    parsed_event = rl.parse_record(raw_ev)
+
+    rule = rl.create_rule_from_ev(parsed_event)
+
+    # Exec events are created with the default FileRule.ANY_EXEC. We use Pix for actual rules
+    if type(rule) is FileRule and rule.exec_perms == FileRule.ANY_EXEC:
+        rule.exec_perms = 'Pix'
+
+    if not rule:
+        ErrorGUI(_('ERROR: Could not create rule from event.'), False).show()
+        return
+
+    aa.update_profiles()
+
+    if customized_message['userns']['cond'](parsed_event, special_profiles):
+        ask_for_user_ns_denied(parsed_event['execpath'], parsed_event['comm'], False)
+    else:
+        add_to_profile(rule.get_clean(), parsed_event['profile'])
+
+
+customized_message = {
+    'userns': {
+        'cond': lambda ev, special_profiles: (ev['operation'] == 'userns_create' or ev['operation'] == 'capable') and is_special_profile_userns(ev, special_profiles),
+        'msg': 'Application {0} wants to create an user namespace which could be used to compromise your system\nDo you want to allow it next time {0} is run?'
+    }
+}
+
+
+def customize_notification_message(ev, msg, special_profiles):
+    if customized_message['userns']['cond'](ev, special_profiles):
+        msg = _(customized_message['userns']['msg']).format(ev['comm'])
+
+    return msg
+
+
+def start_glib_loop():
+    loop = GLib.MainLoop()
+    loop.run()
+
+
+def main():
+    """Run aa-notify.
+
+    Parse command line arguments and starts the requested operations.
+    """
     global _, debug_logger, config, args
     global debug_docs_url, nobody_user, original_effective_user, timeformat
 
@@ -369,7 +652,20 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help=_('show messages with stats'))
     parser.add_argument('-u', '--user', type=str, help=_('user to drop privileges to when not using sudo'))
     parser.add_argument('-w', '--wait', type=int, metavar=('NUM'), help=_('wait NUM seconds before displaying notifications (with -p)'))
+    parser.add_argument('--prompt-filter', type=str, metavar=('PF'), help=_('kind of operations which display a popup prompt'))
     parser.add_argument('--debug', action='store_true', help=_('debug mode'))
+    parser.add_argument('--configdir', type=str, help=argparse.SUPPRESS)
+
+    filter_group = parser.add_argument_group('Filtering options',
+                                             description=('Filters are used to reduce the output of information to only '
+                                                          'those entries that will match the filter. Filters use Python\'s regular '
+                                                          'expression syntax.'))
+    filter_group.add_argument('--filter.profile', metavar='PROFILE', help=_('regular expression to match the profile'))
+    filter_group.add_argument('--filter.operation', metavar='OPERATION', help=_('regular expression to match the operation'))
+    filter_group.add_argument('--filter.name', metavar='NAME', help=_('regular expression to match the name'))
+    filter_group.add_argument('--filter.denied', metavar='DENIED', help=_('regular expression to match the denied mask'))
+    filter_group.add_argument('--filter.family', metavar='FAMILY', help=_('regular expression to match the network family'))
+    filter_group.add_argument('--filter.socket', metavar='SOCKET', help=_('regular expression to match the network socket type'))
 
     # If a TTY then assume running in test mode and fix output width
     if not sys.stdout.isatty():
@@ -396,11 +692,12 @@ def main():
     # conf = None
     logfile = None
 
-    confdir = os.getenv('__AA_CONFDIR')
-    if confdir:
-        aa.init_aa(confdir)
-    else:
-        aa.init_aa()
+    if args.configdir:  # prefer --configdir if given
+        confdir = args.configdir
+    else:  # fallback to env variable (or None if not set)
+        confdir = os.getenv('__AA_CONFDIR')
+
+    aa.init_aa(confdir=confdir)
 
     # Initialize aa.logfile
     aa.set_logfile(args.file)
@@ -415,19 +712,22 @@ def main():
     if not system_config:
         system_config = {'': {'show_notifications': 'yes'}}
 
-    # Load user's notify.conf
-    if os.path.isfile(os.environ['HOME'] + '/.apparmor/notify.conf'):
-        # Use legacy path if the conf file is there
-        user_config = read_notify_conf(os.environ['HOME'] + '/.apparmor', shell_config)
-    elif 'XDG_CONFIG_HOME' in os.environ and os.path.isfile(os.environ['XDG_CONFIG_HOME'] + '/apparmor/notify.conf'):
-        # Use XDG_CONFIG_HOME if it is defined
-        user_config = read_notify_conf(os.environ['XDG_CONFIG_HOME'] + '/apparmor', shell_config)
-    else:
-        # Fallback to the default value of XDG_CONFIG_HOME
-        user_config = read_notify_conf(os.environ['HOME'] + '/.config/apparmor', shell_config)
+    # Load user's notify.conf if a configdir override was not specified
+    if not args.configdir:
+        if os.path.isfile(os.environ['HOME'] + '/.apparmor/notify.conf'):
+            # Use legacy path if the conf file is there
+            user_config = read_notify_conf(os.environ['HOME'] + '/.apparmor', shell_config)
+        elif 'XDG_CONFIG_HOME' in os.environ and os.path.isfile(os.environ['XDG_CONFIG_HOME'] + '/apparmor/notify.conf'):
+            # Use XDG_CONFIG_HOME if it is defined
+            user_config = read_notify_conf(os.environ['XDG_CONFIG_HOME'] + '/apparmor', shell_config)
+        else:
+            # Fallback to the default value of XDG_CONFIG_HOME
+            user_config = read_notify_conf(os.environ['HOME'] + '/.config/apparmor', shell_config)
 
-    # Merge the two config dicts in an accurate and idiomatic way (requires Python 3.5)
-    config = {**system_config, **user_config}
+        # Merge the two config dicts in an accurate and idiomatic way (requires Python 3.5)
+        config = {**system_config, **user_config}
+    else:
+        config = system_config
 
     """
     Possible configuration options:
@@ -435,6 +735,16 @@ def main():
     - message_body
     - message_footer
     - use_group
+    - userns_special_profiles
+    - ignore_denied_capability
+    - interface_theme
+    - prompt_filter
+    - filter.profile,
+    - filter.operation,
+    - filter.name,
+    - filter.denied,
+    - filter.family,
+    - filter.socket,
     """
 
     # # Config checks
@@ -442,14 +752,64 @@ def main():
     # Warn about unknown keys in the config
     allowed_config_keys = [
         'use_group',
+        'userns_special_profiles',
+        'ignore_denied_capability',
+        'interface_theme',
+        'prompt_filter',
         'show_notifications',
         'message_body',
-        'message_footer'
+        'message_footer',
+        'filter.profile',
+        'filter.operation',
+        'filter.name',
+        'filter.denied',
+        'filter.family',
+        'filter.socket',
     ]
     found_config_keys = config[''].keys()
-    unknown_keys = [item for item in found_config_keys if item not in allowed_config_keys]
+    unknown_keys = [
+        item for item in found_config_keys if item not in allowed_config_keys
+    ]
     for item in unknown_keys:
-        print(_('Warning! Configration item "{}" is unknown!').format(item))
+        print(_('Warning! Configuration item "{}" is unknown!').format(item))
+
+    filters = {
+        'profile': '',
+        'operation': '',
+        'name': '',
+        'denied_mask': '',
+        'net_family': '',
+        'net_sock_type': '',
+    }
+
+    if 'filter.profile' in config['']:
+        filters['profile'] = config['']['filter.profile']
+    if 'filter.operation' in config['']:
+        filters['operation'] = config['']['filter.operation']
+    if 'filter.name' in config['']:
+        filters['name'] = config['']['filter.name']
+    if 'filter.denied' in config['']:
+        filters['denied_mask'] = config['']['filter.denied']
+    if 'filter.family' in config['']:
+        filters['net_family'] = config['']['filter.family']
+    if 'filter.socket' in config['']:
+        filters['net_sock_type'] = config['']['filter.socket']
+
+    # command line filters override notify.conf
+    if getattr(args, 'filter.profile'):
+        filters['profile'] = getattr(args, 'filter.profile')
+    if getattr(args, 'filter.operation'):
+        filters['operation'] = getattr(args, 'filter.operation')
+    if getattr(args, 'filter.name'):
+        filters['name'] = getattr(args, 'filter.name')
+    if getattr(args, 'filter.denied'):
+        filters['denied_mask'] = getattr(args, 'filter.denied')
+    if getattr(args, 'filter.family'):
+        filters['net_family'] = getattr(args, 'filter.family')
+    if getattr(args, 'filter.socket'):
+        filters['net_sock_type'] = getattr(args, 'filter.socket')
+
+    filters = compile_filter_regex(filters)
 
     # Warn if use_group is defined and current group does not match defined
     if 'use_group' in config['']:
@@ -469,6 +829,32 @@ def main():
             sys.exit(1)
             # @TODO: Extend UI lib to have warning and error functions that
             # can be used in an uniform way with both text and JSON output.
+
+    if 'userns_special_profiles' in config['']:
+        userns_special_profiles = config['']['userns_special_profiles'].strip().split(',')
+    else:
+        # By default, unconfined and unprivileged_userns are the special profiles
+        userns_special_profiles = ['unconfined', 'unprivileged_userns']
+
+    if 'ignore_denied_capability' in config['']:
+        ignore_denied_capability = config['']['ignore_denied_capability'].strip().split(',')
+    else:
+        ignore_denied_capability = ['sudo', 'su']
+
+    if 'interface_theme' in config['']:
+        set_interface_theme(config['']['interface_theme'].strip())
+    else:
+        set_interface_theme('ubuntu')
+
+    # Todo: add more kinds of notifications
+    supported_prompt_filter = {'userns'}
+    if not args.prompt_filter and 'prompt_filter' in config['']:
+        args.prompt_filter = config['']['prompt_filter']
+    if args.prompt_filter:
+        args.prompt_filter = set(args.prompt_filter.strip().split(','))
+        unsupported = args.prompt_filter - supported_prompt_filter
+        if unsupported:
+            sys.exit(_('ERROR: using an unsupported prompt filter: {}\nSupported values: {}').format(', '.join(unsupported), ', '.join(supported_prompt_filter)))
 
     if args.file:
         logfile = args.file
@@ -500,12 +886,29 @@ def main():
         if not args.user and os.getuid() == 0 and 'SUDO_USER' not in os.environ.keys():
             sys.exit("ERROR: Cannot be started a real root user. Use --user to define what user to use.")
 
+        # Required to parse_record.
+        rl = ReadLog('', '', '')
+
+        # Initialize the list of profiles for can_allow_rule
+        aa.read_profiles()
+
         # At this point this script needs to be able to read 'logfile' but once
         # the for loop starts, privileges can be dropped since the file descriptor
         # has been opened and access granted. Further reads of the file will not
         # trigger any new permission checks.
         # @TODO Plan to catch PermissionError here or..?
-        for message in notify_about_new_entries(logfile, args.wait):
+        for (event, message) in notify_about_new_entries(logfile, filters, args.wait):
+            ev = rl.parse_record(event)
+
+            # @TODO redo special behaviours with a more regular function
+            # We ignore capability denials for binaries in ignore_denied_capability
+            if ev['operation'] == 'capable' and ev['comm'] in ignore_denied_capability:
+                continue
+
+            # Special behaivor for userns:
+            if args.prompt_filter and 'userns' in args.prompt_filter and customized_message['userns']['cond'](ev, userns_special_profiles):
+                if prompt_userns(ev, userns_special_profiles):
+                    continue  # Notification already displayed for this event, we go to the next one.
 
             # Notifications should not be run as root, since root probably is
             # the wrong desktop user and not the one getting the notifications.
@@ -515,26 +918,28 @@ def main():
             if 'DBUS_SESSION_BUS_ADDRESS' not in os.environ:
                 os.environ['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=/run/user/{}/bus'.format(os.geteuid())
 
-            # Before use, notify2 must be initialized and the DBUS channel
-            # should be opened using the non-root user. This this step needs to
-            # be executed after the drop_privileges().
-            notify2.init('AppArmor')
+            message = customize_notification_message(ev, message, userns_special_profiles)
 
             n = notify2.Notification(
-                _('AppArmor notification'),
+                _('AppArmor security notice'),
                 message,
                 'gtk-dialog-warning'
             )
+
+            if can_allow_rule(ev, userns_special_profiles):
+                n.add_action('clicked', 'Allow', cb_add_to_profile, (event, rl, userns_special_profiles))
+            n.add_action('more_clicked', 'Show More', cb_more_info, (event, rl, userns_special_profiles))
+
             n.show()
 
             # When notification is sent, raise privileged back to root if the
-            # original effective user id was zero (to be ableo to read AppArmor logs)
+            # original effective user id was zero (to be able to read AppArmor logs)
             raise_privileges()
 
     elif args.since_last:
-        show_entries_since_last_login(logfile)
+        show_entries_since_last_login(logfile, filters)
     elif args.since_days:
-        show_entries_since_days(logfile, args.since_days)
+        show_entries_since_days(logfile, args.since_days, filters)
     else:
         parser.print_help()
 

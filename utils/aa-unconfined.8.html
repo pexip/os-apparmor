@@ -32,7 +32,7 @@
 
 <h1 id="SYNOPSIS">SYNOPSIS</h1>
 
-<p><b>aa-unconfined [<i>--paranoid</i>] [<i>--with-ss</i> | <i>--with-netstat</i>]</b></p>
+<p><b>aa-unconfined [options] [<i>--with-ss</i> | <i>--with-netstat</i>]</b></p>
 
 <h1 id="OPTIONS">OPTIONS</h1>
 
@@ -41,7 +41,21 @@
 <dt id="paranoid"><b>--paranoid</b></dt>
 <dd>
 
-<p>Displays all processes from <i>/proc</i> filesystem with tcp or udp ports that do not have AppArmor profiles loaded.</p>
+<p>Displays all processes visible from <i>/proc</i> filesystem, and whether they are confined by a profile or &quot;not confined&quot;. Equivalent to <i>--show=all</i>.</p>
+
+</dd>
+<dt id="show-all-network-server-client"><b>--show=(all|network|server|client)</b></dt>
+<dd>
+
+<p>Determines the set of processes to be displayed.</p>
+
+<p><i>--show=all</i> show all processes is equivalent to <i>--paranoid</i></p>
+
+<p><i>--show=network</i> show only process with any sockets open.</p>
+
+<p><i>--show=server</i> show only processes with listening sockets open. This is the <b>default</b> value if <i>--show=</i> or <i>--paranoid</i> are not specified.</p>
+
+<p><i>--show=client</i> show only processes with non-listening sockets open.</p>
 
 </dd>
 <dt id="with-ss"><b>--with-ss</b></dt>

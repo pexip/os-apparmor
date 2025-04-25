@@ -17,7 +17,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 cleandir()
 {
@@ -55,7 +55,7 @@ mkdirperm_fail=r
 linkperm=rl
 readperm=r
 
-dd if=/dev/zero of=$image bs=4096 count=128 > /dev/null 2>&1
+dd if=/dev/zero of=$image bs=4096 count=4096 > /dev/null 2>&1
 mkfs.ext2 -F -m 0 -N 10 $image > /dev/null 2>&1
 
 mkdir $mp1 $mp2

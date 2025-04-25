@@ -10,12 +10,14 @@
 #
 # ------------------------------------------------------------------
 
-from testlib import read_features_dir
-from argparse import ArgumentParser
 import os
-from sys import stderr, exit
+import sys
+from argparse import ArgumentParser
 
-DEFAULT_FEATURES_DIR='/sys/kernel/security/apparmor/features'
+from testlib import read_features_dir
+
+DEFAULT_FEATURES_DIR = '/sys/kernel/security/apparmor/features'
+
 
 def main():
     p = ArgumentParser()
@@ -25,7 +27,7 @@ def main():
     config = p.parse_args()
 
     if not os.path.exists(config.fdir):
-        print('Unable to find apparmor features directory "%s"' % config.fdir, file=stderr)
+        print('Unable to find apparmor features directory "{}"'.format(config.fdir), file=sys.stderr)
         return 1
 
     features = read_features_dir(config.fdir)
@@ -33,5 +35,6 @@ def main():
 
     return 0
 
+
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

@@ -19,7 +19,11 @@
 
 <ul id="index">
   <li><a href="#NAME">NAME</a></li>
-  <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+  <li><a href="#DESCRIPTION">DESCRIPTION</a>
+    <ul>
+      <li><a href="#Complain-mode">Complain mode</a></li>
+    </ul>
+  </li>
   <li><a href="#ERRORS">ERRORS</a></li>
   <li><a href="#DEBUGGING">DEBUGGING</a>
     <ul>
@@ -40,11 +44,10 @@
 
 <p>AppArmor is a kernel enhancement to confine programs to a limited set of resources. AppArmor&#39;s unique security model is to bind access control attributes to programs rather than to users.</p>
 
-<p>AppArmor confinement is provided via <i>profiles</i> loaded into the kernel via apparmor_parser(8), typically through the <i>/etc/init.d/apparmor</i> SysV initscript, which is used like this:</p>
+<p>AppArmor confinement is provided via <i>profiles</i> loaded into the kernel via apparmor_parser(8), typically through the <i>apparmor.service</i> systemd unit, which is used like this:</p>
 
-<pre><code># /etc/init.d/apparmor start
-# /etc/init.d/apparmor stop
-# /etc/init.d/apparmor restart</code></pre>
+<pre><code># systemctl start apparmor
+# systemctl reload apparmor</code></pre>
 
 <p>AppArmor can operate in two modes: <i>enforcement</i>, and <i>complain or learning</i>:</p>
 
@@ -77,6 +80,38 @@ $ cat /sys/kernel/security/apparmor/profiles
 <pre><code>create_module(2) delete_module(2) init_module(2) ioperm(2)
 iopl(2) ptrace(2) reboot(2) setdomainname(2)
 sethostname(2) swapoff(2) swapon(2) sysctl(2)</code></pre>
+
+<h2 id="Complain-mode">Complain mode</h2>
+
+<p>Instead of denying access to resources the profile does not have a rule for AppArmor can &quot;allow&quot; the access and log a message for the operation that triggers it. This is called <i>complain mode</i>. It is important to note that rules that are present in the profile are still applied, so allow rules will still quiet or force audit messages, and deny rules will still result in denials and quieting of denial messages (see <i>Turn off deny audit quieting</i> if this is a problem).</p>
+
+<p>Complain mode can be used to develop profiles incrementally as an application is exercised. The logged accesses can be added to the profile and then can the application further exercised to discover further additions that are needed. Because AppArmor allows the accesses the application will behave as it would if AppArmor was not confining it.</p>
+
+<p><b>Warning</b> complain mode does not provide any security, only auditing, while it is enabled. It should not be used in a hostile environment or bad behaviors may be logged and added to the profile as if they are resource accesses that should be used by the application.</p>
+
+<p><b>Note</b> complain mode can be very noisy with new or empty profiles, but with developed profiles might not log anything if the profile covers the application behavior well. See <i>Audit Rate Limiting</i> if complain mode is generating too many log messages.</p>
+
+<p>To set a profile and any children or hat profiles the profile may contain into complain mode use</p>
+
+<pre><code>aa-complain /etc/apparmor.d/&lt;the-application&gt;</code></pre>
+
+<p>To manually set a specific profile in complain mode, add the <code>complain</code> flag, and then manually reload the profile:</p>
+
+<pre><code>profile foo flags=(complain) { ... }</code></pre>
+
+<p>Note that the <code>complain</code> flag must also be added manually to any hats or children profiles of the profile or they will continue to use the previous mode.</p>
+
+<p>To enable complain mode globally, run:</p>
+
+<pre><code>echo -n complain &gt; /sys/module/apparmor/parameters/mode</code></pre>
+
+<p>or to set it on boot add:</p>
+
+<pre><code>apparmor.mode=complain</code></pre>
+
+<p>as a kernel boot parameter.</p>
+
+<p><b>Warning</b> Setting complain mode globally disables all apparmor security protections. It can be useful during debugging or profile development, but setting it selectively on a per profile basis is safer.</p>
 
 <h1 id="ERRORS">ERRORS</h1>
 
@@ -120,6 +155,12 @@ audit(1386512577.017:276): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quo
 
 <pre><code>echo 1 &gt; /sys/module/apparmor/parameters/debug</code></pre>
 
+<p>or to set it on boot add:</p>
+
+<pre><code>apparmor.debug=1</code></pre>
+
+<p>as a kernel boot parameter.</p>
+
 <h2 id="Turn-off-deny-audit-quieting">Turn off deny audit quieting</h2>
 
 <p>By default, operations that trigger <code>deny</code> rules are not logged. This is called <i>deny audit quieting</i>.</p>
@@ -127,6 +168,12 @@ audit(1386512577.017:276): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quo
 <p>To turn off deny audit quieting, run:</p>
 
 <pre><code>echo -n noquiet &gt;/sys/module/apparmor/parameters/audit</code></pre>
+
+<p>or to set it on boot add:</p>
+
+<pre><code>apparmor.audit=noquiet</code></pre>
+
+<p>as a kernel boot parameter.</p>
 
 <h2 id="Force-audit-mode">Force audit mode</h2>
 
@@ -142,6 +189,14 @@ audit(1386512577.017:276): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quo
 
 <pre><code>echo -n all &gt; /sys/module/apparmor/parameters/audit</code></pre>
 
+<p>or to set it on boot add:</p>
+
+<pre><code>apparmor.audit=all</code></pre>
+
+<p>as a kernel boot parameter.</p>
+
+<p><b>Audit Rate Limiting</b></p>
+
 <p>If auditd is not running, to avoid losing too many of the extra log messages, you will likely have to turn off rate limiting by doing:</p>
 
 <pre><code>echo 0 &gt; /proc/sys/kernel/printk_ratelimit</code></pre>
@@ -154,15 +209,11 @@ audit(1386512577.017:276): apparmor=&quot;ALLOWED&quot; operation=&quot;open&quo
 
 <dl>
 
-<dt id="etc-init.d-apparmor"><i>/etc/init.d/apparmor</i></dt>
-<dd>
-
-</dd>
 <dt id="etc-apparmor.d"><i>/etc/apparmor.d/</i></dt>
 <dd>
 
 </dd>
-<dt id="var-lib-apparmor"><i>/var/lib/apparmor/</i></dt>
+<dt id="var-cache-apparmor"><i>/var/cache/apparmor/</i></dt>
 <dd>
 
 </dd>

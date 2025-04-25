@@ -19,6 +19,7 @@
 %option nounput
 %option noyy_top_state
 %option reentrant
+%option extra-type="struct string_buf*"
 %option prefix="aalogparse_"
 %option bison-bridge
 %option header-file="scanner.h"
@@ -34,40 +35,37 @@
 
 #define YY_NO_INPUT
 
-unsigned int string_buf_alloc = 0;
-unsigned int string_buf_len = 0;
-char *string_buf = NULL;
-
-void string_buf_reset()
+void string_buf_reset(struct string_buf* char_buf)
 {
 	/* rewind buffer to zero, possibly doing initial allocation too */
-	string_buf_len = 0;
- 	if (string_buf == NULL) {
-		string_buf_alloc = 128;
-		string_buf = malloc(string_buf_alloc);
-		assert(string_buf != NULL);
+	char_buf->buf_len = 0;
+	if (char_buf->buf == NULL) {
+		char_buf->buf_alloc = 128;
+		char_buf->buf = malloc(char_buf->buf_alloc);
+		assert(char_buf->buf != NULL);
 	}
 	/* always start with a valid but empty string */
-	string_buf[0] = '\0';
+	char_buf->buf[0] = '\0';
 }
 
-void string_buf_append(unsigned int length, char *text)
+void string_buf_append(struct string_buf* char_buf, unsigned int length, char *text)
 {
-	unsigned int current_length = string_buf_len;
+	unsigned int current_length = char_buf->buf_len;
 
 	/* handle calling ..._append before ..._reset */
-	if (string_buf == NULL) string_buf_reset();
+	if (char_buf->buf == NULL) string_buf_reset(char_buf);
 
-	string_buf_len += length;
+	char_buf->buf_len += length;
 	/* expand allocation if this append would exceed the allocation */
-	while (string_buf_len >= string_buf_alloc) {
-		string_buf_alloc *= 2;
-		string_buf = realloc(string_buf, string_buf_alloc);
-		assert(string_buf != NULL);
+	while (char_buf->buf_len >= char_buf->buf_alloc) {
+		// TODO: overflow?
+		char_buf->buf_alloc *= 2;
+		char_buf->buf = realloc(char_buf->buf, char_buf->buf_alloc);
+		assert(char_buf->buf != NULL);
 	}
 	/* copy and unconditionally terminate */
-	memcpy(string_buf+current_length, text, length);
-	string_buf[string_buf_len] = '\0';
+	memcpy(char_buf->buf+current_length, text, length);
+	char_buf->buf[char_buf->buf_len] = '\0';
 }
 
 %}
@@ -90,6 +88,7 @@ question_mark	"?"
 single_quote	"'"
 mode_chars      ([RrWwaLlMmkXx])|([Pp][Xx])|([Uu][Xx])|([Ii][Xx])|([Pp][Ii][Xx])
 modes		({mode_chars}+)|({mode_chars}+::{mode_chars}*)|(::{mode_chars}*)
+none		"none"
 /* New message types */
 
 aa_reject_type		"APPARMOR_DENIED"
@@ -121,6 +120,8 @@ key_namespace		"namespace"
 key_mask		"mask"
 key_denied_mask		"denied_mask"
 key_requested_mask	"requested_mask"
+key_denied		"denied"
+key_requested		"requested"
 key_attribute		"attribute"
 key_task		"task"
 key_parent		"parent"
@@ -155,19 +156,28 @@ key_capname		"capname"
 key_offset		"offset"
 key_target		"target"
 key_laddr		"laddr"
+key_saddr		"saddr"
 key_faddr		"faddr"
+key_daddr		"daddr"
 key_lport		"lport"
+key_srcport		"src"
 key_fport		"fport"
+key_destport		"dest"
 key_bus			"bus"
 key_dest		"dest"
 key_path		"path"
 key_interface		"interface"
 key_member		"member"
+key_method		"method"
 key_signal		"signal"
 key_peer		"peer"
 key_fstype		"fstype"
 key_flags		"flags"
 key_srcname		"srcname"
+key_class		"class"
+key_tcontext		"tcontext"
+key_unix_peer_addr	"peer_addr"
+key_execpath		"execpath"
 audit			"audit"
 
 /* network addrs */
@@ -220,7 +230,7 @@ yy_flex_debug = 0;
 	{open_paren}		{ return(TOK_OPEN_PAREN); }
 	{close_paren}		{ BEGIN(INITIAL); return(TOK_CLOSE_PAREN); }
 	{ws}		{ }
-	\"			{ string_buf_reset(); BEGIN(quoted_string); }
+	\"			{ string_buf_reset(yyextra); BEGIN(quoted_string); }
 	{ID}+	{
 			yylval->t_str = strdup(yytext);
 			BEGIN(INITIAL);
@@ -229,20 +239,20 @@ yy_flex_debug = 0;
 	{equals}		{ return(TOK_EQUALS); }
 	}
 
-\"			{ string_buf_reset(); BEGIN(quoted_string); }
+\"			{ string_buf_reset(yyextra); BEGIN(quoted_string); }
 <quoted_string>\"	{ /* End of the quoted string */
 				BEGIN(INITIAL);
-				yylval->t_str = strdup(string_buf);
+				yylval->t_str = strdup(yyextra->buf);
 				return(TOK_QUOTED_STRING);
 			}
 
 
-<quoted_string>\\(.|\n) { string_buf_append(1, &yytext[1]); }
+<quoted_string>\\(.|\n) { string_buf_append(yyextra, 1, &yytext[1]); }
 
-<quoted_string>[^\\\n\"]+ { string_buf_append(yyleng, yytext); }
+<quoted_string>[^\\\n\"]+ { string_buf_append(yyextra, yyleng, yytext); }
 
 <safe_string>{
-	\"		{ string_buf_reset(); BEGIN(quoted_string); }
+	\"		{ string_buf_reset(yyextra); BEGIN(quoted_string); }
 	{hexstring}	{ yylval->t_str = hex_to_string(yytext); BEGIN(INITIAL); return(TOK_HEXSTRING);}
 	{equals}	{ return(TOK_EQUALS); }
 	.		{ /* eek, error! try another state */ BEGIN(INITIAL); yyless(0); }
@@ -298,6 +308,8 @@ yy_flex_debug = 0;
 {period}		{ return(TOK_PERIOD); }
 {question_mark}		{ return(TOK_QUESTION_MARK); }
 {single_quote}		{ return(TOK_SINGLE_QUOTE); }
+{none}			{ return(TOK_NONE); }
+
 
 {key_apparmor}		{ BEGIN(audit_types); return(TOK_KEY_APPARMOR); }
 {key_type}		{ BEGIN(audit_types); return(TOK_KEY_TYPE); }
@@ -309,6 +321,8 @@ yy_flex_debug = 0;
 {key_mask}		{ return(TOK_KEY_MASK); }
 {key_denied_mask}	{ return(TOK_KEY_DENIED_MASK); }
 {key_requested_mask}	{ return(TOK_KEY_REQUESTED_MASK); }
+{key_denied}		{ return(TOK_KEY_DENIED_MASK); }
+{key_requested}		{ return(TOK_KEY_REQUESTED_MASK); }
 {key_attribute}		{ BEGIN(sub_id); return(TOK_KEY_ATTRIBUTE); }
 {key_task}		{ return(TOK_KEY_TASK); }
 {key_parent}		{ return(TOK_KEY_PARENT); }
@@ -321,6 +335,7 @@ yy_flex_debug = 0;
 {key_peer_profile}	{ BEGIN(safe_string); return(TOK_KEY_PEER_PROFILE); }
 {key_label}		{ BEGIN(safe_string); return(TOK_KEY_LABEL); }
 {key_peer_label}	{ BEGIN(safe_string); return(TOK_KEY_PEER_LABEL); }
+{key_tcontext}		{ BEGIN(safe_string); return(TOK_KEY_PEER_LABEL); }
 {key_family}		{ return(TOK_KEY_FAMILY); }
 {key_sock_type}		{ return(TOK_KEY_SOCK_TYPE); }
 {key_protocol}		{ return(TOK_KEY_PROTOCOL); }
@@ -334,7 +349,7 @@ yy_flex_debug = 0;
 {key_sauid}		{ return(TOK_KEY_SAUID); }
 {key_ses}		{ return(TOK_KEY_SES); }
 {key_hostname}		{ return(TOK_KEY_HOSTNAME); }
-{key_addr}		{ return(TOK_KEY_ADDR); }
+{key_addr}		{ BEGIN(safe_string); return(TOK_KEY_ADDR); }
 {key_terminal}		{ return(TOK_KEY_TERMINAL); }
 {key_exe}		{ BEGIN(safe_string); return(TOK_KEY_EXE); }
 {key_comm}		{ BEGIN(safe_string); return(TOK_KEY_COMM); }
@@ -343,18 +358,26 @@ yy_flex_debug = 0;
 {key_offset}		{ return(TOK_KEY_OFFSET); }
 {key_target}		{ return(TOK_KEY_TARGET); }
 {key_laddr}		{ yy_push_state(ip_addr, yyscanner); return(TOK_KEY_LADDR); }
+{key_saddr}		{ yy_push_state(ip_addr, yyscanner); return(TOK_KEY_LADDR); }
 {key_faddr}		{ yy_push_state(ip_addr, yyscanner); return(TOK_KEY_FADDR); }
+{key_daddr}		{ yy_push_state(ip_addr, yyscanner); return(TOK_KEY_FADDR); }
 {key_lport}		{ return(TOK_KEY_LPORT); }
+{key_srcport}		{ return(TOK_KEY_LPORT); }
 {key_fport}		{ return(TOK_KEY_FPORT); }
+{key_destport}		{ return(TOK_KEY_FPORT); }
 {key_bus}		{ return(TOK_KEY_BUS); }
 {key_path}		{ return(TOK_KEY_PATH); }
 {key_interface}		{ return(TOK_KEY_INTERFACE); }
 {key_member}		{ return(TOK_KEY_MEMBER); }
+{key_method}		{ return(TOK_KEY_MEMBER); }
 {key_signal}		{ BEGIN(sub_id); return(TOK_KEY_SIGNAL); }
 {key_peer}		{ BEGIN(safe_string); return(TOK_KEY_PEER); }
 {key_fstype}		{ return(TOK_KEY_FSTYPE); }
 {key_flags}		{ BEGIN(safe_string); return(TOK_KEY_FLAGS); }
 {key_srcname}		{ BEGIN(safe_string); return(TOK_KEY_SRCNAME); }
+{key_unix_peer_addr}    { BEGIN(safe_string); return(TOK_KEY_UNIX_PEER_ADDR); }
+{key_execpath}		{ BEGIN(safe_string); return(TOK_KEY_EXECPATH); }
+{key_class}		{ BEGIN(safe_string); return(TOK_KEY_CLASS); }
 
 {socklogd_kernel}	{ BEGIN(dmesg_timestamp); return(TOK_SOCKLOGD_KERNEL); }
 {syslog_kernel}		{ BEGIN(dmesg_timestamp); return(TOK_SYSLOG_KERNEL); }

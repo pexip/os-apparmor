@@ -45,8 +45,16 @@
       <li><a href="#Link-rules">Link rules</a></li>
       <li><a href="#Comments">Comments</a></li>
       <li><a href="#Capabilities">Capabilities</a></li>
-      <li><a href="#Network-Rules">Network Rules</a></li>
+      <li><a href="#Network-Rules">Network Rules</a>
+        <ul>
+          <li><a href="#Network-permissions">Network permissions</a></li>
+          <li><a href="#Mediation-of-inet-inet6-family">Mediation of inet/inet6 family</a></li>
+        </ul>
+      </li>
       <li><a href="#Mount-Rules">Mount Rules</a></li>
+      <li><a href="#Message-Queue-rules">Message Queue rules</a></li>
+      <li><a href="#User-Namespace-Rules">User Namespace Rules</a></li>
+      <li><a href="#IO_URing-Rules">IO_URing Rules</a></li>
       <li><a href="#Pivot-Root-Rules">Pivot Root Rules</a></li>
       <li><a href="#PTrace-rules">PTrace rules</a></li>
       <li><a href="#Signal-rules">Signal rules</a></li>
@@ -61,10 +69,15 @@
         </ul>
       </li>
       <li><a href="#change_profile-rules">change_profile rules</a></li>
+      <li><a href="#all-rule">all rule</a></li>
       <li><a href="#rlimit-rules">rlimit rules</a></li>
-      <li><a href="#Variables">Variables</a></li>
+      <li><a href="#Variables">Variables</a>
+        <ul>
+          <li><a href="#Notes-on-variable-expansion-and-the-character">Notes on variable expansion and the / character</a></li>
+        </ul>
+      </li>
       <li><a href="#Alias-rules">Alias rules</a></li>
-      <li><a href="#Globbing">Globbing</a></li>
+      <li><a href="#Globbing-AARE">Globbing (AARE)</a></li>
       <li><a href="#Rule-Qualifiers">Rule Qualifiers</a>
         <ul>
           <li><a href="#Qualifier-Blocks">Qualifier Blocks</a></li>
@@ -148,9 +161,11 @@
 
 <p><b>PROFILE FLAG CONDS</b> = [ &#39;flags=&#39; ] &#39;(&#39; comma or white space separated list of <i>PROFILE FLAGS</i> &#39;)&#39;</p>
 
-<p><b>PROFILE FLAGS</b> = <i>PROFILE MODE</i> | <i>AUDIT_MODE</i> | &#39;mediate_deleted&#39; | &#39;attach_disconnected&#39; | &#39;chroot_relative&#39;</p>
+<p><b>PROFILE FLAGS</b> = <i>PROFILE MODE</i> | <i>AUDIT_MODE</i> | &#39;mediate_deleted&#39; | &#39;attach_disconnected&#39; | &#39;attach_disconnected.path=&#39;<i>ABS PATH</i> | &#39;chroot_relative&#39; | &#39;debug&#39; | &#39;interruptible&#39; | &#39;kill.signal=&#39;<i>SIGNAL</i> | &#39;error=&#39;<i>ERROR CODE</i></p>
 
-<p><b>PROFILE MODE</b> = &#39;enforce&#39; | &#39;complain&#39; | &#39;kill&#39; | &#39;unconfined&#39;</p>
+<p><b>ERROR CODE</b> = (case insensitive error code name starting with &#39;E&#39;; see errno(3))</p>
+
+<p><b>PROFILE MODE</b> = &#39;enforce&#39; | &#39;complain&#39; | &#39;kill&#39; | &#39;default_allow&#39; | &#39;unconfined&#39; | &#39;prompt&#39;</p>
 
 <p><b>AUDIT MODE</b> = &#39;audit&#39;</p>
 
@@ -158,7 +173,7 @@
 
 <p><b>LINE RULES</b> = ( <i>COMMENT</i> | <i>INCLUDE</i> ) [ &#39;\r&#39; ] &#39;\n&#39;</p>
 
-<p><b>COMMA RULES</b> = ( <i>CAPABILITY RULE</i> | <i>NETWORK RULE</i> | <i>MOUNT RULE</i> | <i>PIVOT ROOT RULE</i> | <i>UNIX RULE</i> | <i>FILE RULE</i> | <i>LINK RULE</i> | <i>CHANGE_PROFILE RULE</i> | <i>RLIMIT RULE</i> | <i>DBUS RULE</i> )</p>
+<p><b>COMMA RULES</b> = ( <i>CAPABILITY RULE</i> | <i>NETWORK RULE</i> | <i>MOUNT RULE</i> | <i>PIVOT ROOT RULE</i> | <i>UNIX RULE</i> | <i>FILE RULE</i> | <i>LINK RULE</i> | <i>CHANGE_PROFILE RULE</i> | <i>RLIMIT RULE</i> | <i>DBUS RULE</i> | <i>MQUEUE RULE</i> | <i>IO_URING RULE</i> | <i>USERNS RULE</i> | <i>ALL RULE</i>)</p>
 
 <p><b>BLOCK RULES</b> = ( <i>SUBPROFILE</i> | <i>HAT</i> | <i>QUALIFIER BLOCK</i> )</p>
 
@@ -170,9 +185,11 @@
 
 <p><b>QUALIFIER BLOCK</b> = <i>QUALIFIERS</i> <i>BLOCK</i></p>
 
+<p><b>INTEGER</b> = (+ | -)? [[:digit:]]+</p>
+
 <p><b>ACCESS TYPE</b> = ( &#39;allow&#39; | &#39;deny&#39; )</p>
 
-<p><b>QUALIFIERS</b> = [ &#39;audit&#39; ] [ <i>ACCESS TYPE</i> ]</p>
+<p><b>QUALIFIERS</b> = [ &#39;priority&#39; &#39;=&#39; &lt;INTEGER&gt; ] [ &#39;audit&#39; ] [ <i>ACCESS TYPE</i> ]</p>
 
 <p><b>CAPABILITY RULE</b> = [ <i>QUALIFIERS</i> ] &#39;capability&#39; [ <i>CAPABILITY LIST</i> ]</p>
 
@@ -180,13 +197,33 @@
 
 <p><b>CAPABILITY</b> = (lowercase capability name without &#39;CAP_&#39; prefix; see capabilities(7))</p>
 
-<p><b>NETWORK RULE</b> = [ <i>QUALIFIERS</i> ] &#39;network&#39; [ <i>DOMAIN</i> ] [ <i>TYPE</i> | <i>PROTOCOL</i> ]</p>
+<p><b>NETWORK RULE</b> = [ <i>QUALIFIERS</i> ] &#39;network&#39; [ <i>NETWORK ACCESS EXPR</i> ] [ <i>DOMAIN</i> ] [ <i>TYPE</i> | <i>PROTOCOL</i> ] [ <i>NETWORK LOCAL EXPR</i> ] [ <i>NETWORK PEER EXPR</i> ]</p>
+
+<p><b>NETWORK ACCESS EXPR</b> = ( <i>NETWORK ACCESS</i> | <i>NETWORK ACCESS LIST</i> )</p>
+
+<p><b>NETWORK ACCESS</b> = ( &#39;create&#39; | &#39;bind&#39; | &#39;listen&#39; | &#39;accept&#39; | &#39;connect&#39; | &#39;shutdown&#39; | &#39;getattr&#39; | &#39;setattr&#39; | &#39;getopt&#39; | &#39;setopt&#39; | &#39;send&#39; | &#39;receive&#39; | &#39;r&#39; | &#39;w&#39; | &#39;rw&#39; ) Some access modes are incompatible with some rules.</p>
+
+<p><b>NETWORK ACCESS LIST</b> = &#39;(&#39; <i>NETWORK ACCESS</i> ( [&#39;,&#39;] <i>NETWORK ACCESS</i> )* &#39;)&#39;</p>
 
 <p><b>DOMAIN</b> = ( &#39;unix&#39; | &#39;inet&#39; | &#39;ax25&#39; | &#39;ipx&#39; | &#39;appletalk&#39; | &#39;netrom&#39; | &#39;bridge&#39; | &#39;atmpvc&#39; | &#39;x25&#39; | &#39;inet6&#39; | &#39;rose&#39; | &#39;netbeui&#39; | &#39;security&#39; | &#39;key&#39; | &#39;netlink&#39; | &#39;packet&#39; | &#39;ash&#39; | &#39;econet&#39; | &#39;atmsvc&#39; | &#39;rds&#39; | &#39;sna&#39; | &#39;irda&#39; | &#39;pppox&#39; | &#39;wanpipe&#39; | &#39;llc&#39; | &#39;ib&#39; | &#39;mpls&#39; | &#39;can&#39; | &#39;tipc&#39; | &#39;bluetooth&#39; | &#39;iucv&#39; | &#39;rxrpc&#39; | &#39;isdn&#39; | &#39;phonet&#39; | &#39;ieee802154&#39; | &#39;caif&#39; | &#39;alg&#39; | &#39;nfc&#39; | &#39;vsock&#39; | &#39;kcm&#39; | &#39;qipcrtr&#39; | &#39;smc&#39; | &#39;xdp&#39; | &#39;mctp&#39; ) &#39;,&#39;</p>
 
 <p><b>TYPE</b> = ( &#39;stream&#39; | &#39;dgram&#39; | &#39;seqpacket&#39; | &#39;rdm&#39; | &#39;raw&#39; | &#39;packet&#39; )</p>
 
 <p><b>PROTOCOL</b> = ( &#39;tcp&#39; | &#39;udp&#39; | &#39;icmp&#39; )</p>
+
+<p><b>NETWORK LOCAL EXPR</b> = ( <i>NETWORK IP COND</i> | <i>NETWORK PORT COND</i> )* Each cond can appear at most once.</p>
+
+<p><b>NETWORK PEER EXPR</b> = &#39;peer&#39; &#39;=&#39; &#39;(&#39; ( <i>NETWORK IP COND</i> | <i>NETWORK PORT COND</i> )+ &#39;)&#39; Each cond can appear at most once.</p>
+
+<p><b>NETWORK IP COND</b> = &#39;ip&#39; &#39;=&#39; ( &#39;none&#39; | <i>NETWORK IPV4</i> | <i>NETWORK IPV6</i> )</p>
+
+<p><b>NETWORK PORT COND</b> = &#39;port&#39; &#39;=&#39; ( <i>NETWORK PORT</i> | <i>NETWORK PORT</i> &#39;-&#39; <i>NETWORK PORT</i> )</p>
+
+<p><b>NETWORK IPV4</b> = IPv4, represented by four 8-bit decimal numbers separated by &#39;.&#39;</p>
+
+<p><b>NETWORK IPV6</b> = IPv6, represented by eight groups of four hexadecimal numbers separated by &#39;:&#39;. Shortened representation of contiguous zeros is allowed by using &#39;::&#39;</p>
+
+<p><b>NETWORK PORT</b> = 16-bit number ranging from 0 to 65535</p>
 
 <p><b>MOUNT RULE</b> = ( <i>MOUNT</i> | <i>REMOUNT</i> | <i>UMOUNT</i> )</p>
 
@@ -206,9 +243,33 @@
 
 <p><b>MOUNT FLAGS LIST</b> = Comma separated list of <i>MOUNT FLAGS</i>.</p>
 
-<p><b>MOUNT FLAGS</b> = ( &#39;ro&#39; | &#39;rw&#39; | &#39;nosuid&#39; | &#39;suid&#39; | &#39;nodev&#39; | &#39;dev&#39; | &#39;noexec&#39; | &#39;exec&#39; | &#39;sync&#39; | &#39;async&#39; | &#39;remount&#39; | &#39;mand&#39; | &#39;nomand&#39; | &#39;dirsync&#39; | &#39;noatime&#39; | &#39;atime&#39; | &#39;nodiratime&#39; | &#39;diratime&#39; | &#39;bind&#39; | &#39;rbind&#39; | &#39;move&#39; | &#39;verbose&#39; | &#39;silent&#39; | &#39;loud&#39; | &#39;acl&#39; | &#39;noacl&#39; | &#39;unbindable&#39; | &#39;runbindable&#39; | &#39;private&#39; | &#39;rprivate&#39; | &#39;slave&#39; | &#39;rslave&#39; | &#39;shared&#39; | &#39;rshared&#39; | &#39;relatime&#39; | &#39;norelatime&#39; | &#39;iversion&#39; | &#39;noiversion&#39; | &#39;strictatime&#39; | &#39;nouser&#39; | &#39;user&#39; )</p>
+<p><b>MOUNT FLAGS</b> = ( &#39;ro&#39; | &#39;rw&#39; | &#39;nosuid&#39; | &#39;suid&#39; | &#39;nodev&#39; | &#39;dev&#39; | &#39;noexec&#39; | &#39;exec&#39; | &#39;sync&#39; | &#39;async&#39; | &#39;remount&#39; | &#39;mand&#39; | &#39;nomand&#39; | &#39;dirsync&#39; | &#39;noatime&#39; | &#39;atime&#39; | &#39;nodiratime&#39; | &#39;diratime&#39; | &#39;bind&#39; | &#39;rbind&#39; | &#39;move&#39; | &#39;verbose&#39; | &#39;silent&#39; | &#39;loud&#39; | &#39;acl&#39; | &#39;noacl&#39; | &#39;unbindable&#39; | &#39;runbindable&#39; | &#39;private&#39; | &#39;rprivate&#39; | &#39;slave&#39; | &#39;rslave&#39; | &#39;shared&#39; | &#39;rshared&#39; | &#39;relatime&#39; | &#39;norelatime&#39; | &#39;iversion&#39; | &#39;noiversion&#39; | &#39;strictatime&#39; | &#39;nostrictatime&#39; | &#39;lazytime&#39; | &#39;nolazytime&#39; | &#39;nouser&#39; | &#39;user&#39; | &#39;symfollow&#39; | &#39;nosymfollow&#39; )</p>
 
 <p><b>MOUNT EXPRESSION</b> = ( <i>ALPHANUMERIC</i> | <i>AARE</i> ) ...</p>
+
+<p><b>MQUEUE_RULE</b> = [ <i>QUALIFIERS</i> ] &#39;mqueue&#39; [ <i>MQUEUE ACCESS PERMISSIONS</i> ] [ <i>MQUEUE TYPE</i> ] [ <i>MQUEUE LABEL</i> ] [ <i>MQUEUE NAME</i> ]</p>
+
+<p><b>MQUEUE ACCESS PERMISSIONS</b> = <i>MQUEUE ACCESS</i> | <i>MQUEUE ACCESS LIST</i></p>
+
+<p><b>MQUEUE ACCESS LIST</b> = &#39;(&#39; Comma or space separated list of <i>MQUEUE ACCESS</i> &#39;)&#39;</p>
+
+<p><b>MQUEUE ACCESS</b> = ( &#39;r&#39; | &#39;w&#39; | &#39;rw&#39; | &#39;read&#39; | &#39;write&#39; | &#39;create&#39; | &#39;open&#39; | &#39;delete&#39; | &#39;getattr&#39; | &#39;setattr&#39; )</p>
+
+<p><b>MQUEUE TYPE</b> = &#39;type&#39; &#39;=&#39; ( &#39;posix&#39; | &#39;sysv&#39; )</p>
+
+<p><b>MQUEUE LABEL</b> = &#39;label&#39; &#39;=&#39; &#39;(&#39; &#39;&quot;&#39; <i>AARE</i> &#39;&quot;&#39; | <i>AARE</i> &#39;)&#39;</p>
+
+<p><b>MQUEUE NAME</b> = <i>AARE</i></p>
+
+<p><b>USERNS RULE</b> = [ <i>QUALIFIERS</i> ] &#39;userns&#39; [ <i>USERNS ACCESS PERMISSIONS</i> ]</p>
+
+<p><b>USERNS ACCESS PERMISSIONS</b> = ( &#39;create&#39; )</p>
+
+<p><b>IO_URING RULE</b> = [ <i>QUALIFIERS</i> ] &#39;io_uring&#39; [ <i>IO_URING ACCESS PERMISSIONS</i> [ <i>IO_URING LABEL</i> ]</p>
+
+<p><b>IO_URING ACCESS PERMISSIONS</b> = ( &#39;sqpoll&#39; | &#39;override_creds&#39; )</p>
+
+<p><b>IO_URING LABEL</b> = &#39;label&#39; &#39;=&#39; &#39;(&#39; &#39;&quot;&#39; <i>AARE</i> &#39;&quot;&#39; | <i>AARE</i> &#39;)&#39;</p>
 
 <p><b>PIVOT ROOT RULE</b> = [ <i>QUALIFIERS</i> ] pivot_root [ oldroot=<i>OLD PUT FILEGLOB</i> ] [ <i>NEW ROOT FILEGLOB</i> ] [ &#39;-&gt;&#39; <i>PROFILE NAME</i> ]</p>
 
@@ -238,9 +299,9 @@
 
 <p><b>SIGNAL SET</b> = &#39;set&#39; &#39;=&#39; &#39;(&#39; <i>SIGNAL LIST</i> &#39;)&#39;</p>
 
-<p><b>SIGNAL LIST</b> = Comma or space separated list of <i>SIGNALS</i></p>
+<p><b>SIGNAL LIST</b> = Comma or space separated list of <i>SIGNAL</i>s</p>
 
-<p><b>SIGNALS</b> = ( &#39;hup&#39; | &#39;int&#39; | &#39;quit&#39; | &#39;ill&#39; | &#39;trap&#39; | &#39;abrt&#39; | &#39;bus&#39; | &#39;fpe&#39; | &#39;kill&#39; | &#39;usr1&#39; | &#39;segv&#39; | &#39;usr2&#39; | &#39;pipe&#39; | &#39;alrm&#39; | &#39;term&#39; | &#39;stkflt&#39; | &#39;chld&#39; | &#39;cont&#39; | &#39;stop&#39; | &#39;stp&#39; | &#39;ttin&#39; | &#39;ttou&#39; | &#39;urg&#39; | &#39;xcpu&#39; | &#39;xfsz&#39; | &#39;vtalrm&#39; | &#39;prof&#39; | &#39;winch&#39; | &#39;io&#39; | &#39;pwr&#39; | &#39;sys&#39; | &#39;emt&#39; | &#39;exists&#39; | &#39;rtmin+0&#39; ... &#39;rtmin+32&#39; )</p>
+<p><b>SIGNAL</b> = ( &#39;hup&#39; | &#39;int&#39; | &#39;quit&#39; | &#39;ill&#39; | &#39;trap&#39; | &#39;abrt&#39; | &#39;bus&#39; | &#39;fpe&#39; | &#39;kill&#39; | &#39;usr1&#39; | &#39;segv&#39; | &#39;usr2&#39; | &#39;pipe&#39; | &#39;alrm&#39; | &#39;term&#39; | &#39;stkflt&#39; | &#39;chld&#39; | &#39;cont&#39; | &#39;stop&#39; | &#39;stp&#39; | &#39;ttin&#39; | &#39;ttou&#39; | &#39;urg&#39; | &#39;xcpu&#39; | &#39;xfsz&#39; | &#39;vtalrm&#39; | &#39;prof&#39; | &#39;winch&#39; | &#39;io&#39; | &#39;pwr&#39; | &#39;sys&#39; | &#39;emt&#39; | &#39;exists&#39; | &#39;rtmin+0&#39; ... &#39;rtmin+32&#39; )</p>
 
 <p><b>SIGNAL PEER</b> = &#39;peer&#39; &#39;=&#39; <i>AARE</i></p>
 
@@ -273,8 +334,6 @@
 <p><b>DBUS ACCESS LIST</b> = Comma separated list of <i>DBUS ACCESS</i></p>
 
 <p><b>DBUS ACCESS</b> = ( &#39;send&#39; | &#39;receive&#39; | &#39;bind&#39; | &#39;eavesdrop&#39; | &#39;r&#39; | &#39;read&#39; | &#39;w&#39; | &#39;write&#39; | &#39;rw&#39; ) Some accesses are incompatible with some rules; see below.</p>
-
-<p><b>AARE</b> = <b>?*[]{}^</b> See below for meanings.</p>
 
 <p><b>UNIX RULE</b> = [ <i>QUALIFIERS</i> ] &#39;unix&#39; [ <i>UNIX ACCESS EXPR</i> ] [ <i>UNIX RULE CONDS</i> ] [ <i>UNIX LOCAL EXPR</i> ] [ <i>UNIX PEER EXPR</i> ]</p>
 
@@ -324,6 +383,8 @@
 
 <p><b>UNQUOTED FILEGLOB</b> = (must start with &#39;/&#39; (after variable expansion), <b>AARE</b> have special meanings; see below. May include <i>VARIABLE</i>. Rules with embedded spaces or tabs must be quoted. Rules must end with &#39;/&#39; to apply to directories.)</p>
 
+<p><b>AARE</b> = <b>?*[]{}^</b> See section &quot;Globbing (AARE)&quot; below for meanings.</p>
+
 <p><b>ACCESS</b> = ( &#39;r&#39; | &#39;w&#39; | &#39;a&#39; | &#39;l&#39; | &#39;k&#39; | &#39;m&#39; | <i>EXEC TRANSITION</i> )+ (not all combinations are allowed; see below.)</p>
 
 <p><b>EXEC TRANSITION</b> = ( &#39;ix&#39; | &#39;ux&#39; | &#39;Ux&#39; | &#39;px&#39; | &#39;Px&#39; | &#39;cx&#39; | &#39;Cx&#39; | &#39;pix&#39; | &#39;Pix&#39; | &#39;cix&#39; | &#39;Cix&#39; | &#39;pux&#39; | &#39;PUx&#39; | &#39;cux&#39; | &#39;CUx&#39; | &#39;x&#39; ) A bare &#39;x&#39; is only allowed in rules with the deny qualifier, everything else only without the deny qualifier.</p>
@@ -341,6 +402,8 @@
 <p><b>EXEC_MODE</b> = ( &#39;safe&#39; | &#39;unsafe&#39; )</p>
 
 <p><b>EXEC COND</b> = <i>FILEGLOB</i></p>
+
+<p><b>ALL RULE</b> = &#39;all&#39;</p>
 
 </ul>
 
@@ -408,7 +471,21 @@
 <dd>
 
 </dd>
-<dt id="unconfined-This-mode-allows-a-task-confined-by-the-profile-to-behave-as-though-they-are-unconfined.-This-mode-allow-for-an-unconfined-behavior-that-can-be-later-changed-to-confinement-by-using-profile-replacement.-This-mode-is-should-not-be-used-under-regular-deployment-but-can-be-useful-during-debugging-and-some-system-initialization-scenarios"><b>unconfined</b> This mode allows a task confined by the profile to behave as though they are <i>unconfined</i>. This mode allow for an unconfined behavior that can be later changed to confinement by using profile replacement. This mode is should not be used under regular deployment but can be useful during debugging and some system initialization scenarios.</dt>
+<dt id="default_allow-This-mode-changes-the-default-behavior-of-apparmor-from-default-deny-to-default-allow.-When-default_allow-is-specified-the-resulting-profile-will-allow-operations-that-the-profile-does-not-have-a-rule-for.-This-mode-is-similar-to-unconfined-but-allows-for-allow-and-deny-rules-specifying-audit-and-domain-transitions.-Profiles-in-this-mode-may-be-be-reported-as-being-in-enforce-mode-or-allow-mode-when-introspected-from-the-kernel"><b>default_allow</b> This mode changes the default behavior of apparmor from default deny to default allow. When default_allow is specified the resulting profile will allow operations that the profile does not have a rule for. This mode is similar to <i>unconfined</i> but allows for allow and deny rules, specifying audit, and domain transitions. Profiles in this mode may be be reported as being in <i>enforce</i> mode or <i>allow</i> mode when introspected from the kernel.</dt>
+<dd>
+
+<p>Note: default_allow is similar and for many profiles will be equivalent to specifying an <i>allow all,</i> rule in the profile. The default_allow flag does not provide all the same option that the <i>allow all,</i> rule provides.</p>
+
+</dd>
+<dt id="unconfined-This-mode-allows-a-task-confined-by-the-profile-to-behave-as-though-it-is-unconfined.-The-unconfined-behavior-can-be-later-changed-to-confinement-by-using-profile-replacement.-This-mode-should-not-be-used-under-regular-deployment-but-can-be-useful-during-debugging-and-some-system-initialization-scenarios"><b>unconfined</b> This mode allows a task confined by the profile to behave as though it is <i>unconfined</i>. The unconfined behavior can be later changed to confinement by using profile replacement. This mode should not be used under regular deployment but can be useful during debugging and some system initialization scenarios.</dt>
+<dd>
+
+<p>This mode is similar to default_allow and may be emulated by default_allow in kernels that no longer support a true unconfined mode. It does not generally allow for specifying deny rules, or allow rules that override the default behavior, except in a few custom kernels where unconfined restricts a few operations. It relies on special customized behavior of the unconfined profile in the kernel and as such should only be used for debugging.</p>
+
+<p>Note: true unconfined is being phased out, with unconfined becoming a replaceable profile. As such unconfined mode will be emulated by a special profile compiled with the default_allow flag in newer kernels.</p>
+
+</dd>
+<dt id="prompt-This-mode-allows-task-mediation-to-send-an-up-call-to-userspace-to-ask-for-a-decision-when-there-isnt-a-rule-covering-the-permission-request.-If-userspace-does-not-respond-then-the-access-will-be-denied"><b>prompt</b> This mode allows task mediation to send an up call to userspace to ask for a decision when there isn&#39;t a rule covering the permission request. If userspace does not respond then the access will be denied.</dt>
 <dd>
 
 </dd>
@@ -438,7 +515,27 @@
 <dd>
 
 </dd>
+<dt id="attach_disconnected.path-ABS-PATH-Like-attach_disconnected-but-attach-disconnected-objects-to-the-supplied-path-instead-of-the-root-of-the-namespace"><b>attach_disconnected.path</b>=<i>ABS PATH</i> Like attach_disconnected, but attach disconnected objects to the supplied path instead of the root of the namespace.</dt>
+<dd>
+
+</dd>
 <dt id="chroot_relative-This-forces-file-names-to-be-relative-to-a-chroot-and-behave-as-if-the-chroot-is-a-mount-namespace"><b>chroot_relative</b> This forces file names to be relative to a chroot and behave as if the chroot is a mount namespace.</dt>
+<dd>
+
+</dd>
+<dt id="debug-This-flag-allows-turning-on-kernel-debug-messages-on-a-per-profile-basis.-It-works-in-conjunction-with-other-kernel-debug-flags-to-control-what-messages-will-be-output.-Its-effect-is-kernel-dependent-and-it-should-never-appear-in-policy-except-when-trying-to-debug-kernel-or-policy-problems"><b>debug</b> This flag allows turning on kernel debug messages on a per profile basis. It works in conjunction with other kernel debug flags to control what messages will be output. Its effect is kernel dependent, and it should never appear in policy except when trying to debug kernel or policy problems.</dt>
+<dd>
+
+</dd>
+<dt id="interruptible-Enables-interrupts-for-prompt-upcall-to-userspace"><b>interruptible</b> Enables interrupts for prompt upcall to userspace.</dt>
+<dd>
+
+</dd>
+<dt id="kill.signal-SIGNAL-This-changes-the-signal-that-will-be-sent-by-AppArmor-when-in-kill-mode-or-a-kill-rule-has-been-violated"><b>kill.signal</b>=<i>SIGNAL</i> This changes the signal that will be sent by AppArmor when in kill mode or a kill rule has been violated.</dt>
+<dd>
+
+</dd>
+<dt id="error-ERROR-CODE-This-changes-the-error-code-returned-by-AppArmor-when-a-rule-has-been-violated"><b>error</b>=<i>ERROR CODE</i> This changes the error code returned by AppArmor when a rule has been violated.</dt>
 <dd>
 
 </dd>
@@ -796,7 +893,7 @@ link subset /foo -&gt; /**,</code></pre>
 
 <h2 id="Network-Rules">Network Rules</h2>
 
-<p>AppArmor supports simple coarse grained network mediation. The network rule restrict all socket(2) based operations. The mediation done is a coarse-grained check on whether a socket of a given type and family can be created, read, or written. There is no mediation based of port number or protocol beyond tcp, udp, and raw. Network netlink(7) rules may only specify type &#39;dgram&#39; and &#39;raw&#39;.</p>
+<p>AppArmor supports simple coarse grained network mediation. The network rule restrict all socket(2) based operations. The mediation done is a coarse-grained check on whether a socket of a given type and family can be created, read, or written. Network netlink(7) rules may only specify type &#39;dgram&#39; and &#39;raw&#39;.</p>
 
 <p>AppArmor network rules are accumulated so that the granted network permissions are the union of all the listed network rule permissions.</p>
 
@@ -810,6 +907,28 @@ network inet tcp,      #allow access to tcp only for inet4 addresses
 network inet6 tcp,     #allow access to tcp only for inet6 addresses
 network netlink raw,   #allow access to AF_NETLINK SOCK_RAW</code></pre>
 
+<h3 id="Network-permissions">Network permissions</h3>
+
+<p>Network rule permissions are implied when a rule does not explicitly state an access list. By default if a rule does not have an access list all permissions that are compatible with the specified set of local and peer conditionals are implied.</p>
+
+<p>The create, bind, listen, shutdown, getattr, setattr, getopt, and setopt permissions are local socket permissions. They are only applied to the local socket and can&#39;t be specified in rules that have a peer conditional. The accept permission applies to the combination of a local and peer socket. The connect, send, and receive permissions are peer socket permissions.</p>
+
+<h3 id="Mediation-of-inet-inet6-family">Mediation of inet/inet6 family</h3>
+
+<p>AppArmor supports fine grained mediation of the inet and inet6 families by using the ip and port conditionals. The ip conditional accepts both IPv4 and IPv6 using the regular representation of four octets separated by &#39;.&#39; for IPv4 and eight groups of four hexadecimal numbers separated by &#39;:&#39; for IPv6. Contiguous leading zeros can be replaced by &#39;::&#39; once. On a connected socket, the sender and receiver don&#39;t need to be specified in the recvfrom and sendto system calls. In that case, and with unbounded sockets, the IP address is none, or unknown. Unknown or Unbound IP addresses are represented in policy by the &#39;none&#39; keyword. When the ip conditional is omitted, then all IP addresses will be allowed: IPv4, IPv6 and none. If INADDR_ANY or in6addr_any is used, then the ip conditional can be omitted or they can be represented by:</p>
+
+<pre><code>network ip=::,         #allow in6addr_any
+network ip=0.0.0.0;    #allow INADDR_ANY</code></pre>
+
+<p>The network rules support the specification of local and remote IP addresses, ports, and port ranges.</p>
+
+<pre><code>network ip=127.0.0.1 port=8080,
+network peer=(ip=10.139.15.23 port=8081),
+network ip=fd74:1820:b03a:b361::cf32 peer=(ip=fd74:1820:b03a:b361::a0f9),
+network port=8080 peer=(port=8081),
+network ip=127.0.0.1 port=8080 peer=(ip=10.139.15.23 port=8081),
+network ip=127.0.0.1 port=8080-8084,</code></pre>
+
 <h2 id="Mount-Rules">Mount Rules</h2>
 
 <p>AppArmor supports mount mediation and allows specifying filesystem types and mount flags. The syntax of mount rules in AppArmor is based on the mount(8) command syntax. Mount rules must contain one of the mount, remount or umount keywords, but all mount conditions are optional. Unspecified optional conditionals are assumed to match all entries (eg, not specifying fstype means all fstypes are matched). Due to the complexity of the mount command and how options may be specified, AppArmor allows specifying conditionals three different ways:</p>
@@ -818,7 +937,7 @@ network netlink raw,   #allow access to AF_NETLINK SOCK_RAW</code></pre>
 
 <li><p>If a conditional is specified using &#39;=&#39;, then the rule only grants permission for mounts matching the exactly specified options. For example, an AppArmor policy with the following rule:</p>
 
-<pre><code>mount options=ro /dev/foo -E&lt;gt&gt; /mnt/,</code></pre>
+<pre><code>mount options=ro /dev/foo -&gt; /mnt/,</code></pre>
 
 <p>Would match:</p>
 
@@ -858,7 +977,7 @@ $ mount /dev/foo /mnt</code></pre>
 </li>
 <li><p>If multiple conditionals are specified in a single mount rule, then the rule grants permission for each set of options. This provides a shorthand when writing mount rules which might help to logically break up a conditional. For example, if an AppArmor policy has the following rule:</p>
 
-<pre><code>mount options=ro options=atime</code></pre>
+<pre><code>mount options=ro options=atime,</code></pre>
 
 <p>both of these mount commands will match:</p>
 
@@ -995,11 +1114,113 @@ $ mount -o nodev,user /dev/foo /mnt</code></pre>
 </dd>
 </dl>
 
+<h2 id="Message-Queue-rules">Message Queue rules</h2>
+
+<p>AppArmor supports mediation of POSIX and SYSV message queues.</p>
+
+<p>AppArmor Message Queue permissions are implied when a rule does not explicitly state an access list. By default, all Message Queue permissions are implied.</p>
+
+<p>AppArmor Message Queue permissions become more restricted as further information is specified. Policy can be specified by determining its access mode, type, label, and message queue name.</p>
+
+<p>Regarding access modes, &#39;r&#39; and &#39;read&#39; are used to read messages from the queue. &#39;w&#39; and &#39;write&#39; are used to write to the message queue. &#39;create&#39; is used to create the message queue, and &#39;open&#39; is used to get the message queue identifier when the queue is already created. &#39;delete&#39; is used to remove the message queue. The access modes to get and set attributes of the message queue are &#39;setattr&#39; and &#39;getattr&#39;.</p>
+
+<p>The type of the policy can be either &#39;posix&#39; or &#39;sysv&#39;. This information is relevant when the message queue name is not specified, and when specified can be inferred by the queue name, since message queues&#39; name for posix must start with &#39;/&#39;, and message queues&#39; key for SYSV must be a positive integer.</p>
+
+<p>The policy label is the label assigned to the message queue when it is created.</p>
+
+<p>The message queue name can be either a string starting with &#39;/&#39; if the type is POSIX, or a positive integer if the type is SYSV. If the type is not specified, then it will be inferred by the queue name.</p>
+
+<p>Example AppArmor Message Queue rules:</p>
+
+<pre><code># Allow all Message Queue access
+mqueue,
+
+# Explicitly allow all Message Queue access,
+mqueue (create, open, delete, read, write, getattr, setattr),
+
+# Explicitly deny use of Message Queue
+deny mqueue,
+
+# Allow all access for POSIX queue of name /bar
+mqueue type=posix /bar,
+
+# Allow create permission for a SYSV queue of label foo
+mqueue create label=foo 123,</code></pre>
+
+<h2 id="User-Namespace-Rules">User Namespace Rules</h2>
+
+<p>User namespaces are part of many sandboxing and containerization solutions. They provide a way for a non-system root process to be root within the container. Unfortunately this opens up attack surface in the kernel and has been part of several exploit chains. As such AppArmor can be used to restrict the creation of user namespaces to select processes.</p>
+
+<p>User namespace permission are implied when a rule does not explicitly state an access list. The rule becomes more restrictive as further information is specified.</p>
+
+<p>Note: user namespace creation may be restricted so that it is not available to unprivieged unconfined processes. If this is the case any process trying to create user namespaces will require a profile that allows the necessary permissions.</p>
+
+<dl>
+
+<dt id="create"><b>create</b></dt>
+<dd>
+
+<p>Allow creation of user namespaces.</p>
+
+</dd>
+</dl>
+
+<p>Example userns rules:</p>
+
+<ul>
+
+<pre><code># Allow all userns perms
+userns,
+
+# Allow creation of a userns
+userns create,</code></pre>
+
+</ul>
+
+<h2 id="IO_URing-Rules">IO_URing Rules</h2>
+
+<p>AppArmor supports mediation of the new Linux high speed IO interface. There is limited mediation at this time to just a few permissions at the moment.</p>
+
+<p>IO Uring permission are implied when a rule does not explicitly state an access list. The rule becomes more restrictive as further information is specified.</p>
+
+<p>Note: io_uring access may be restricted so that it is not available to unprivileged unconfined processes. If this is the case any process trying to use io_uring will require a profile that allows the necessary io_uring permissions.</p>
+
+<dl>
+
+<dt id="sqpoll"><b>sqpoll</b></dt>
+<dd>
+
+<p>All the task confined by the profile to spawn a io_uring polling thread.</p>
+
+</dd>
+<dt id="override_creds"><b>override_creds</b></dt>
+<dd>
+
+<p>Grants the task confined by the profile to override (change) its credentials to the specified label, when executing an io_uring operation.</p>
+
+</dd>
+</dl>
+
+<p>Example IO_URING rules:</p>
+
+<ul>
+
+<pre><code># Allow io_uring operations
+io_uring,
+
+# Allow creation of a polling thread
+io_uring sqpoll,
+
+# Allow task to override credentials during io_uring operation
+io_uring override_creds label=new_creds,</code></pre>
+
+</ul>
+
 <h2 id="Pivot-Root-Rules">Pivot Root Rules</h2>
 
 <p>AppArmor mediates changing of the root filesystem through the pivot_root(2) system call. The syntax of &#39;pivot_root&#39; rules in AppArmor is based on the pivot_root(2) system call parameters with the notable exception that the ordering is reversed. The path corresponding to the put_old parameter of pivot_root(2) is optionally specified in the &#39;pivot_root&#39; rule using the &#39;oldroot=&#39; prefix.</p>
 
-<p>AppArmor &#39;pivot_root&#39; rules can specify a profile transition to occur during the pivot_root(2) system call. Note that AppArmor will only transition the process calling pivot_root(2) to the new profile.</p>
+<p>AppArmor &#39;pivot_root&#39; rules can specify a profile transition to occur during the pivot_root(2) system call. Note that currently, this feature is not supported by any kernel. When this feature will be supported, AppArmor will only transition the process calling pivot_root(2) to the new profile.</p>
 
 <p>The paths specified in &#39;pivot_root&#39; rules must end with &#39;/&#39; since they are directories.</p>
 
@@ -1261,6 +1482,21 @@ change_profile /bin/bash -&gt; {new_profile1,new_profile2,new_profile3},</code><
 
 <p>Not all kernels support <b>safe</b> mode and the parser will downgrade rules to <b>unsafe</b> mode in that situation. If no exec mode is specified, the default is <b>safe</b> mode in kernels that support it.</p>
 
+<h2 id="all-rule">all rule</h2>
+
+<p>The all rule is used to add a generic rule for all supported rule types. This is useful when policy wants to define a black list instead of white list, but can also be useful to add an access qualifier to all rules.</p>
+
+<p>Eg. Black list</p>
+
+<pre><code>allow all,
+# begin blacklist
+deny file,
+deny unix,</code></pre>
+
+<p>Eg. Adding audit qualifier</p>
+
+<pre><code>audit access all,</code></pre>
+
 <h2 id="rlimit-rules">rlimit rules</h2>
 
 <p>AppArmor can set and control the resource limits associated with a profile as described in the setrlimit(2) man page.</p>
@@ -1311,13 +1547,55 @@ set rlimit nice &lt;= 5,</code></pre>
 
 <p>The special <b>@{profile_name}</b> variable is set to the profile name and may be used in all policy.</p>
 
+<h3 id="Notes-on-variable-expansion-and-the-character">Notes on variable expansion and the / character</h3>
+
+<p>It is important to note that how AppArmor performs variable expansion depends on the context where a variable is used. When a variable is expanded it can result in a string with multiple path characters next to each other, in a way that is not evident when looking at policy.</p>
+
+<p>Eg.</p>
+
+<ul>
+
+<p>Given the following variable definition and rule</p>
+
+<p>@{HOME}=/home/*/ file rw @{HOME}/*,</p>
+
+<p>The variable expansion results in a rule of</p>
+
+<p>file rw /home/*//*.</p>
+
+</ul>
+
+<p>When this occurs in a context where a path is expected, AppArmor will canonicalize the path by collapsing consecutive / characters into a single character. For the above example, this would be</p>
+
+<pre><code>file rw /home/*/*,</code></pre>
+
+<p>There is one exception to this rule, when the consecutive / characters are at the beginning of a path, this indicates a posix namespace and the characters will not be collapsed.</p>
+
+<p>Eg.</p>
+
+<ul>
+
+<p>@{HOME}=/home/*/ file rw /@{HOME}/*,</p>
+
+<p>will result in an expansion of</p>
+
+<p>file rw //home/*//*,</p>
+
+<p>which is collapsed to</p>
+
+<p>file rw //home/*/*,</p>
+
+<p>Note: that the leading // in the above example is not collapsed to a single /. However the second // (that was also seen in the first example) is collapsed.</p>
+
+</ul>
+
 <h2 id="Alias-rules">Alias rules</h2>
 
 <p>AppArmor also provides alias rules for remapping paths for site-specific layouts. They are an alternative form of path rewriting to using variables, and are done after variable resolution. Alias rules must occur within the preamble of the profile. System-wide aliases are found in <i>/etc/apparmor.d/tunables/alias</i>, which is included by <i>/etc/apparmor.d/tunables/global</i>. <i>/etc/apparmor.d/tunables/global</i> is typically included at the beginning of an AppArmor profile.</p>
 
-<h2 id="Globbing">Globbing</h2>
+<h2 id="Globbing-AARE">Globbing (AARE)</h2>
 
-<p>File resources may be specified with a globbing syntax similar to that used by popular shells, such as csh(1), bash(1), zsh(1).</p>
+<p>File resources and other parameters accepting an AARE may be specified with a globbing syntax similar to that used by popular shells, such as csh(1), bash(1), zsh(1).</p>
 
 <dl>
 
@@ -1362,6 +1640,14 @@ set rlimit nice &lt;= 5,</code></pre>
 
 <p>will expand to one rule to match ab, one rule to match cd</p>
 
+<p>Can also include variables.</p>
+
+</dd>
+<dt id="variable"><b>@{variable}</b></dt>
+<dd>
+
+<p>will expand to all values assigned to the given variable.</p>
+
 </dd>
 </dl>
 
@@ -1401,6 +1687,12 @@ set rlimit nice &lt;= 5,</code></pre>
 
 <dl>
 
+<dt id="priority"><b>priority</b></dt>
+<dd>
+
+<p>Specifies the priority of the rule. Currently the allowed range is -1000 to 1000 with the default priority of rule is 0. Rules with higher priority are given preferences and will completely override permissions of lower priority rules where they overlap. When rules partially overlap the permissions of the higher priority rule will completely override lower priority rules within in overlap. Within a given priority level rules that overlap will accumulate permissions in the standard apparmor fashion.</p>
+
+</dd>
 <dt id="allow"><b>allow</b></dt>
 <dd>
 
@@ -1593,7 +1885,7 @@ abi &lt;abi/3.0&gt;,
   /usr/lib/**         r,
   /tmp/foo.pid        wr,
   /tmp/foo.*          lrw,
-  /@{HOME}/.foo_file  rw,
+  @{HOME}/.foo_file  rw,
   /usr/bin/baz        Cx -&gt; baz,
 
   # a comment about foo&#39;s hat (subprofile), bar.
@@ -1617,10 +1909,6 @@ abi &lt;abi/3.0&gt;,
 
 <dl>
 
-<dt id="etc-init.d-boot.apparmor"><i>/etc/init.d/boot.apparmor</i></dt>
-<dd>
-
-</dd>
 <dt id="etc-apparmor.d"><i>/etc/apparmor.d/</i></dt>
 <dd>
 

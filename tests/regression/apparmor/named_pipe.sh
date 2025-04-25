@@ -10,7 +10,7 @@
 #=DESCRIPTION 
 # This test verifies that subdomain file access checks function correctly 
 # for named piped (nodes in the filesystem created with mknod).  The test 
-# creates a parent/child process relationship which attempt to rendevous via 
+# creates a parent/child process relationship which attempt to rendezvous via
 # the named pipe.   The tests are attempted for unconfined and confined 
 # processes and also for subhats.
 #=END
@@ -20,7 +20,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 fifo=${tmpdir}/pipe
 
@@ -38,7 +38,7 @@ badchild=r
 # Add genprofile params that are common to all hats here
 common=""
 
-if [ "$(kernel_features signal)" == "true" -a "$(parser_supports 'signal,')" == "true" ] ; then
+if [ "$(kernel_features signal)" = "true" -a "$(parser_supports 'signal,')" = "true" ] ; then
 	# Allow send/receive of all signals
 	common="${common} signal:ALL"
 fi

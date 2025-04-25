@@ -1,55 +1,306 @@
 ---
 image: ubuntu:latest
-before_script:
-  - export DEBIAN_FRONTEND=noninteractive && apt-get update -qq && apt-get install --no-install-recommends -y build-essential apache2-dev autoconf automake bison dejagnu flex libpam-dev libtool perl liblocale-gettext-perl pkg-config python-all-dev python3-all-dev pyflakes3 ruby-dev swig lsb-release python3-notify2 python3-psutil python3-setuptools zlib1g-dev
-  - lsb_release -a
-  - uname -a
 
 # XXX - add a deploy stage to publish man pages, docs, and coverage
 # reports
 
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+
 stages:
   - build
   - test
+  - spread
+
+.ubuntu-common:
+  before_script:
+    # Install build-dependencies by loading the package list from the ubuntu/debian cloud-init profile.
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" install_deps "Installing dependencies..."
+    - apt-get update -qq
+    - apt-get install --yes yq make lsb-release
+    - |
+      printf 'include .image-garden.mk\n$(info $(UBUNTU_CLOUD_INIT_USER_DATA_TEMPLATE))\n.PHONY: nothing\nnothing:\n' \
+      | make -f - nothing \
+      | yq '.packages | .[]' \
+      | xargs apt-get install --yes --no-install-recommends
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" install_deps
+  after_script:
+    # Inspect the kernel and lsb-release.
+    - lsb_release -a
+    - uname -a
 
 build-all:
   stage: build
+  extends:
+    - .ubuntu-common
+  script:
+    # Run the spread prepare section to build everything.
+    - yq -r '.prepare' <spread.yaml | SPREAD_PATH=. bash -xeu
   artifacts:
     name: ${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHA}
     expire_in: 30 days
     untracked: true
     paths:
-        - libraries/libapparmor/
-        - parser/
-        - binutils/
-        - utils/
-        - changehat/mod_apparmor/
-        - changehat/pam_apparmor/
-        - profiles/
-  script:
-      - cd libraries/libapparmor && ./autogen.sh && ./configure --with-perl --with-python --prefix=/usr && make && cd ../.. || { cat config.log ; exit 1 ; }
-      - make -C parser
-      - make -C binutils
-      - make -C utils
-      - make -C changehat/mod_apparmor
-      - make -C changehat/pam_apparmor
-      - make -C profiles
+      - libraries/libapparmor/
+      - parser/
+      - binutils/
+      - utils/
+      - changehat/mod_apparmor/
+      - changehat/pam_apparmor/
+      - profiles/
 
-test-all:
+test-libapparmor:
   stage: test
+  needs: ["build-all"]
+  extends:
+    - .ubuntu-common
   script:
-      - make -C libraries/libapparmor check
-      - make -C parser check
-      - make -C binutils check
-      - make -C utils check
-      - make -C changehat/mod_apparmor check
-      - make -C profiles check-parser
-      - make -C profiles check-abstractions.d
+    # This is to touch the built files in the test stage to avoid needless rebuilding
+    - make -C libraries/libapparmor --touch
+    - make -C libraries/libapparmor check
+
+test-parser:
+  stage: test
+  needs: ["build-all"]
+  extends:
+    - .ubuntu-common
+  script:
+    # This is to touch the built files in the test stage to avoid needless rebuilding
+    - make -C parser --touch
+    - make -C parser -j $(nproc) tst_binaries
+    - make -C parser check
+
+test-binutils:
+  stage: test
+  needs: ["build-all"]
+  extends:
+    - .ubuntu-common
+  script:
+    - make -C binutils check
+
+test-utils:
+  stage: test
+  needs: ["build-all"]
+  extends:
+    - .ubuntu-common
+  script:
+    # This is to touch the built files in the test stage to avoid needless rebuilding
+    - make -C utils --touch
+
+    # TODO: move those to cloud-init list?
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" install_extra_deps "Installing additional dependencies..."
+    - apt-get install --no-install-recommends -y libc6-dev libjs-jquery libjs-jquery-throttle-debounce libjs-jquery-isonscreen libjs-jquery-tablesorter flake8 python3-coverage python3-notify2 python3-psutil python3-setuptools python3-tk python3-ttkthemes python3-gi
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" install_extra_deps
+
+    # See apparmor/apparmor#221
+    - make -C parser/tst gen_dbus
+    - make -C parser/tst gen_xtrans
+    - make -C utils check
+    - make -C utils/test coverage-regression
+  artifacts:
+    paths:
+      - utils/test/htmlcov/
+    when: always
+
+test-mod-apparmor:
+  stage: test
+  needs: ["build-all"]
+  extends:
+    - .ubuntu-common
+  script:
+    # This is to touch the built files in the test stage to avoid needless rebuilding
+    - make -C changehat/mod_apparmor --touch
+    - make -C changehat/mod_apparmor check
+
+test-profiles:
+  stage: test
+  needs: ["build-all"]
+  extends:
+    - .ubuntu-common
+  script:
+    # This is to touch the built files in the test stage to avoid needless rebuilding
+    - make -C profiles --touch
+    - make -C profiles check-parser
+    - make -C profiles check-abstractions.d
+    - make -C profiles check-local
+
+shellcheck:
+  stage: test
+  needs: []
+  extends:
+    - .ubuntu-common
+  script:
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" install_extra_deps "Installing additional dependencies..."
+    - apt-get install --no-install-recommends -y python3-minimal file shellcheck xmlstarlet
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" install_extra_deps
+    - shellcheck --version
+    - "./tests/bin/shellcheck-tree --format=checkstyle
+      | xmlstarlet tr tests/checkstyle2junit.xslt
+      > shellcheck.xml"
+  artifacts:
+    when: always
+    reports:
+      junit: shellcheck.xml
 
 # Disabled due to aa-logprof dependency on /sbin/apparmor_parser existing
-#      - make -C profiles check-profiles
+#   - make -C profiles check-profiles
 
 # test-pam_apparmor:
 #  - stage: test
 #  - script:
 #    - cd changehat/pam_apparmor && make check
+
+include:
+  - template: SAST.gitlab-ci.yml
+  - template: Secret-Detection.gitlab-ci.yml
+
+variables:
+  SAST_EXCLUDED_ANALYZERS: "eslint,flawfinder,semgrep,spotbugs"
+  SAST_BANDIT_EXCLUDED_PATHS: "*/tst/*, */test/*"
+
+coverity:
+  stage: .post
+  extends:
+    - .ubuntu-common
+  script:
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" install_extra_deps "Installing additional dependencies..."
+    - apt-get install --no-install-recommends -y curl git texlive-latex-recommended
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" install_extra_deps
+    - curl -o /tmp/cov-analysis-linux64.tgz https://scan.coverity.com/download/linux64
+      --form project=$COVERITY_SCAN_PROJECT_NAME --form token=$COVERITY_SCAN_TOKEN
+    - tar xfz /tmp/cov-analysis-linux64.tgz
+    - COV_VERSION=$(ls -dt cov-analysis-linux64-* | head -1)
+    - PATH=$PATH:$(pwd)/$COV_VERSION/bin
+    - make coverity
+    - curl https://scan.coverity.com/builds?project=$COVERITY_SCAN_PROJECT_NAME
+      --form token=$COVERITY_SCAN_TOKEN --form email=$GITLAB_USER_EMAIL
+      --form file=@$(ls apparmor-*-cov-int.tar.gz) --form version="$(git describe --tags)"
+      --form description="$(git describe --tags) / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID"
+  artifacts:
+    paths:
+      - "apparmor-*.tar.gz"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PROJECT_PATH == "apparmor/apparmor"
+
+.image-garden-x86_64:
+  stage: spread
+  # TODO: use tagged release once container tagging is improved upstream.
+  image: registry.gitlab.com/zygoon/image-garden:latest
+  tags:
+    - linux
+    - x86_64
+    - kvm
+  variables:
+    ARCH: x86_64
+    GARDEN_DL_DIR: dl
+    CACHE_POLICY: pull-push
+    CACHE_COMPRESSION_LEVEL: fastest
+  before_script:
+    # Prepare the image in dry-run mode. This helps in debugging cache misses
+    # when files are not cached correctly by the runner, causing the build section
+    # below to always do hevy-duty work.
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" prepare_image_dry_run "Prepare image (dry run)"
+    - image-garden make --dry-run --debug "$GARDEN_SYSTEM.$ARCH.run" "$GARDEN_SYSTEM.$ARCH.qcow2" "$GARDEN_SYSTEM.seed.iso" "$GARDEN_SYSTEM.user-data" "$GARDEN_SYSTEM.meta-data"
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" prepare_image_dry_run
+  script:
+    # Prepare the image, for real.
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" prepare_image "Prepare image"
+    - image-garden make "$GARDEN_SYSTEM.$ARCH.run" "$GARDEN_SYSTEM.$ARCH.qcow2" "$GARDEN_SYSTEM.seed.iso" "$GARDEN_SYSTEM.user-data" "$GARDEN_SYSTEM.meta-data"
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" prepare_image
+  cache:
+    # Cache the base image (pre-customization).
+    - key: image-garden-base-${GARDEN_SYSTEM}.${ARCH}
+      policy: $CACHE_POLICY
+      when: always
+      paths:
+        - $GARDEN_DL_DIR
+        # Those are never mutated so they are safe to share.
+        - efi-code.*.img
+        - efi-vars.*.img
+    # Cache the customized system. This cache depends on .image-garden.mk file
+    # so that any customization updates are immediately acted upon.
+    - key:
+        prefix: image-garden-custom-${GARDEN_SYSTEM}.${ARCH}-
+        files:
+          - .image-garden.mk
+      policy: $CACHE_POLICY
+      when: always
+      paths:
+        - $GARDEN_SYSTEM.*
+        - $GARDEN_SYSTEM.seed.iso
+        - $GARDEN_SYSTEM.meta-data
+        - $GARDEN_SYSTEM.user-data
+
+# This job builds and caches the image that the job below looks at.
+image-ubuntu-cloud-24.04-x86_64:
+  extends: .image-garden-x86_64
+  variables:
+    GARDEN_SYSTEM: ubuntu-cloud-24.04
+  needs: []
+  dependencies: []
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH
+      changes:
+        paths:
+          - .image-garden.mk
+          - .gitlab-ci.yml
+        compare_to: "refs/heads/master"
+
+.spread-x86_64:
+  extends: .image-garden-x86_64
+  variables:
+    # GitLab project identifier of zygoon/spread-dist can be seen on
+    # https://gitlab.com/zygoon/spread-dist, under the three-dot menu on
+    # top-right.
+    SPREAD_GITLAB_PROJECT_ID: "65375371"
+    # Git revision of spread to install.
+    # This must have been built via spread-dist.
+    # TODO: switch to upstream 1.0 release when available.
+    SPREAD_REV: 413817eda7bec07a3885e0717c178b965f8924e1
+    # Run all the tasks for a given system.
+    SPREAD_ARGS: "garden:$GARDEN_SYSTEM:"
+    SPREAD_GOARCH: amd64
+  before_script:
+    # Prepare the image in dry-run mode. This helps in debugging cache misses
+    # when files are not cached correctly by the runner, causing the build section
+    # below to always do hevy-duty work.
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" prepare_image_dry_run "Prepare image (dry run)"
+    - image-garden make --dry-run --debug "$GARDEN_SYSTEM.$ARCH.run" "$GARDEN_SYSTEM.$ARCH.qcow2" "$GARDEN_SYSTEM.seed.iso" "$GARDEN_SYSTEM.user-data" "$GARDEN_SYSTEM.meta-data"
+    - stat .image-garden.mk "$GARDEN_SYSTEM".* || true
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" prepare_image_dry_run
+    # Install the selected revision of spread.
+    - printf '\e[0K%s:%s:%s[collapsed=true]\r\e[0K%s\n' section_start "$(date +%s)" install_spread "Installing spread..."
+    # Install pre-built spread from https://gitlab.com/zygoon/spread-dist generic package repository.
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --location --output spread "${CI_API_V4_URL}/projects/${SPREAD_GITLAB_PROJECT_ID}/packages/generic/spread/${SPREAD_REV}/spread.${SPREAD_GOARCH}"
+    - chmod +x spread
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" install_spread
+  script:
+    - printf '\e[0K%s:%s:%s\r\e[0K%s\n' section_start "$(date +%s)" run_spread "Running spread for $GARDEN_SYSTEM..."
+    # TODO: transform to inject ^...$ to properly select jobs to run.
+    - mkdir -p spread-logs spread-artifacts
+    - ./spread -list $SPREAD_ARGS |
+      split --number=l/"${CI_NODE_INDEX:-1}"/"${CI_NODE_TOTAL:-1}" |
+      xargs --verbose ./spread -v -artifacts ./spread-artifacts -v | tee spread-logs/"$GARDEN_SYSTEM".log
+    - printf '\e[0K%s:%s:%s\r\e[0K\n' section_end "$(date +%s)" run_spread
+  artifacts:
+    paths:
+      - spread-logs
+      - spread-artifacts
+    when: always
+
+spread-ubuntu-cloud-24.04-x86_64:
+  extends: .spread-x86_64
+  variables:
+    GARDEN_SYSTEM: ubuntu-cloud-24.04
+    SPREAD_ARGS: garden:$GARDEN_SYSTEM:tests/regression/ garden:$GARDEN_SYSTEM:tests/profiles/
+    CACHE_POLICY: pull
+  dependencies: []
+  needs:
+    - job: image-ubuntu-cloud-24.04-x86_64
+      optional: true
+  parallel: 4

@@ -9,7 +9,7 @@
 #=NAME clone
 #=DESCRIPTION
 # Verifies that clone is allowed under AppArmor, but that CLONE_NEWNS is
-# restriced.
+# restricted.
 #=END
 
 pwd=`dirname $0`
@@ -17,7 +17,7 @@ pwd=`cd $pwd ; /bin/pwd`
 
 bin=$pwd
 
-. $bin/prologue.inc
+. "$bin/prologue.inc"
 
 # TEST1 unconfined
 

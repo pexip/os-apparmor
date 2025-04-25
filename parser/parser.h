@@ -36,14 +36,15 @@
 #include "immunix.h"
 #include "libapparmor_re/apparmor_re.h"
 #include "libapparmor_re/aare_rules.h"
+#include "rule.h"
+#include "bignum.h"
 
 #include <string>
 
 using namespace std;
 
 #include <set>
-class Profile;
-class rule_t;
+
 
 #define MODULE_NAME "apparmor"
 
@@ -66,10 +67,12 @@ extern int parser_token;
 #define WARN_FORMAT		0x400
 #define WARN_MISSING		0x800
 #define WARN_OVERRIDE		0x1000
+#define WARN_INCLUDE		0x2000
 
 #define WARN_DEV (WARN_RULE_NOT_ENFORCED | WARN_RULE_DOWNGRADED | WARN_ABI | \
 		  WARN_DEPRECATED | WARN_DANGEROUS | WARN_UNEXPECTED | \
-		  WARN_FORMAT | WARN_MISSING | WARN_OVERRIDE | WARN_DEBUG_CACHE)
+		  WARN_FORMAT | WARN_MISSING | WARN_OVERRIDE | \
+		  WARN_DEBUG_CACHE | WARN_INCLUDE)
 
 #define DEFAULT_WARNINGS (WARN_CONFIG | WARN_CACHE | WARN_JOBS | \
 			  WARN_UNEXPECTED | WARN_OVERRIDE)
@@ -77,19 +80,12 @@ extern int parser_token;
 #define WARN_ALL (WARN_RULE_NOT_ENFORCED | WARN_RULE_DOWNGRADED | WARN_ABI | \
 		  WARN_DEPRECATED | WARN_CONFIG | WARN_CACHE | \
 		  WARN_DEBUG_CACHE | WARN_JOBS | WARN_DANGEROUS | \
-		  WARN_UNEXPECTED | WARN_FORMAT | WARN_MISSING | WARN_OVERRIDE)
-
-extern dfaflags_t warnflags;
-extern dfaflags_t werrflags;
+		  WARN_UNEXPECTED | WARN_FORMAT | WARN_MISSING | \
+		  WARN_OVERRIDE | WARN_INCLUDE)
 
 
 typedef enum pattern_t pattern_t;
 
-struct prefixes {
-	int audit;
-	int deny;
-	int owner;
-};
 
 struct cod_pattern {
 	char *regex;		// posix regex
@@ -100,6 +96,8 @@ struct value_list {
 
 	struct value_list *next;
 };
+
+int cmp_value_list(value_list *lhs, value_list *rhs);
 
 struct cond_entry {
 	char *name;
@@ -116,6 +114,7 @@ struct cond_entry_list {
 };
 
 struct cod_entry {
+	int priority;
 	char *name;
 	union {
 		char *link_name;
@@ -124,13 +123,13 @@ struct cod_entry {
 	char *nt_name;
 	Profile *prof;		 	/* Special profile defined
 					 * just for this executable */
-	int mode;			/* mode is 'or' of AA_* bits */
-	int audit;			/* audit flags for mode */
-	int deny;			/* TRUE or FALSE */
+	perm32_t perms;			/* perms is 'or' of AA_* bits */
+	audit_t audit;
+	rule_mode_t rule_mode;
 
-	int alias_ignore;		/* ignore for alias processing */
+	bool alias_ignore;		/* ignore for alias processing */
 
-	int subset;
+	bool subset;
 
 	pattern_t pattern_type;
 	struct cod_pattern pat;
@@ -229,6 +228,7 @@ do {						\
 #endif
 
 
+#define list_first(LIST) (LIST)
 #define list_for_each(LIST, ENTRY) \
 	for ((ENTRY) = (LIST); (ENTRY); (ENTRY) = (ENTRY)->next)
 #define list_for_each_safe(LIST, ENTRY, TMP) \
@@ -260,6 +260,16 @@ do {						\
 		prev = tmp;		\
 	}				\
 	prev;				\
+})
+
+#define list_pop(LIST)				\
+({						\
+	typeof(LIST) _entry = (LIST);		\
+	if (LIST) {				\
+		(LIST) = (LIST)->next;		\
+		_entry->next = NULL;		\
+	}					\
+	_entry;					\
 })
 
 #define list_remove_at(LIST, PREV, ENTRY)			\
@@ -315,6 +325,7 @@ do {								\
 /* The parser fills this variable in automatically */
 #define PROFILE_NAME_VARIABLE "profile_name"
 
+
 /* from parser_common.c */
 extern uint32_t policy_version;
 extern uint32_t parser_abi_version;
@@ -332,22 +343,36 @@ extern int kernel_load;
 extern int kernel_supports_setload;
 extern int features_supports_network;
 extern int features_supports_networkv8;
+extern int features_supports_inet;
 extern int kernel_supports_policydb;
 extern int kernel_supports_diff_encode;
 extern int features_supports_mount;
+extern bool features_supports_detached_mount;
 extern int features_supports_dbus;
 extern int features_supports_signal;
 extern int features_supports_ptrace;
 extern int features_supports_unix;
 extern int features_supports_stacking;
 extern int features_supports_domain_xattr;
+extern int features_supports_userns;
+extern int features_supports_posix_mqueue;
+extern int features_supports_sysv_mqueue;
+extern int features_supports_io_uring;
+extern int features_supports_flag_interruptible;
+extern int features_supports_flag_signal;
+extern int features_supports_flag_error;
 extern int kernel_supports_oob;
+extern int kernel_supports_promptdev;
+extern int kernel_supports_permstable32;
+extern int kernel_supports_permstable32_v1;
+extern int prompt_compat_mode;
+extern int kernel_supports_state32;
+extern int kernel_supports_flags_table;
 extern int conf_verbose;
 extern int conf_quiet;
 extern int names_only;
 extern int option;
 extern int current_lineno;
-extern dfaflags_t dfaflags;
 extern const char *progname;
 extern char *profilename;
 extern char *profile_ns;
@@ -358,8 +383,12 @@ extern IncludeCache_t *g_includecache;
 
 extern void pwarnf(bool werr, const char *fmt, ...) __attribute__((__format__(__printf__, 2, 3)));
 extern void common_warn_once(const char *name, const char *msg, const char **warned_name);
+bool prompt_compat_mode_supported(int mode);
+int default_prompt_compat_mode();
+void print_prompt_compat_mode(FILE *f);
 
-#define pwarn(F, args...) do { if (warnflags & (F)) pwarnf((werrflags & (F)), ## args); } while (0)
+
+#define pwarn(F, args...) do { if (parseopts.warn & (F)) pwarnf((parseopts.Werror & (F)), ## args); } while (0)
 
 /* from parser_main (cannot be used in tst builds) */
 extern int force_complain;
@@ -376,7 +405,6 @@ extern int skip_mode_force;
 extern int abort_on_error;
 extern int skip_bad_cache_rebuild;
 extern int mru_skip_cache;
-extern int debug_cache;
 
 /* provided by parser_lex.l (cannot be used in tst builds) */
 extern FILE *yyin;
@@ -399,6 +427,7 @@ extern pattern_t convert_aaregex_to_pcre(const char *aare, int anchor, int glob,
 extern int build_list_val_expr(std::string& buffer, struct value_list *list);
 extern int convert_entry(std::string& buffer, char *entry);
 extern int clear_and_convert_entry(std::string& buffer, char *entry);
+extern int convert_range(std::string& buffer, bignum start, bignum end);
 extern int process_regex(Profile *prof);
 extern int post_process_entry(struct cod_entry *entry);
 
@@ -433,18 +462,23 @@ extern char *processunquoted(const char *string, int len);
 extern int get_keyword_token(const char *keyword);
 extern int get_rlimit(const char *name);
 extern char *process_var(const char *var);
-extern int parse_mode(const char *mode);
-extern int parse_X_mode(const char *X, int valid, const char *str_mode, int *mode, int fail);
+extern perm32_t parse_perms(const char *permstr);
+extern int parse_X_perms(const char *X, int valid, const char *str_perms, perm32_t *perms, int fail);
 bool label_contains_ns(const char *label);
 bool parse_label(bool *_stack, char **_ns, char **_name,
 		 const char *label, bool yyerr);
-extern struct cod_entry *new_entry(char *id, int mode, char *link_id);
+extern struct cod_entry *new_entry(char *id, perm32_t perms, char *link_id);
 
 /* returns -1 if value != true or false, otherwise 0 == false, 1 == true */
 extern int str_to_boolean(const char* str);
+extern int null_strcmp(const char *s1, const char *s2);
+extern bool strcomp (const char *lhs, const char *rhs);
 extern struct cod_entry *copy_cod_entry(struct cod_entry *cod);
 extern void free_cod_entries(struct cod_entry *list);
 void debug_cod_entries(struct cod_entry *list);
+bool check_x_qualifier(struct cod_entry *entry, const char *&error);
+bool entry_add_prefix(struct cod_entry *entry, const prefixes &p, const char *&error);
+
 
 #define SECONDS_P_MS (1000LL * 1000LL)
 long long convert_time_units(long long value, long long base, const char *units);
@@ -488,8 +522,6 @@ extern void add_to_list(Profile *profile);
 extern void add_hat_to_policy(Profile *policy, Profile *hat);
 extern int add_entry_to_x_table(Profile *prof, char *name);
 extern void add_entry_to_policy(Profile *policy, struct cod_entry *entry);
-extern void post_process_file_entries(Profile *prof);
-extern void post_process_rule_entries(Profile *prof);
 extern int post_process_policy(int debug_only);
 extern int process_profile_regex(Profile *prof);
 extern int process_profile_variables(Profile *prof);

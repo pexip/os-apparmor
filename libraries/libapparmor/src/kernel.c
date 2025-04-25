@@ -463,7 +463,7 @@ static char *procattr_path(pid_t pid, const char *attr)
 
 static int procattr_open(pid_t tid, const char *attr, int flags)
 {
-	char *tmp;
+	autofree char *tmp = NULL;
 	int fd;
 
 	tmp = procattr_path(tid, attr);
@@ -471,7 +471,7 @@ static int procattr_open(pid_t tid, const char *attr, int flags)
 		return -1;
 	}
 	fd = open(tmp, flags);
-	free(tmp);
+
 	/* Test is we can fallback to the old interface (this is ugly).
 	 * If we haven't tried the old interface already
 	 *    proc_attr_base == proc_attr_base_old - no fallback
@@ -483,11 +483,14 @@ static int procattr_open(pid_t tid, const char *attr, int flags)
 	 *       old interface where is_enabled() is only successful if
 	 *       the old interface is available to apparmor.
 	 */
-	if (fd == -1 && tmp != proc_attr_base_old && param_check_enabled() != 0) {
-		if (asprintf(&tmp, proc_attr_base_old, tid, attr) < 0)
-			return -1;
-		fd = open(tmp, flags);
+	if (fd == -1 && param_check_enabled() != 0 && strncmp(tmp, proc_attr_base_old, strlen(proc_attr_base_old)) != 0) {
 		free(tmp);
+		if (asprintf(&tmp, proc_attr_base_old, tid, attr) < 0) {
+			/* tmp is undefined, make sure it is null for autofree*/
+			tmp = NULL;
+			return -1;
+		}
+		fd = open(tmp, flags);
 	}
 
 	return fd;
@@ -1319,9 +1322,9 @@ int aa_query_link_path_len(const char *label, size_t label_len,
 	query[pos] = 0;
 	query[++pos] = AA_CLASS_FILE;
 	memcpy(query + pos + 1, link, link_len);
-	/* The kernel does the query in two parts we could similate this
+	/* The kernel does the query in two parts; we could simulate this
 	 * doing the following, however as long as policy is compiled
-	 * correctly this isn't requied, and it requires and extra round
+	 * correctly this isn't required, and it requires an extra round
 	 * trip to the kernel and adds a race on policy replacement between
 	 * the two queries.
 	 *
@@ -1354,4 +1357,122 @@ int aa_query_link_path(const char *label, const char *target, const char *link,
 	return aa_query_link_path_len(label, strlen(label), target,
 				      strlen(target), link, strlen(link),
 				      allowed, audited);
+}
+
+static int alloc_substring(char ***v, char *s, char *p,
+			   size_t max_size, size_t n, bool immutable)
+{
+	if (max_size) {
+		if (n >= max_size) {
+			errno = E2BIG;
+			return -1;
+		}
+	} else {
+		char ** tmpv;
+		tmpv = (char **) realloc(*v, (n + 1) * sizeof(char *));
+		if (tmpv == NULL) {
+			errno = ENOMEM;
+			return -1;
+		}
+		*v = tmpv;
+	}
+	if (immutable) {
+		char *tmp;
+		tmp = (char *) malloc(p - s + 1);
+		if (tmp == NULL) {
+			errno = ENOMEM;
+			return -1;
+		}
+		memcpy(tmp, s, p - s);
+		tmp[p - s] = 0;
+		(*v)[n] = tmp;
+	} else {
+		(*v)[n] = s;
+		if (*p)
+			*p = 0;
+	}
+
+	return 0;
+}
+
+/**
+ * aa_split_overlay_str - split a string into potentially multiple strings
+ * @str: the string to split
+ * @vec: vector to put string pointers into, IF null will be allocated
+ * @max_size: maximum number of ents to put in @vec, IF 0 dynamic
+ * @immutable: true if @str should not be modified.
+ *
+ * Returns: the number of entries in vec on success. -1 on error and errno set.
+ *
+ * Split a comma or colon separated string into substrings.
+ *
+ * IF @vec == NULL
+ *    the vec will be dynamically allocated
+ * ELSE
+ *    passed in @vec will be used, and NOT updated/extended
+ *
+ * IF @max_size == 0 && @vec == NULL
+ *    @vec will be dynamically resized
+ * ELSE
+ *    @vec will be fixed at @max_size
+ *
+ * IF @immutable is true
+ *    the substrings placed in @vec will be allocated copies.
+ * ELSE
+ *    @str will be updated in place and @vec[x] will point into @str
+ */
+int aa_split_overlay_str(char *str, char ***vec, size_t max_size, bool immutable)
+{
+	char *s = str;
+	char *p = str;
+	int rc, n = 0;
+	char **v = *vec;
+
+	if (!*vec) {
+		if (max_size) {
+			v = (char **) malloc(max_size * sizeof(char *));
+			if (v == NULL) {
+				rc = ENOMEM;
+				goto err;
+			}
+		}
+	}
+
+	while (*p) {
+		if (*p == '\\') {
+			if (*(p + 1) != 0)
+				p++;
+		} else if (*p == ',' || *p == ':') {
+			if (p != s) {
+				if (alloc_substring(&v, s, p, max_size, n, immutable) == -1) {
+					rc = errno;
+					goto err;
+				}
+				n++;
+			}
+			p++;
+			s = p;
+		} else
+			p++;
+	}
+	if (p != s) {
+		if (alloc_substring(&v, s, p, max_size, n, immutable) == -1) {
+			rc = errno;
+			goto err;
+		}
+		n++;
+	}
+
+	*vec = v;
+	return n;
+err:
+	if (immutable) {
+		for (int i = 0; i < n; i++) {
+			free(v[i]);
+		}
+	}
+	if (!*vec)
+		free(v);
+	errno = rc;
+	return -1;
 }

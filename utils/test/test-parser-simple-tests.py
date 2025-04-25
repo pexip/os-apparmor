@@ -9,12 +9,12 @@
 #
 # ------------------------------------------------------------------
 
-import unittest
-from common_test import AATest, setup_all_loops, setup_aa
-import apparmor.aa as apparmor
-
 import os
-from apparmor.common import open_file_read, AppArmorException
+import unittest
+
+import apparmor.aa as apparmor
+from apparmor.common import AppArmorException, is_skippable_file, open_file_read
+from common_test import AATest, setup_aa, setup_all_loops
 
 # This testcase will parse all parser/tst/simple_tests with parse_profile_data(),
 # except the files listed in one of the arrays below.
@@ -35,23 +35,27 @@ skip_startswith = (
 
     # Pux and Cux (which actually mean PUx and CUx) get rejected by the tools
     'generated_x/exact-',
+
+    # don't handle rule priorities yet
+    'file/priority/',
 )
 
 # testcases that should raise an exception, but don't
-exception_not_raised = [
+exception_not_raised = (
     # most abi/bad_* aren't detected as bad by the basic implementation in the tools
     'abi/bad_10.sd',
     'abi/bad_11.sd',
     'abi/bad_12.sd',
 
-    # invalid capabilities (like "foobar"), but syntactically correct
-    'capability/bad_1.sd',
-    'capability/bad_2.sd',
-    'capability/bad_3.sd',
-    'capability/bad_4.sd',
-
     # interesting[tm] profile name
     'change_hat/bad_parsing.sd',
+
+    'dbus/bad_regex_04.sd',
+    'dbus/bad_regex_05.sd',
+    'dbus/bad_regex_06.sd',
+    'file/bad_re_brace_1.sd',
+    'file/bad_re_brace_2.sd',
+    'file/bad_re_brace_3.sd',
 
     # The tools don't detect conflicting change_profile exec modes
     'change_profile/onx_conflict_unsafe1.sd',
@@ -76,34 +80,16 @@ exception_not_raised = [
     'file/bad_re_brace_1.sd',
     'file/bad_re_brace_2.sd',
     'file/bad_re_brace_3.sd',
-    'mount/bad_opt_10.sd',
-    'mount/bad_opt_11.sd',
-    'mount/bad_opt_12.sd',
-    'mount/bad_opt_13.sd',
-    'mount/bad_opt_14.sd',
-    'mount/bad_opt_15.sd',
-    'mount/bad_opt_16.sd',
-    'mount/bad_opt_17.sd',
-    'mount/bad_opt_18.sd',
-    'mount/bad_opt_19.sd',
-    'mount/bad_opt_1.sd',
-    'mount/bad_opt_20.sd',
-    'mount/bad_opt_21.sd',
-    'mount/bad_opt_22.sd',
-    'mount/bad_opt_23.sd',
-    'mount/bad_opt_24.sd',
-    'mount/bad_opt_2.sd',
-    'mount/bad_opt_3.sd',
-    'mount/bad_opt_4.sd',
-    'mount/bad_opt_5.sd',
-    'mount/bad_opt_6.sd',
-    'mount/bad_opt_7.sd',
-    'mount/bad_opt_8.sd',
-    'mount/bad_opt_9.sd',
-    'mount/bad_opt_25.sd',
-    'mount/bad_opt_26.sd',
-    'mount/bad_opt_27.sd',
-    'mount/bad_opt_28.sd',
+
+    # We do not check that options are compatible
+    'mount/bad_opt_29.sd',
+    'mount/bad_opt_30.sd',
+    'mount/bad_opt_31.sd',
+    'mount/bad_1.sd',
+    'mount/bad_2.sd',
+    'mount/bad_3.sd',
+    'mount/bad_4.sd',
+
     'profile/flags/flags_bad10.sd',
     'profile/flags/flags_bad11.sd',
     'profile/flags/flags_bad12.sd',
@@ -111,7 +97,6 @@ exception_not_raised = [
     'profile/flags/flags_bad15.sd',
     'profile/flags/flags_bad18.sd',
     'profile/flags/flags_bad19.sd',
-    'profile/flags/flags_bad20.sd',
     'profile/flags/flags_bad2.sd',
     'profile/flags/flags_bad3.sd',
     'profile/flags/flags_bad4.sd',
@@ -122,7 +107,6 @@ exception_not_raised = [
     'profile/flags/flags_bad_debug_1.sd',
     'profile/flags/flags_bad_debug_2.sd',
     'profile/flags/flags_bad_debug_3.sd',
-    'profile/flags/flags_bad_debug_4.sd',
     # detection of conflicting flags not supported
     'profile/flags/flags_bad30.sd',
     'profile/flags/flags_bad31.sd',
@@ -141,44 +125,62 @@ exception_not_raised = [
     'profile/flags/flags_bad44.sd',
     'profile/flags/flags_bad45.sd',
     'profile/flags/flags_bad46.sd',
-    'profile/simple_bad_no_close_brace4.sd',
+    'profile/flags/flags_bad47.sd',
+    'profile/flags/flags_bad48.sd',
+    'profile/flags/flags_bad49.sd',
+    'profile/flags/flags_bad50.sd',
+    'profile/flags/flags_bad51.sd',
+    'profile/flags/flags_bad52.sd',
+    'profile/flags/flags_bad53.sd',
+    'profile/flags/flags_bad54.sd',
+    'profile/flags/flags_bad55.sd',
+    'profile/flags/flags_bad56.sd',
+    'profile/flags/flags_bad64.sd',
+    'profile/flags/flags_bad65.sd',
+    'profile/flags/flags_bad66.sd',
+    'profile/flags/flags_bad67.sd',
+    'profile/flags/flags_bad68.sd',
+    'profile/flags/flags_bad69.sd',
+    'profile/flags/flags_bad70.sd',
+    'profile/flags/flags_bad71.sd',
+    'profile/flags/flags_bad72.sd',
+    'profile/flags/flags_bad73.sd',
+    'profile/flags/flags_bad74.sd',
+    'profile/flags/flags_bad75.sd',
+    'profile/flags/flags_bad76.sd',
+    'profile/flags/flags_bad77.sd',
+    'profile/flags/flags_bad78.sd',
+    'profile/flags/flags_bad79.sd',
+    'profile/flags/flags_bad80.sd',
+    'profile/flags/flags_bad81.sd',
+    'profile/flags/flags_bad82.sd',
+    'profile/flags/flags_bad83.sd',
+    'profile/flags/flags_bad84.sd',
+    'profile/flags/flags_bad85.sd',
+    'profile/flags/flags_bad86.sd',
+    # flags=(error=EXX)
+    'profile/flags/flags_bad87.sd',
+    'profile/flags/flags_bad88.sd',
+    'profile/flags/flags_bad89.sd',
+
+    'profile/flags/flags_bad_disconnected_path1.sd',
+    'profile/flags/flags_bad_disconnected_path2.sd',
+    'profile/flags/flags_bad_disconnected_path3.sd',
+    'profile/flags/flags_bad_disconnected_path4.sd',
+    'profile/flags/flags_bad_disconnected_path5.sd',
     'profile/profile_ns_bad8.sd',  # 'profile :ns/t' without terminating ':'
-    'ptrace/bad_05.sd',  # actually contains a capability rule with invalid (ptrace-related) keyword
-    'ptrace/bad_06.sd',  # actually contains a capability rule with invalid (ptrace-related) keyword
     'ptrace/bad_10.sd',  # peer with invalid regex
     'signal/bad_21.sd',  # invalid regex
-    'unix/bad_attr_1.sd',
-    'unix/bad_attr_2.sd',
-    'unix/bad_attr_3.sd',
-    'unix/bad_attr_4.sd',
-    'unix/bad_bind_1.sd',
-    'unix/bad_bind_2.sd',
-    'unix/bad_create_1.sd',
-    'unix/bad_create_2.sd',
-    'unix/bad_listen_1.sd',
-    'unix/bad_listen_2.sd',
-    'unix/bad_modifier_1.sd',
-    'unix/bad_modifier_2.sd',
-    'unix/bad_modifier_3.sd',
-    'unix/bad_modifier_4.sd',
-    'unix/bad_opt_1.sd',
-    'unix/bad_opt_2.sd',
-    'unix/bad_opt_3.sd',
-    'unix/bad_opt_4.sd',
-    'unix/bad_peer_1.sd',
+
+    # Invalid regexes
     'unix/bad_regex_01.sd',
     'unix/bad_regex_02.sd',
     'unix/bad_regex_03.sd',
     'unix/bad_regex_04.sd',
-    'unix/bad_shutdown_1.sd',
-    'unix/bad_shutdown_2.sd',
-    'unix/bad_peer_2.sd',
-    'unix/bad_attr_5.sd',
-    'unix/bad_opt_5.sd',
-    'unix/bad_shutdown_3.sd',
-    'vars/boolean/boolean_bad_2.sd',
-    'vars/boolean/boolean_bad_3.sd',
-    'vars/boolean/boolean_bad_4.sd',
+
+    'unix/bad_modifier_2.sd',  # We do not check for duplicated keywords
+    'unix/bad_bind_2.sd',  # We do not check bind coherency
+
     'vars/vars_bad_3.sd',
     'vars/vars_bad_4.sd',
     'vars/vars_bad_5.sd',
@@ -222,10 +224,12 @@ exception_not_raised = [
     'xtrans/simple_bad_conflicting_x_6.sd',
     'xtrans/simple_bad_conflicting_x_8.sd',
     'xtrans/x-conflict.sd',
-]
+
+    'network/perms/bad_modifier_2.sd',
+)
 
 # testcases with lines that don't match any regex and end up as "unknown line"
-unknown_line = [
+unknown_line = (
     # 'other' keyword
     'file/allow/ok_other_1.sd',
     'file/allow/ok_other_2.sd',
@@ -302,15 +306,19 @@ unknown_line = [
     'bare_include_tests/ok_84.sd',
     'bare_include_tests/ok_85.sd',
     'bare_include_tests/ok_86.sd',
-]
+
+    # Unsupported \\" in unix AARE
+    'unix/ok_regex_03.sd',
+    'unix/ok_regex_09.sd',
+    'unix/ok_regex_13.sd',
+    'unix/ok_regex_19.sd',
+
+)
 
 # testcases with various unexpected failures
-syntax_failure = [
+syntax_failure = (
     # missing profile keywords
     'profile/re_named_ok2.sd',
-
-    # Syntax Error: Unexpected hat definition found (external hat)
-    'change_hat/new_style4.sd',
 
     # Syntax Errors caused by boolean conditions (parse_profile_data() gets confused by the closing '}')
     'conditional/defined_1.sd',
@@ -402,16 +410,25 @@ syntax_failure = [
     'generated_perms_leading/dominate-Cuxtarget.sd',
     'generated_perms_leading/dominate-ownerPuxtarget2.sd',
 
-    # escaping with \
+    # escaping with "\"
     'file/ok_embedded_spaces_4.sd',  # \-escaped space
     'file/file/ok_embedded_spaces_4.sd',  # \-escaped space
     'file/ok_quoted_4.sd',  # quoted string including \"
 
+    # mount rules with multiple 'options' or 'fstype' are not supported by the tools yet, and when writing them, only the last 'options'/'fstype' would survive.
+    # Therefore MountRule intentionally raises an exception when parsing such a rule.
+    'mount/ok_opt_87.sd',  # multiple options
+    'mount/ok_opt_88.sd',  # multiple fstype
+
     # misc
-    'vars/vars_dbus_8.sd',  # Path doesn't start with / or variable: {/@{TLDS}/foo,/com/@{DOMAINS}}
+    'vars/vars_dbus_12.sd',  # AARE starting with {{ are not handled
     'vars/vars_simple_assignment_12.sd',  # Redefining existing variable @{BAR} ('\' not handled)
     'bare_include_tests/ok_2.sd',  # two #include<...> in one line
-]
+
+    # network port range
+    'network/network_ok_17.sd',
+)
+
 
 class TestParseParserTests(AATest):
     tests = []  # filled by parse_test_profiles()
@@ -433,16 +450,17 @@ class TestParseParserTests(AATest):
         apparmor.active_profiles.init_file(params['file'])
 
         if expected:
-            apparmor.parse_profile_data(data, params['file'], 0)
+            apparmor.parse_profile_data(data, params['file'], 0, True)
             apparmor.active_profiles.get_all_merged_variables(params['file'], apparmor.include_list_recursive(apparmor.active_profiles.files[params['file']]))
 
         else:
             with self.assertRaises(AppArmorException):
-                apparmor.parse_profile_data(data, params['file'], 0)
+                apparmor.parse_profile_data(data, params['file'], 0, True)
                 apparmor.active_profiles.get_all_merged_variables(params['file'], apparmor.include_list_recursive(apparmor.active_profiles.files[params['file']]))
 
+
 def parse_test_profiles(file_with_path):
-    '''parse the test-related headers of a profile (for example EXRESULT) and add the profile to the set of tests'''
+    """parse the test-related headers of a profile (for example EXRESULT) and add the profile to the set of tests"""
     exresult = None
     exresult_found = False
     description = None
@@ -464,7 +482,7 @@ def parse_test_profiles(file_with_path):
                 exresult = False
                 exresult_found = True
             else:
-                raise Exception('%s contains unknown EXRESULT %s' % (file_with_path, exresult))
+                raise Exception('{} contains unknown EXRESULT {}'.format(file_with_path, exresult))
 
         elif line.upper().startswith('#=DESCRIPTION '):
             description = line.split()[1]
@@ -476,25 +494,25 @@ def parse_test_profiles(file_with_path):
             disabled = True
 
     if not exresult_found:
-        raise Exception('%s does not contain EXRESULT' % file_with_path)
+        raise Exception(file_with_path + ' does not contain EXRESULT')
 
     if not description:
-        raise Exception('%s does not contain description' % file_with_path)
+        raise Exception(file_with_path + ' does not contain description')
 
     tools_wrong = False
     if relfile in exception_not_raised:
         if exresult:
-            raise Exception("%s listed in exception_not_raised, but has EXRESULT PASS" % file_with_path)
+            raise Exception(file_with_path + " listed in exception_not_raised, but has EXRESULT PASS")
         tools_wrong = 'EXCEPTION_NOT_RAISED'
     elif relfile.startswith(skip_startswith):
         return 1  # XXX *** SKIP *** those tests
     elif relfile in unknown_line:
         if not exresult:
-            raise Exception("%s listed in unknown_line, but has EXRESULT FAIL" % file_with_path)
+            raise Exception(file_with_path + " listed in unknown_line, but has EXRESULT FAIL")
         tools_wrong = 'UNKNOWN_LINE'
     elif relfile in syntax_failure:
         if not exresult:
-            raise Exception("%s listed in syntax_failure, but has EXRESULT FAIL" % file_with_path)
+            raise Exception(file_with_path + " listed in syntax_failure, but has EXRESULT FAIL")
         tools_wrong = 'SYNTAX_FAILURE'
 
     params = {
@@ -511,11 +529,11 @@ def parse_test_profiles(file_with_path):
 
 
 def find_and_setup_test_profiles(profile_dir):
-    '''find all profiles in the given profile_dir, excluding
+    """find all profiles in the given profile_dir, excluding
     - skippable files
     - include directories
     - files in the main directory (readme, todo etc.)
-    '''
+    """
     skipped = 0
 
     profile_dir = os.path.abspath(profile_dir)
@@ -535,13 +553,13 @@ def find_and_setup_test_profiles(profile_dir):
 
         for file in files:
             file_with_path = os.path.join(root, file)
-            if not apparmor.is_skippable_file(file) and relpath != '.':
+            if not is_skippable_file(file) and relpath != '.':
                 skipped += parse_test_profiles(file_with_path)
 
     if skipped:
-        print('Skipping %s test profiles listed in skip_startswith.' % skipped)
+        print('Skipping {} test profiles listed in skip_startswith.'.format(skipped))
 
-    print('Running %s parser simple_tests...' % len(TestParseParserTests.tests))
+    print('Running {} parser simple_tests...'.format(len(TestParseParserTests.tests)))
 
 
 setup_aa(apparmor)
