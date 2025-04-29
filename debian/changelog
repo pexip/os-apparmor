@@ -1,3 +1,9 @@
+apparmor (4.1.0-1+pexip25u1) pexip-trixie; urgency=medium
+
+  * Initial trixie build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Tue, 29 Apr 2025 22:27:14 +0100
+
 apparmor (4.1.0-1) unstable; urgency=medium
 
   * Import new upstream release
